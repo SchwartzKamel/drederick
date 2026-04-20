@@ -190,6 +190,44 @@ public sealed class DoctorRunner
         foreach (var (t, r) in plan)
         {
             if (r is null) continue;
+
+            // ANCHOR: datasette-bootstrap (doctor primes the same cache `serve` reads)
+            if (t.Name == "datasette")
+            {
+                var home = Environment.GetEnvironmentVariable("HOME")
+                    ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var cacheDir = System.IO.Path.Combine(home, ".drederick");
+                var bootOpts = new Bundling.BootstrapOptions(
+                    ExplicitPath: null,
+                    AutoInstall: true,
+                    AssumeYes: true, // doctor has already taken a single [y/N] above
+                    CacheDir: cacheDir);
+                int bootExit;
+                try
+                {
+                    _ = Bundling.DatasetteBootstrap.EnsureAsync(
+                        bootOpts, _audit, CancellationToken.None,
+                        runner: _runner, locator: _locator,
+                        stdin: input, stdout: output, stdinIsTty: false).GetAwaiter().GetResult();
+                    bootExit = 0;
+                    output.WriteLine("doctor: datasette install via bundling bootstrap succeeded.");
+                }
+                catch (Bundling.DatasetteBootstrapException ex)
+                {
+                    output.WriteLine($"doctor: datasette install failed: {ex.Message}");
+                    bootExit = 1;
+                }
+                outcomes.Add(new InstallOutcome(t.Name, "drederick.bundling:" + r.Command, bootExit, Skipped: false));
+                _audit.Record("doctor.install", new Dictionary<string, object?>
+                {
+                    ["name"] = t.Name,
+                    ["command"] = "drederick.bundling.datasette",
+                    ["exit_code"] = bootExit,
+                });
+                continue;
+            }
+            // END ANCHOR: datasette-bootstrap
+
             var cmd = r.NeedsSudo ? $"sudo {r.Command}" : r.Command;
             output.WriteLine($"doctor: running: {cmd}");
             int exit;

@@ -1,0 +1,14 @@
+[
+  {
+    "ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+    "cve_id": "CVE-2011-2523",
+    "html_url": "https://github.com/advisories/GHSA-xxxx-yyyy-zzzz",
+    "summary": "vsftpd 2.3.4 backdoor",
+    "severity": "critical",
+    "references": [
+      "https://github.com/rapid7/metasploit-framework",
+      {"url": "https://github.com/example/poc-vsftpd"},
+      "https://nvd.nist.gov/vuln/detail/CVE-2011-2523"
+    ]
+  }
+]

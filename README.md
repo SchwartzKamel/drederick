@@ -4,12 +4,11 @@
 
 ![Drederick Tatum](https://comb.io/NOqy8w.gif)
 
-
 Drederick is a scope-enforced, adaptive reconnaissance harness for **authorized
 lab and CTF environments only** (Hack The Box, TryHackMe, CTF ranges, Vulnhub,
 vulhub, or infrastructure you are explicitly authorized to assess). It performs
-discovery and fingerprinting only — **no exploitation, no credential attacks,
-no brute force, no payload delivery**.
+discovery, fingerprinting, and CVE/PoC *aggregation* only — **no exploitation,
+no credential attacks, no brute force, no payload delivery, no PoC execution**.
 
 Built in C# on **.NET 10** with the **Microsoft Agent Framework**.
 
@@ -24,62 +23,140 @@ third-party systems is illegal in most jurisdictions; don't do it.
 
 See [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md) for the full policy.
 
-## What it does
+## Quick start
 
-- **Scoped nmap** — TCP service/version scan with enumeration NSE categories
-  only. Lab mode uses `safe,default,discovery,version`; strict mode
-  (`--no-lab`) uses `safe,default`. Exploit, intrusive, brute, vuln, dos, and
-  malware scripts are **always** excluded.
-- **HTTP probe** — status, title, `Server`, and which of the common security
-  headers are missing.
-- **TLS probe** — peer certificate subject/SAN/issuer/expiry and negotiated
-  TLS version.
-- **DNS probe** — forward + reverse.
-- **Adaptive orchestration** — an agent plans the next probe from prior
-  findings (deterministic runner out of the box, or the Microsoft Agent
-  Framework runner when an OpenAI-compatible key is supplied).
-- **Per-host working directory (AutoRecon-style)** — `out/<host>/scans/`,
-  `out/<host>/loot/`, `out/<host>/notes.md`.
-- **Manual-commands cheatsheet** (lab mode) — `out/<host>/manual_commands.txt`
-  with enumeration commands the operator *may* choose to run themselves.
-  Drederick never executes these, and never suggests exploit, brute-force, or
-  payload-delivery commands.
-- **Cross-run memory** — every run updates `memory/findings.json`; the next
-  run starts with the prior map in hand, so repeated passes converge on
-  deltas (expired certs, new services, drift) rather than re-discovering
-  the whole surface.
+From a clean Debian/Ubuntu/Kali workstation to triaging CVEs in five steps:
+
+```bash
+# 1. Clone + build.
+git clone https://github.com/SchwartzKamel/drederick.git
+cd drederick
+dotnet build
+
+# 2. Detect and (with your consent) install the operator toolchain.
+#    nmap, searchsploit, python2/3, go, ruby, git, curl, jq, datasette.
+./src/Drederick/bin/Debug/net10.0/drederick doctor --install
+
+# 3. Write a scope file. One CIDR/IP per line; '#' is a comment.
+cat > scope.yaml <<'EOF'
+# HTB lab range
+10.10.10.0/24
+EOF
+
+# 4. Run the recon. Lab mode + adaptive orchestration are on by default.
+./src/Drederick/bin/Debug/net10.0/drederick \
+    --scope scope.yaml --target 10.10.10.5 --out out/
+
+# 5. Triage findings in a browser.
+./src/Drederick/bin/Debug/net10.0/drederick serve --out out/
+#    → http://127.0.0.1:8001
+```
+
+Step 4 writes `out/report.md`, `out/report.json`, `out/findings.db`, a per-host
+workdir with a manual-commands cheatsheet, and (if CVEs are annotated)
+cached PoC source under `out/poc_cache/`. Step 5 opens Datasette against
+`out/findings.db` — see [`docs/DATASETTE.md`](docs/DATASETTE.md) for the
+triage workflow.
+
+## Features
+
+- **14 enumeration scanners**, all scope-gated and read-only: `nmap`, `http`,
+  `tls`, `dns`, plus `smb`, `ftp`, `ssh`, `snmp`, `ldap`, `rpc`,
+  `kerberos` (**SPN listing only** — no AS-REP roast, no kerberoast),
+  `dns-zone-transfer` (AXFR), `http-content-discovery` (path-only,
+  rate-limited), `tls-cipher-enum`. Per-scanner contracts live in
+  [`docs/MODULES.md`](docs/MODULES.md).
+- **Locked-down nmap NSE surface.** Lab mode uses
+  `safe,default,discovery,version`; strict mode (`--no-lab`) uses
+  `safe,default`. `exploit`, `intrusive`, `brute`, `vuln`, `dos`, and
+  `malware` are **always** excluded — non-configurable.
+- **CVE annotation.** Fingerprinted services are matched against a local
+  NVD 2.0 cache (`~/.drederick/nvd/`, last ~5 years + modified feed), and
+  hits are written to `out/findings.db`. Offline falls back to stale cache.
+  Opt out with `DREDERICK_SKIP_CVE=1`.
+- **PoC aggregation.** For every annotated CVE, Drederick aggregates public
+  PoC pointers (Exploit-DB via `searchsploit`, GHSA, Metasploit module
+  names, nuclei template IDs) and caches the actual PoC source under
+  `out/poc_cache/<source>/<id>/` with SHA-256 provenance. **Drederick never
+  executes PoCs** — it aggregates and presents; you review and decide.
+  Default-on; opt out with `--no-fetch-poc`.
+- **Datasette dashboard.** `drederick serve` launches Datasette against
+  `out/findings.db` with 7 labelled tables, clickable facets, and 5
+  canned queries for CVE / PoC / tooling triage.
+- **Adaptive orchestration.** `AdaptiveRunner` (deterministic rule-based
+  planner, default) or `MicrosoftAgentRunner` (LLM-driven, enabled with
+  `--agent` + `OPENAI_API_KEY`). Either way, scope is enforced inside every
+  tool — the planner cannot escape the allow-list.
+- **Bounded concurrency.** `Channel<ScanJob>`-backed worker pool with
+  `--host-concurrency` (default 4, max 32) and `--service-concurrency`
+  (default 8, max 64). Per-service probes fan out in parallel per host.
+- **Cross-run memory.** Every run updates `memory/findings.json`; the next
+  run starts with the prior map so repeat passes converge on deltas.
+- **Doctor preflight.** `drederick doctor` detects required and recommended
+  operator tools and, with `--install`, picks `apt`/`dnf`/`pacman`/
+  `zypper`/`brew` and falls back to `pipx`/`uv`/`go install`/`gem install
+  --user-install`. Never re-execs as root. Records to `tooling` in
+  `findings.db` and to `audit.jsonl`.
+- **Per-host working directory** (AutoRecon-style): `out/<host>/scans/`,
+  `out/<host>/loot/`, `out/<host>/notes.md`, and (lab mode)
+  `out/<host>/manual_commands.txt` — enumeration commands the operator
+  *may* choose to run themselves. Drederick never executes these, and
+  never suggests exploit, brute-force, or payload-delivery commands.
 
 ## Build & test
 
 ```bash
 dotnet build
 dotnet test
+dotnet format
 ```
 
-`nmap` should be installed on the host that runs the recon. The unit tests do
-not require it.
+`nmap` should be on `PATH` for end-to-end runs. Unit tests do not require it.
+Full contributor notes: [`docs/DEVELOPING.md`](docs/DEVELOPING.md).
 
 ## Usage
 
 ```bash
-# Minimal: explicit targets, deterministic runner (lab mode is on by default)
-./src/Drederick/bin/Debug/net10.0/drederick \
-    --scope scope.yaml \
-    --target 10.10.10.5 \
-    --target 10.10.10.6 \
-    --out out/
+DRED=./src/Drederick/bin/Debug/net10.0/drederick
 
-# Enumerate everything in a small scope
-drederick --scope scope.yaml --expand --out out/
+# Minimal: explicit targets, deterministic runner (lab mode is on by default).
+$DRED --scope scope.yaml --target 10.10.10.5 --target 10.10.10.6 --out out/
 
-# Opt into the strictest posture (no cheatsheet, tighter scope cap,
-# safe+default NSE only)
-drederick --scope scope.yaml --target 10.10.10.5 --no-lab --out out/
+# Enumerate everything in a small scope.
+$DRED --scope scope.yaml --expand --out out/
 
-# Use the Microsoft Agent Framework runner (needs OPENAI_API_KEY)
+# Tune the bounded worker pool.
+$DRED --scope scope.yaml --expand \
+    --host-concurrency 8 --service-concurrency 16 --out out/
+
+# Enable HTTP content discovery (off by default; extra request volume).
+$DRED --scope scope.yaml --target 10.10.10.5 --content-discovery --out out/
+
+# Strictest posture (no cheatsheet, tighter scope cap, safe+default NSE only).
+$DRED --scope scope.yaml --target 10.10.10.5 --no-lab --out out/
+
+# LLM-driven planner (needs an OpenAI-compatible key).
 export OPENAI_API_KEY=sk-...
-export DREDERICK_MODEL=gpt-4o-mini     # optional; default is gpt-4o-mini
-drederick --scope scope.yaml --target 10.10.10.5 --agent --out out/
+export DREDERICK_MODEL=gpt-4o-mini          # optional, default gpt-4o-mini
+$DRED --scope scope.yaml --target 10.10.10.5 --agent --out out/
+
+# Skip PoC fetching for this run.
+$DRED --scope scope.yaml --target 10.10.10.5 --no-fetch-poc --out out/
+
+# Skip CVE annotation entirely (airgapped / no NVD cache).
+DREDERICK_SKIP_CVE=1 $DRED --scope scope.yaml --target 10.10.10.5 --out out/
+
+# Doctor: detect operator tooling (read-only report).
+$DRED doctor
+
+# Doctor: install missing tools via the host package manager.
+$DRED doctor --install              # prompts [y/N] per install step
+$DRED doctor --install -y           # non-interactive
+
+# Launch the Datasette dashboard against a completed run.
+$DRED serve --out out/                               # 127.0.0.1:8001, opens browser
+$DRED serve --out out/ --host 0.0.0.0 --port 8001    # LAN-bind (use carefully)
+$DRED serve --out out/ --no-open                     # no browser, just serve
 ```
 
 ### Lab mode (default) vs strict mode
@@ -113,67 +190,48 @@ Entries broader than the active cap (`/8`/`/32` in lab mode, `/16`/`/48` in
 strict mode) require `--allow-broad`. The wildcard entries `0.0.0.0/0` and
 `::/0` are always refused.
 
-### Output
+### Output tree
 
 ```
 out/
-├── report.json           # machine-readable consolidated findings
-├── report.md             # per-host markdown summary
-├── audit.jsonl           # one JSON object per scope decision / tool call
+├── report.json                    # machine-readable consolidated findings
+├── report.md                      # per-host markdown summary
+├── findings.db                    # SQLite: hosts/services/findings/cves/poc_refs/poc_sources/tooling
+├── audit.jsonl                    # one JSON object per scope decision / tool call / doctor event
+├── poc_cache/
+│   ├── exploit-db/<edb-id>/       # cached searchsploit PoC source
+│   ├── github/<ghsa-id>/          # cached GHSA metadata
+│   ├── metasploit/<module>/       # Metasploit module references (names only)
+│   └── nuclei/<template-id>/      # nuclei template IDs
 └── <host>/
-    ├── scans/            # raw scanner outputs (planned: filled by IReconTool)
-    ├── loot/             # empty by default
-    ├── notes.md          # safe to hand-edit; drederick won't overwrite
-    └── manual_commands.txt  # lab mode only
+    ├── scans/                     # raw scanner outputs
+    ├── loot/                      # empty by default
+    ├── notes.md                   # safe to hand-edit; drederick won't overwrite
+    └── manual_commands.txt        # lab mode only
+
 memory/
-└── findings.json   # cross-run knowledge base (loaded on next run)
-```
+└── findings.json                  # cross-run knowledge base (loaded on next run)
 
-## Datasette dashboard
-
-Every run writes `out/findings.db` — a small SQLite database produced by
-[`SqliteReport`](src/Drederick/Reporting/SqliteReport.cs). It contains
-normalised `hosts`, `services`, `findings`, `cves`, `poc_refs`,
-`poc_sources`, and `tooling` tables, so you can browse a recon pass
-point-and-click instead of grepping `report.md`.
-
-A ready-to-use [Datasette](https://datasette.io/) metadata file lives at
-[`datasette/metadata.json`](datasette/metadata.json) with labelled tables,
-sensible facets (`proto`/`service`/`product`, CVE CVSS + published date,
-PoC source, ...), and canned queries (top CVEs by CVSS, services with
-public PoCs, PoC refs grouped by source, ...). See
-[`docs/DATASETTE.md`](docs/DATASETTE.md) for the full schema reference.
-
-Launch it via the built-in subcommand (requires the `datasette` binary —
-`drederick doctor --install` will fetch it):
-
-```bash
-drederick serve --out out/
-# or customise:
-drederick serve --out out/ --host 0.0.0.0 --port 8001 --no-open
-```
-
-Equivalent one-liner without the wrapper:
-
-```bash
-datasette serve out/findings.db --metadata datasette/metadata.json
+~/.drederick/
+└── nvd/                           # NVD 2.0 JSON feeds, last ~5 years + modified
 ```
 
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, components, planned
-  additions.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, components, the
+  thread-safety story for `KnowledgeBase` / `AuditLog`.
 - [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md) — authorized use,
-  precise `--lab` semantics, incident response.
-- [`docs/MODULES.md`](docs/MODULES.md) — per-scanner contracts and planned
-  scanners.
-- [`docs/DEVELOPING.md`](docs/DEVELOPING.md) — adding a new `IReconTool`,
-  testing conventions, scope re-check pattern.
+  precise `--lab` semantics, the aggregate-vs-execute line, incident response.
+- [`docs/MODULES.md`](docs/MODULES.md) — per-scanner contracts for all 14
+  scanners, auto-dispatch triggers, CLI flags that affect each one.
+- [`docs/DEVELOPING.md`](docs/DEVELOPING.md) — adding an `IReconTool`, adding
+  an enrichment source, adding a Datasette canned query, testing conventions.
 - [`docs/COMPARISON.md`](docs/COMPARISON.md) — Drederick vs AutoRecon /
   nmapAutomator / Reconnoitre.
-- [`docs/UI_GUIDE.md`](docs/UI_GUIDE.md) — planned point-and-click UI (WIP).
-- [`docs/DATASETTE.md`](docs/DATASETTE.md) — `out/findings.db` schema
-  reference, facets, and canned queries for the Datasette dashboard.
+- [`docs/DATASETTE.md`](docs/DATASETTE.md) — **the current web UI.** Launch,
+  schema, facets, canned queries, PoC triage workflow, SQL recipes.
+- [`docs/UI_GUIDE.md`](docs/UI_GUIDE.md) — current UI (Datasette) pointer +
+  the planned React dashboard design.
 
 ## Architecture (short version)
 
@@ -181,22 +239,26 @@ datasette serve out/findings.db --metadata datasette/metadata.json
 CLI ──► Scope (default-deny allow-list; lab/strict prefix caps)
          │
          ▼
-    ReconToolbox  ◄── AuditLog (JSONL)
+    ReconToolbox  ◄── AuditLog (JSONL, thread-safe)
          │
-   ┌─────┴──────┐
-   │            │
- nmap        http / tls / dns
-   │            │
-   └────┬───────┘
-        ▼
+ ┌───────┴────────────────────────────────────────┐
+ │  14 IReconTool scanners; each re-checks scope  │
+ │  on entry and excludes forbidden NSE cats.     │
+ └───────┬────────────────────────────────────────┘
+         ▼
+  HostWorkerPool  (bounded Channel<ScanJob>)
+         │
+         ▼
   AdaptiveRunner  or  MicrosoftAgentRunner
-        │                     │
-        │           (LLM chooses tool calls;
-        │            scope re-checked inside
-        │            every tool — the model
-        │            cannot escape the allow-list)
-        ▼
-  KnowledgeBase + JSON/Markdown reports + per-host workdir + cheatsheet
+         │
+         ▼
+  Enrichment: CveAnnotator → PocAggregator
+         │                 (never executes PoCs)
+         ▼
+  Reporting: JSON / Markdown / SqliteReport (findings.db)
+         │
+         ▼
+  Datasette (`drederick serve`) + KnowledgeBase (memory/findings.json)
 ```
 
 Scope enforcement lives **inside every tool**, not at the CLI boundary.
@@ -207,16 +269,25 @@ disables this check.
 
 ## Roadmap
 
-Tracked in follow-up PRs:
+Shipped and in the tree today:
 
-- `IReconTool` refactor + bounded `Channel<T>` worker pool with
-  `--host-concurrency` / `--service-concurrency`.
-- Additional enumeration scanners: SMB, FTP, SSH, SNMP, LDAP, RPC, Kerberos
-  (SPN listing only), HTTP content-discovery, TLS cipher enumeration, DNS
-  AXFR.
+- `IReconTool` interface + 14 concrete scanners.
+- Bounded `Channel<ScanJob>` `HostWorkerPool` with `--host-concurrency` /
+  `--service-concurrency`.
+- Local NVD-feed CVE annotation (`CveAnnotator`, `NvdCache`, `CpeMatcher`).
+- PoC aggregation + local cache (`PocAggregator` + `IPocSource`
+  implementations: Exploit-DB / `searchsploit`, GHSA, Metasploit, nuclei).
+- SQLite findings DB (`SqliteReport`) with the 7-table schema.
+- Datasette metadata (`datasette/metadata.json`) with facets, labels, and
+  5 canned queries.
+- `drederick doctor` preflight with package-manager-aware installers.
+- `drederick serve` launcher for Datasette.
+
+Still planned, tracked in follow-up PRs:
+
 - `src/Drederick.Web` ASP.NET Core host + SignalR live feed.
 - `web/` Vite + React + TypeScript + Tailwind point-and-click UI.
-- Bundled wordlist, pinned NSE-script list, local NVD-feed CVE annotation.
+- One-time token auth for the web host.
+- Bundled wordlist + pinned NSE-script list.
 - Integration tests against `vulhub` (env-gated) + Playwright UI smoke tests.
 - Self-contained `dotnet publish` with embedded web assets.
-

@@ -49,6 +49,18 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool LabMode { get; set; } = true;
 
+    // ANCHOR: poc-aggregator-option (owned by poc-aggregator task)
+    /// <summary>
+    /// When true (the DEFAULT), the post-recon PoC aggregator copies public
+    /// PoC artefacts (currently Exploit-DB mirror entries) into
+    /// <c>&lt;out&gt;/poc_cache/</c> with a SHA-256 recorded in the findings
+    /// DB. When false, only references (URLs / module names / template paths)
+    /// are recorded — no bytes are copied locally. Invariant: drederick only
+    /// aggregates and presents PoC content; it never executes it.
+    /// </summary>
+    public bool FetchPoc { get; set; } = true;
+    // END ANCHOR: poc-aggregator-option
+
     /// <summary>Doctor subcommand selected (first positional arg "doctor").</summary>
     public bool DoctorSubcommand { get; set; }
     /// <summary>With --install / --doctor-fix: attempt to install missing tools.</summary>
@@ -65,6 +77,13 @@ public sealed class CommandLineOptions
     public int ServePort { get; set; } = 8001;
     /// <summary>Whether `drederick serve` should pass --open to datasette. Default true.</summary>
     public bool ServeOpenBrowser { get; set; } = true;
+
+    // ANCHOR: datasette-bootstrap-options
+    /// <summary>Explicit path to a datasette binary. Skips discovery / bootstrap.</summary>
+    public string? DatasettePath { get; set; }
+    /// <summary>When true, refuse to auto-install datasette; require an already-present binary.</summary>
+    public bool NoAutoInstall { get; set; }
+    // END ANCHOR: datasette-bootstrap-options
     // --- end datasette-integration ----------------------------------------------
 
     public static CommandLineOptions Parse(string[] args)
@@ -121,6 +140,12 @@ public sealed class CommandLineOptions
                     o.Expand = true; break;
                 case "--content-discovery":
                     o.ContentDiscovery = true; break;
+                // ANCHOR: poc-aggregator-flag-parse
+                case "--fetch-poc":
+                    o.FetchPoc = true; break;
+                case "--no-fetch-poc":
+                    o.FetchPoc = false; break;
+                // END ANCHOR: poc-aggregator-flag-parse
                 case "-j":
                 case "--parallel":
                     {
@@ -161,6 +186,18 @@ public sealed class CommandLineOptions
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.ServeOpenBrowser = false;
                     break;
+                // ANCHOR: datasette-bootstrap-flag-parse
+                case "--datasette-path":
+                    if (!o.ServeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.DatasettePath = RequireNext(args, ref i, a);
+                    break;
+                case "--no-auto-install":
+                    if (!o.ServeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoAutoInstall = true;
+                    break;
+                // END ANCHOR: datasette-bootstrap-flag-parse
                 // --- end datasette-integration ---------------------------------
                 case "--service-concurrency":
                     {
@@ -201,6 +238,7 @@ public sealed class CommandLineOptions
           drederick --scope <file> [--target <ip>]... [options]
           drederick doctor [--install | --doctor-fix] [-y|--yes]
           drederick serve [--host <ip>] [--port <n>] [--no-open] [-o <dir>]
+                          [--datasette-path <path>] [--no-auto-install] [-y|--yes]
 
         SUBCOMMANDS:
           doctor               Check operator-workstation tooling (nmap, searchsploit,
@@ -208,9 +246,12 @@ public sealed class CommandLineOptions
                                --install, install missing tools via the system package
                                manager (never re-execs as root; asks [y/N] first).
           serve                Launch Datasette against <out>/findings.db with the
-                               bundled metadata (datasette/metadata.json). Requires
-                               the `datasette` binary on PATH; run `drederick doctor
-                               --install` if it is missing. Default bind 127.0.0.1:8001.
+                               bundled metadata (datasette/metadata.json). Auto-
+                               bootstraps datasette via uv / pipx / python venv
+                               under ~/.drederick/ the first time it is missing.
+                               Pass --datasette-path to use an explicit binary,
+                               or --no-auto-install to require one already present.
+                               Default bind 127.0.0.1:8001.
 
         REQUIRED:
           -s, --scope <file>   Scope file (one CIDR/IP per line, '#' comments).
@@ -244,6 +285,12 @@ public sealed class CommandLineOptions
                                discovered HTTP(S) services. Off by default (even in lab
                                mode) — content discovery generates extra request volume
                                and should be an explicit operator opt-in.
+          --fetch-poc          Cache public PoC artefacts (Exploit-DB mirror) under
+                               <out>/poc_cache/ with SHA-256 recorded. ON BY DEFAULT.
+                               drederick still aggregates + presents only — it NEVER
+                               executes fetched PoCs.
+          --no-fetch-poc       Record PoC references (URLs, module names, template paths)
+                               only; do not copy any PoC bytes locally.
           --lab                Lab/CTF mode (DEFAULT). Relaxes scope-breadth cap to /8 (v4)
                                and /32 (v6), enables extra ENUMERATION NSE categories
                                (safe,default,discovery,version), and emits a per-host

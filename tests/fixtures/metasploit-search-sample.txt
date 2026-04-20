@@ -1,0 +1,10 @@
+Matching Modules
+================
+
+   #  Name                                                       Disclosure Date  Rank       Check  Description
+   -  ----                                                       ---------------  ----       -----  -----------
+   0  exploit/unix/ftp/vsftpd_234_backdoor                       2011-07-03       excellent  No     VSFTPD v2.3.4 Backdoor Command Execution
+   1  auxiliary/scanner/ftp/ftp_version                                            normal     No     FTP Version Scanner
+
+
+Interact with a module by name or index. For example info 1, use 1 or use auxiliary/scanner/ftp/ftp_version

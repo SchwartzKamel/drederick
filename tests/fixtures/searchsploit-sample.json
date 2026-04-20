@@ -1,0 +1,23 @@
+{
+  "RESULTS_EXPLOIT": [
+    {
+      "Title": "vsftpd 2.3.4 - Backdoor Command Execution",
+      "EDB-ID": "17491",
+      "Date": "2011-07-05",
+      "Author": "Metasploit",
+      "Type": "remote",
+      "Platform": "unix",
+      "Path": "/usr/share/exploitdb/exploits/unix/remote/17491.rb"
+    },
+    {
+      "Title": "vsftpd 2.3.4 - Backdoor Command Execution (Python)",
+      "EDB-ID": "49757",
+      "Date": "2021-04-19",
+      "Author": "HerculesRD",
+      "Type": "remote",
+      "Platform": "unix",
+      "Path": "/usr/share/exploitdb/exploits/unix/remote/49757.py"
+    }
+  ],
+  "RESULTS_SHELLCODE": []
+}

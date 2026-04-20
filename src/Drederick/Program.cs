@@ -1,5 +1,6 @@
 using Drederick.Agent;
 using Drederick.Audit;
+using Drederick.Bundling;
 using Drederick.Cli;
 using Drederick.Doctor;
 using Drederick.Enrichment;
@@ -70,7 +71,32 @@ if (opts.ServeSubcommand)
     }
     if (opts.ServeOpenBrowser) datasetteArgs.Add("--open");
 
-    var psi = new System.Diagnostics.ProcessStartInfo("datasette")
+    Directory.CreateDirectory(opts.OutputDir);
+    var serveAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var serveAudit = new AuditLog(serveAuditPath);
+
+    // ANCHOR: datasette-bootstrap
+    string datasetteBinary;
+    try
+    {
+        var home = Environment.GetEnvironmentVariable("HOME")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var cacheDir = Path.Combine(home, ".drederick");
+        var bootOpts = new BootstrapOptions(
+            ExplicitPath: opts.DatasettePath,
+            AutoInstall: !opts.NoAutoInstall,
+            AssumeYes: opts.AssumeYes,
+            CacheDir: cacheDir);
+        datasetteBinary = await DatasetteBootstrap.EnsureAsync(bootOpts, serveAudit, CancellationToken.None);
+    }
+    catch (DatasetteBootstrapException ex)
+    {
+        Console.Error.WriteLine($"serve: {ex.Message}");
+        return 127;
+    }
+    // END ANCHOR: datasette-bootstrap
+
+    var psi = new System.Diagnostics.ProcessStartInfo(datasetteBinary)
     {
         UseShellExecute = false,
     };
@@ -82,9 +108,9 @@ if (opts.ServeSubcommand)
         proc.WaitForExit();
         return proc.ExitCode;
     }
-    catch (System.ComponentModel.Win32Exception)
+    catch (System.ComponentModel.Win32Exception ex)
     {
-        Console.Error.WriteLine("serve: `datasette` is not on PATH. Install it with `drederick doctor --install` (or `pipx install datasette`).");
+        Console.Error.WriteLine($"serve: failed to launch datasette at {datasetteBinary}: {ex.Message}");
         return 127;
     }
     catch (Exception ex)
@@ -272,6 +298,31 @@ if (!string.Equals(Environment.GetEnvironmentVariable("DREDERICK_SKIP_CVE"), "1"
         audit.Record("cve.annotate.error", new Dictionary<string, object?> { ["error"] = ex.Message });
     }
 }
+
+// ANCHOR: poc-aggregator-wiring (owned by poc-aggregator task)
+// After CVE annotation, aggregate public PoC references for every CVE in
+// findings.db. Default --fetch-poc is ON: Exploit-DB mirror entries are
+// copied verbatim into out/poc_cache/ with SHA-256 recorded. Failures are
+// audited and never abort the run. Invariant: aggregate + present, never
+// execute.
+try
+{
+    var pocAggregator = new PocAggregator();
+    var pocResult = await pocAggregator.AggregateAsync(allFindings, opts.OutputDir, opts.FetchPoc, cts.Token);
+    audit.Record("poc.aggregate", new Dictionary<string, object?>
+    {
+        ["cves"] = pocResult.CveCount,
+        ["refs"] = pocResult.RefCount,
+        ["cached"] = pocResult.CachedCount,
+        ["fetch_poc"] = opts.FetchPoc,
+    });
+}
+catch (Exception ex) when (ex is not OperationCanceledException)
+{
+    Console.Error.WriteLine($"poc-aggregate: {ex.Message}");
+    audit.Record("poc.aggregate.error", new Dictionary<string, object?> { ["error"] = ex.Message });
+}
+// END ANCHOR: poc-aggregator-wiring
 
 kb.Merge(allFindings);
 kb.Save(opts.MemoryPath);
