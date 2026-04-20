@@ -50,7 +50,7 @@ if (opts.Targets.Count > 0)
             return 2;
         }
     }
-    targets = opts.Targets;
+    targets = new List<string>(opts.Targets);
 }
 else if (opts.Expand)
 {

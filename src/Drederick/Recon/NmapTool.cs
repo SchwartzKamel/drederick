@@ -116,12 +116,28 @@ public sealed class NmapTool
 
     private static void RejectUnsafePortSpec(string portSpec)
     {
-        // Allow digits, commas, dashes, and the special "-" (all ports) only.
+        // Accept only: "-" (all ports), digit runs, and digit-dash-digit / digit-comma-digit
+        // separators. No leading/trailing separators, no double separators. This is stricter
+        // than nmap itself, which is deliberate: the spec comes from a tool call that the LLM
+        // chose, so we reject anything that could be mis-parsed or used for argument injection.
+        if (portSpec == "-") return;
+        if (portSpec.Length == 0)
+            throw new ArgumentException("Empty port spec.");
+        if (portSpec[0] is ',' or '-' || portSpec[^1] is ',' or '-')
+            throw new ArgumentException($"Unsafe port spec '{portSpec}': leading/trailing separator.");
+        char prev = '\0';
         foreach (var ch in portSpec)
         {
-            if (ch is not ((>= '0' and <= '9') or ',' or '-'))
-                throw new ArgumentException(
-                    $"Unsafe port spec '{portSpec}'. Only digits, commas, and dashes are allowed.");
+            if (ch is >= '0' and <= '9') { prev = ch; continue; }
+            if (ch is ',' or '-')
+            {
+                if (prev is ',' or '-' or '\0')
+                    throw new ArgumentException($"Unsafe port spec '{portSpec}': adjacent separators.");
+                prev = ch;
+                continue;
+            }
+            throw new ArgumentException(
+                $"Unsafe port spec '{portSpec}'. Only digits, commas, and dashes are allowed.");
         }
     }
 

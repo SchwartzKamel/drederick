@@ -28,6 +28,8 @@ public sealed partial class HttpProbeTool
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex TitleRegex();
 
+    private const int MaxTitleBufferBytes = 65536;
+
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
 
@@ -91,8 +93,8 @@ public sealed partial class HttpProbeTool
             if ((resp.Content.Headers.ContentType?.MediaType ?? "").Contains("html",
                     StringComparison.OrdinalIgnoreCase))
             {
-                // Read at most 64KB for title extraction.
-                var buf = new byte[65536];
+                // Read at most MaxTitleBufferBytes for title extraction.
+                var buf = new byte[MaxTitleBufferBytes];
                 await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                 int total = 0;
                 while (total < buf.Length)

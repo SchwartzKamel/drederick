@@ -114,6 +114,9 @@ public sealed class ScopeEntry
         // Skip network and broadcast for IPv4 /31+ convention; keep all for /31, /32.
         BigInteger start = _networkInt;
         BigInteger end = _networkInt + count - BigInteger.One;
+        // Skip network (.0) and broadcast (.255-style) addresses for IPv4
+        // networks with prefix < /31; keep all addresses for IPv4 /31 and /32
+        // and every IPv6 network (IPv6 has no broadcast address).
         bool skipEnds = Family == AddressFamily.InterNetwork && PrefixLength < 31;
         if (skipEnds) { start += 1; end -= 1; }
         for (var cur = start; cur <= end; cur++)

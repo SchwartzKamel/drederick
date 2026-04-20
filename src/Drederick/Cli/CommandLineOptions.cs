@@ -43,7 +43,13 @@ public sealed class CommandLineOptions
                     o.Expand = true; break;
                 case "-j":
                 case "--parallel":
-                    o.Parallelism = int.Parse(RequireNext(args, ref i, a)); break;
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1)
+                            throw new ArgumentException($"--parallel value must be a positive integer, got '{v}'.");
+                        o.Parallelism = n;
+                        break;
+                    }
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
             }
