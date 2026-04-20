@@ -1,0 +1,20 @@
+# drederick scope file
+#
+# One authorized CIDR, IP, or hostname-free address per line. Lines starting
+# with '#' are comments. IPv4 and IPv6 supported. This file is a default-deny
+# allow-list: drederick will refuse any target that does not match.
+#
+# Over-broad prefixes (< /16 v4 or < /48 v6) are refused unless you pass
+# --allow-broad, which you should only do in an explicitly authorized internal
+# network sweep.
+#
+# Example entries — REPLACE WITH YOUR OWN AUTHORIZED TARGETS.
+
+# A single HTB-style lab box:
+# 10.10.10.5
+
+# A CTF /24 you operate:
+# 192.168.56.0/24
+
+# An IPv6 lab range:
+# fd00:dead:beef::/64
