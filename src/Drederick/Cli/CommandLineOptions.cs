@@ -12,6 +12,16 @@ public sealed class CommandLineOptions
     public int Parallelism { get; set; } = 4;
     public bool Help { get; set; }
 
+    /// <summary>
+    /// Lab/CTF mode. Default: true. In lab mode drederick allows a slightly
+    /// broader scope prefix (up to /8 v4, /32 v6), enables the additional
+    /// *enumeration* NSE categories (safe,default,discovery,version), and
+    /// emits a per-host manual-commands cheatsheet. Lab mode never unlocks
+    /// exploitation, brute force, or payload delivery — those stay disabled.
+    /// Pass <c>--no-lab</c> to opt into the strictest posture.
+    /// </summary>
+    public bool LabMode { get; set; } = true;
+
     public static CommandLineOptions Parse(string[] args)
     {
         var o = new CommandLineOptions();
@@ -36,6 +46,10 @@ public sealed class CommandLineOptions
                     o.MemoryPath = RequireNext(args, ref i, a); break;
                 case "--allow-broad":
                     o.AllowBroad = true; break;
+                case "--lab":
+                    o.LabMode = true; break;
+                case "--no-lab":
+                    o.LabMode = false; break;
                 case "-a":
                 case "--agent":
                     o.UseAgent = true; break;
@@ -90,12 +104,19 @@ public sealed class CommandLineOptions
 
         TUNING:
           -j, --parallel <n>   Per-host concurrency for the deterministic runner (default: 4).
-          --allow-broad        Permit scope entries broader than /16 (v4) or /48 (v6).
+          --allow-broad        Permit scope entries broader than the active lab/strict cap.
+          --lab                Lab/CTF mode (DEFAULT). Relaxes scope-breadth cap to /8 (v4)
+                               and /32 (v6), enables extra ENUMERATION NSE categories
+                               (safe,default,discovery,version), and emits a per-host
+                               manual-commands cheatsheet. Never unlocks exploit/brute/vuln
+                               scripts or payload delivery.
+          --no-lab             Opt out of lab mode. Strictest posture: scope cap /16 (v4) /
+                               /48 (v6), NSE limited to safe+default, no cheatsheet.
 
           -h, --help           Show this help.
 
         Drederick performs discovery and fingerprinting only. It does not
         exploit, brute force, or deliver payloads. Every target must be in
-        the scope file.
+        the scope file. Authorized lab/CTF targets only.
         """;
 }

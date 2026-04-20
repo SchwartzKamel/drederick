@@ -31,7 +31,7 @@ if (string.IsNullOrEmpty(opts.ScopePath))
 }
 
 Scope scope;
-try { scope = ScopeLoader.LoadFile(opts.ScopePath, allowBroad: opts.AllowBroad); }
+try { scope = ScopeLoader.LoadFile(opts.ScopePath, allowBroad: opts.AllowBroad, labMode: opts.LabMode); }
 catch (ScopeException ex)
 {
     Console.Error.WriteLine($"scope: {ex.Message}");
@@ -75,11 +75,16 @@ audit.Record("session.start", new Dictionary<string, object?>
     ["scope_source"] = scope.Source,
     ["target_count"] = targets.Count,
     ["runner"] = opts.UseAgent ? "agent" : "adaptive",
+    ["lab_mode"] = opts.LabMode,
 });
+
+Console.WriteLine(opts.LabMode
+    ? "drederick: lab/CTF mode ENABLED (default). Authorized lab/CTF targets only."
+    : "drederick: strict mode. Lab-mode affordances disabled.");
 
 var kb = KnowledgeBase.Load(opts.MemoryPath);
 
-var nmap = new NmapTool(scope, audit);
+var nmap = new NmapTool(scope, audit, labMode: opts.LabMode);
 var http = new HttpProbeTool(scope, audit);
 var tls = new TlsProbeTool(scope, audit);
 var dns = new DnsProbeTool(scope, audit);
@@ -132,6 +137,7 @@ var allFindings = targets
 
 JsonReport.Write(Path.Combine(opts.OutputDir, "report.json"), allFindings, scope.Source);
 MarkdownReport.Write(Path.Combine(opts.OutputDir, "report.md"), allFindings, scope.Source);
+ManualCommandsCheatsheet.Write(opts.OutputDir, allFindings, emitCheatsheet: opts.LabMode);
 
 kb.Merge(allFindings);
 kb.Save(opts.MemoryPath);
