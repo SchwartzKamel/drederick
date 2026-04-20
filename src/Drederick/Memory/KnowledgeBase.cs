@@ -29,6 +29,12 @@ public sealed class KnowledgeBase
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    // Guards mutation of <see cref="Hosts"/> so concurrent <see cref="Merge"/>
+    // calls from the worker pool are safe. Reads on a quiesced KB (post-pool)
+    // are lock-free because all writers have joined by then, but we take the
+    // lock in Merge / Save for belt-and-braces.
+    private readonly Lock _gate = new();
+
     public static KnowledgeBase Load(string path)
     {
         if (!File.Exists(path)) return new KnowledgeBase();
@@ -48,16 +54,24 @@ public sealed class KnowledgeBase
     {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        Updated = DateTimeOffset.UtcNow.ToString("o");
-        File.WriteAllText(path, JsonSerializer.Serialize(this, JsonOpts));
+        string json;
+        lock (_gate)
+        {
+            Updated = DateTimeOffset.UtcNow.ToString("o");
+            json = JsonSerializer.Serialize(this, JsonOpts);
+        }
+        File.WriteAllText(path, json);
     }
 
     /// <summary>Merge new findings into the knowledge base. New data supersedes old for overlapping fields.</summary>
     public void Merge(IEnumerable<HostFinding> findings)
     {
-        foreach (var f in findings)
+        lock (_gate)
         {
-            Hosts[f.Target] = f;
+            foreach (var f in findings)
+            {
+                Hosts[f.Target] = f;
+            }
         }
     }
 

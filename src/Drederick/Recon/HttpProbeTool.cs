@@ -12,8 +12,14 @@ namespace Drederick.Recon;
 /// header, and which common security headers are missing. Does not follow
 /// redirects off the target host and does not submit credentials.
 /// </summary>
-public sealed partial class HttpProbeTool
+public sealed partial class HttpProbeTool : IReconTool
 {
+    public string Name => "http";
+
+    public string Description =>
+        "Fetch an HTTP(S) response from a single port and return status, title, server, " +
+        "and which common security headers are missing. Non-exploitative.";
+
     private static readonly string[] SecurityHeaders =
     [
         "content-security-policy",
@@ -49,7 +55,7 @@ public sealed partial class HttpProbeTool
 
         var scheme = useTls ? "https" : "http";
         var url = $"{scheme}://{target}:{port}/";
-        _audit.Record("http.request", new Dictionary<string, object?>
+        _audit.Record("http.start", new Dictionary<string, object?>
         {
             ["target"] = target,
             ["url"] = url,
@@ -113,10 +119,19 @@ public sealed partial class HttpProbeTool
         {
             _audit.Record("http.error", new Dictionary<string, object?>
             {
-                ["target"] = target, ["url"] = url, ["error"] = ex.Message,
+                ["target"] = target,
+                ["url"] = url,
+                ["error"] = ex.Message,
             });
             result.Error = ex.Message;
         }
+        _audit.Record("http.finish", new Dictionary<string, object?>
+        {
+            ["target"] = target,
+            ["url"] = url,
+            ["status"] = result.Status,
+            ["error"] = result.Error,
+        });
         return result;
     }
 }

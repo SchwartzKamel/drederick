@@ -11,8 +11,14 @@ namespace Drederick.Recon;
 /// vuln scripts are explicitly excluded; this tool performs discovery and
 /// fingerprinting, not exploitation.
 /// </summary>
-public sealed class NmapTool
+public sealed class NmapTool : IReconTool
 {
+    public string Name => "nmap";
+
+    public string Description =>
+        "Run nmap service/version scan with safe NSE scripts against a single target IP. " +
+        "Returns open TCP ports and detected services. The target MUST be inside the authorized scope.";
+
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
     private readonly string _nmapPath;

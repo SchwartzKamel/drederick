@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -Pn -p 139,445 --script smb-os-discovery,smb-protocols,smb2-security-mode -oX - 10.10.10.5" start="1700000000" startstr="Tue Nov 14 00:00:00 2023" version="7.94">
+<host starttime="1700000000" endtime="1700000002">
+<status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="10.10.10.5" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="139">
+<state state="open" reason="syn-ack" reason_ttl="64"/>
+<service name="netbios-ssn" product="Samba smbd" version="4.15.13-Debian" method="probed" conf="10"/>
+</port>
+<port protocol="tcp" portid="445">
+<state state="open" reason="syn-ack" reason_ttl="64"/>
+<service name="microsoft-ds" product="Samba smbd" version="4.15.13-Debian" method="probed" conf="10"/>
+<script id="smb-os-discovery" output="&#10;  OS: Windows Server 2019 Standard 17763 (Windows Server 2019 Standard 6.3)&#10;  Computer name: DC01&#10;  NetBIOS computer name: DC01\x00&#10;  Domain name: corp.example.local&#10;  Forest name: corp.example.local&#10;  FQDN: dc01.corp.example.local&#10;  System time: 2023-11-14T00:00:01+00:00&#10;">
+<elem key="os">Windows Server 2019 Standard 17763</elem>
+<elem key="lanmanager">Windows Server 2019 Standard 6.3</elem>
+<elem key="server">DC01</elem>
+<elem key="date">2023-11-14T00:00:01+00:00</elem>
+<elem key="fqdn">dc01.corp.example.local</elem>
+<elem key="domain_dns">corp.example.local</elem>
+<elem key="forest_dns">corp.example.local</elem>
+<elem key="workgroup">CORP</elem>
+<elem key="netbios_computer_name">DC01</elem>
+<elem key="netbios_domain_name">CORP</elem>
+<elem key="domain">CORP</elem>
+</script>
+<script id="smb-protocols" output="&#10;  dialects:&#10;    NT LM 0.12 (SMBv1) [dangerous, but default]&#10;    2:0:2&#10;    2:1:0&#10;    3:0:0&#10;    3:0:2&#10;    3:1:1&#10;">
+<table key="dialects">
+<elem>NT LM 0.12 (SMBv1) [dangerous, but default]</elem>
+<elem>2.0.2</elem>
+<elem>2.1.0</elem>
+<elem>3.0.0</elem>
+<elem>3.0.2</elem>
+<elem>3.1.1</elem>
+</table>
+</script>
+<script id="smb2-security-mode" output="&#10;  3:1:1:&#10;    Message signing enabled and required&#10;">
+<table key="3:1:1">
+<elem>Message signing enabled and required</elem>
+</table>
+</script>
+</port>
+</ports>
+<times srtt="1000" rttvar="1000" to="100000"/>
+</host>
+<runstats>
+<finished time="1700000002" timestr="Tue Nov 14 00:00:02 2023" elapsed="2.00" summary="Nmap done" exit="success"/>
+<hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

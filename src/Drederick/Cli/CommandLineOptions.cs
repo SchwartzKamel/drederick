@@ -10,7 +10,24 @@ public sealed class CommandLineOptions
     public bool UseAgent { get; set; } // -a / --agent: use MS Agent Framework
     public bool Expand { get; set; }   // --expand: expand scope to all hosts
     public int Parallelism { get; set; } = 4;
+
+    /// <summary>
+    /// Number of hosts scanned concurrently by the bounded worker pool.
+    /// Default 4, hard cap 32. Driven by <c>--host-concurrency</c>; when the
+    /// flag is omitted, falls back to <see cref="Parallelism"/> for backward
+    /// compatibility with <c>-j / --parallel</c>.
+    /// </summary>
+    public int HostConcurrency { get; set; } = 4;
+
+    /// <summary>
+    /// Number of per-service probes (HTTP / TLS / nmap follow-ups) that a
+    /// single host worker may fan out in parallel. Default 8, hard cap 64.
+    /// </summary>
+    public int ServiceConcurrency { get; set; } = 8;
     public bool Help { get; set; }
+
+    public const int MaxHostConcurrency = 32;
+    public const int MaxServiceConcurrency = 64;
 
     /// <summary>
     /// Lab/CTF mode. Default: true. In lab mode drederick allows a slightly
@@ -22,14 +39,33 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool LabMode { get; set; } = true;
 
+    /// <summary>Doctor subcommand selected (first positional arg "doctor").</summary>
+    public bool DoctorSubcommand { get; set; }
+    /// <summary>With --install / --doctor-fix: attempt to install missing tools.</summary>
+    public bool DoctorInstall { get; set; }
+    /// <summary>Skip the interactive [y/N] confirmation before running installs.</summary>
+    public bool AssumeYes { get; set; }
+
     public static CommandLineOptions Parse(string[] args)
     {
         var o = new CommandLineOptions();
-        for (int i = 0; i < args.Length; i++)
+        int start = 0;
+        if (args.Length > 0 && args[0] == "doctor")
+        {
+            o.DoctorSubcommand = true;
+            start = 1;
+        }
+        for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
             switch (a)
             {
+                case "--install":
+                case "--doctor-fix":
+                    o.DoctorInstall = true; break;
+                case "-y":
+                case "--yes":
+                    o.AssumeYes = true; break;
                 case "-h":
                 case "--help":
                     o.Help = true; break;
@@ -64,12 +100,39 @@ public sealed class CommandLineOptions
                         o.Parallelism = n;
                         break;
                     }
+                case "--host-concurrency":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > MaxHostConcurrency)
+                            throw new ArgumentException(
+                                $"--host-concurrency must be an integer in [1, {MaxHostConcurrency}], got '{v}'.");
+                        o.HostConcurrency = n;
+                        o._hostConcurrencyExplicit = true;
+                        break;
+                    }
+                case "--service-concurrency":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > MaxServiceConcurrency)
+                            throw new ArgumentException(
+                                $"--service-concurrency must be an integer in [1, {MaxServiceConcurrency}], got '{v}'.");
+                        o.ServiceConcurrency = n;
+                        break;
+                    }
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
             }
         }
+        if (!o._hostConcurrencyExplicit)
+        {
+            // Back-compat: if the user passed -j/--parallel but not
+            // --host-concurrency, use the legacy knob as the host-level cap.
+            o.HostConcurrency = Math.Min(MaxHostConcurrency, Math.Max(1, o.Parallelism));
+        }
         return o;
     }
+
+    private bool _hostConcurrencyExplicit;
 
     private static string RequireNext(string[] args, ref int i, string flag)
     {
@@ -84,6 +147,13 @@ public sealed class CommandLineOptions
 
         USAGE:
           drederick --scope <file> [--target <ip>]... [options]
+          drederick doctor [--install | --doctor-fix] [-y|--yes]
+
+        SUBCOMMANDS:
+          doctor               Check operator-workstation tooling (nmap, searchsploit,
+                               python3/2, go, ruby, git, curl, jq, datasette). With
+                               --install, install missing tools via the system package
+                               manager (never re-execs as root; asks [y/N] first).
 
         REQUIRED:
           -s, --scope <file>   Scope file (one CIDR/IP per line, '#' comments).
@@ -103,7 +173,15 @@ public sealed class CommandLineOptions
           --memory <path>      Cross-run knowledge base (default: memory/findings.json).
 
         TUNING:
-          -j, --parallel <n>   Per-host concurrency for the deterministic runner (default: 4).
+          -j, --parallel <n>   Legacy knob; sets --host-concurrency if that flag is
+                               not also passed. Default: 4.
+          --host-concurrency <n>
+                               Number of hosts scanned in parallel by the bounded
+                               worker pool. Range [1, 32]. Default: 4.
+          --service-concurrency <n>
+                               Number of per-host service probes (HTTP/TLS/nmap
+                               follow-ups) in flight per host. Range [1, 64].
+                               Default: 8.
           --allow-broad        Permit scope entries broader than the active lab/strict cap.
           --lab                Lab/CTF mode (DEFAULT). Relaxes scope-breadth cap to /8 (v4)
                                and /32 (v6), enables extra ENUMERATION NSE categories

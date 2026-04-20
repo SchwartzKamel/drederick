@@ -11,6 +11,16 @@ public sealed class HostFinding
     [JsonPropertyName("http")] public List<HttpResult> Http { get; set; } = new();
     [JsonPropertyName("tls")] public List<TlsResult> Tls { get; set; } = new();
     [JsonPropertyName("dns")] public DnsResult? Dns { get; set; }
+    [JsonPropertyName("ftp")] public List<FtpResult> Ftp { get; set; } = new();
+    [JsonPropertyName("ssh")] public List<SshResult> Ssh { get; set; } = new();
+    [JsonPropertyName("snmp")] public List<SnmpResult> Snmp { get; set; } = new();
+    [JsonPropertyName("smb")] public List<SmbResult> Smb { get; set; } = new();
+    [JsonPropertyName("ldap")] public List<LdapResult> Ldap { get; set; } = new();
+    [JsonPropertyName("rpc")] public List<RpcResult> Rpc { get; set; } = new();
+    [JsonPropertyName("kerberos")] public List<KerberosResult> Kerberos { get; set; } = new();
+    [JsonPropertyName("dns_zone_transfer")] public List<DnsZoneTransferResult> DnsZoneTransfer { get; set; } = new();
+    [JsonPropertyName("http_content_discovery")] public List<HttpContentDiscoveryResult> HttpContentDiscovery { get; set; } = new();
+    [JsonPropertyName("tls_cipher_enum")] public List<TlsCipherEnumResult> TlsCipherEnum { get; set; } = new();
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
 }
 
@@ -70,4 +80,115 @@ public sealed class DnsResult
     [JsonPropertyName("reverse")] public string? Reverse { get; set; }
     [JsonPropertyName("forward_error")] public string? ForwardError { get; set; }
     [JsonPropertyName("reverse_error")] public string? ReverseError { get; set; }
+}
+
+public sealed class FtpResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("banner")] public string? Banner { get; set; }
+    [JsonPropertyName("anonymous_allowed")] public bool AnonymousAllowed { get; set; }
+    [JsonPropertyName("root_listing")] public List<string> RootListing { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class SshResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("banner")] public string? Banner { get; set; }
+    [JsonPropertyName("kex_algorithms")] public List<string> KexAlgorithms { get; set; } = new();
+    [JsonPropertyName("host_key_algorithms")] public List<string> HostKeyAlgorithms { get; set; } = new();
+    [JsonPropertyName("encryption_algorithms")] public List<string> EncryptionAlgorithms { get; set; } = new();
+    [JsonPropertyName("mac_algorithms")] public List<string> MacAlgorithms { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class SnmpResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("community")] public string Community { get; set; } = "";
+    [JsonPropertyName("reachable")] public bool Reachable { get; set; }
+    [JsonPropertyName("system_oids")] public Dictionary<string, string> SystemOids { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class SmbResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("os")] public string? Os { get; set; }
+    [JsonPropertyName("computer_name")] public string? ComputerName { get; set; }
+    [JsonPropertyName("domain")] public string? Domain { get; set; }
+    [JsonPropertyName("protocols")] public List<string> Protocols { get; set; } = new();
+    [JsonPropertyName("signing_required")] public bool? SigningRequired { get; set; }
+    [JsonPropertyName("shares")] public List<string> Shares { get; set; } = new();
+    [JsonPropertyName("users")] public List<string> Users { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class LdapResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("anonymous_bind")] public bool AnonymousBind { get; set; }
+    [JsonPropertyName("naming_contexts")] public List<string> NamingContexts { get; set; } = new();
+    [JsonPropertyName("supported_controls")] public List<string> SupportedControls { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class RpcResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("programs")] public List<RpcProgram> Programs { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class RpcProgram
+{
+    [JsonPropertyName("program")] public int Program { get; set; }
+    [JsonPropertyName("version")] public int Version { get; set; }
+    [JsonPropertyName("protocol")] public string Protocol { get; set; } = "";
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("name")] public string? Name { get; set; }
+}
+
+public sealed class KerberosResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("realm")] public string? Realm { get; set; }
+    [JsonPropertyName("spns")] public List<string> Spns { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class DnsZoneTransferResult
+{
+    [JsonPropertyName("domain")] public string Domain { get; set; } = "";
+    [JsonPropertyName("nameserver")] public string? NameServer { get; set; }
+    [JsonPropertyName("success")] public bool Success { get; set; }
+    [JsonPropertyName("records")] public List<string> Records { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class HttpContentDiscoveryResult
+{
+    [JsonPropertyName("base_url")] public string BaseUrl { get; set; } = "";
+    [JsonPropertyName("entries")] public List<HttpContentDiscoveryEntry> Entries { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class HttpContentDiscoveryEntry
+{
+    [JsonPropertyName("path")] public string Path { get; set; } = "";
+    [JsonPropertyName("status")] public int Status { get; set; }
+    [JsonPropertyName("size")] public long Size { get; set; }
+}
+
+public sealed class TlsCipherEnumResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("versions")] public Dictionary<string, TlsCipherVersion> Versions { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class TlsCipherVersion
+{
+    [JsonPropertyName("ciphers")] public List<string> Ciphers { get; set; } = new();
+    [JsonPropertyName("grade")] public string? Grade { get; set; }
 }

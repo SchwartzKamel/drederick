@@ -1,6 +1,7 @@
 using Drederick.Agent;
 using Drederick.Audit;
 using Drederick.Cli;
+using Drederick.Doctor;
 using Drederick.Memory;
 using Drederick.Recon;
 using Drederick.Reporting;
@@ -19,6 +20,25 @@ catch (ArgumentException ex)
 if (opts.Help)
 {
     Console.WriteLine(CommandLineOptions.HelpText);
+    return 0;
+}
+
+if (opts.DoctorSubcommand)
+{
+    Directory.CreateDirectory(opts.OutputDir);
+    var docAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var docAudit = new AuditLog(docAuditPath);
+    var doctor = new DoctorRunner(docAudit);
+    var tools = doctor.Detect();
+    var pm = PackageManagerDetection.Detect(new PathToolLocator());
+    DoctorRunner.PrintReport(tools, pm, Console.Out);
+    // Best-effort findings.db upsert (no-op if schema not merged yet).
+    var dbPath = Path.Combine(opts.OutputDir, "findings.db");
+    if (File.Exists(dbPath)) SqliteToolingSink.TryUpsert(dbPath, tools);
+    if (opts.DoctorInstall)
+    {
+        doctor.Install(tools, pm, opts.AssumeYes, Console.In, Console.Out);
+    }
     return 0;
 }
 
@@ -82,6 +102,23 @@ Console.WriteLine(opts.LabMode
     ? "drederick: lab/CTF mode ENABLED (default). Authorized lab/CTF targets only."
     : "drederick: strict mode. Lab-mode affordances disabled.");
 
+// Implicit preflight: detect operator tooling and print a one-line summary.
+// Report-only; never prompts or installs during a recon run.
+{
+    var preDoctor = new DoctorRunner(audit);
+    var preTools = preDoctor.Detect();
+    var prePm = PackageManagerDetection.Detect(new PathToolLocator());
+    var missing = preTools.Where(t => !t.Found).Select(t => t.Name).ToList();
+    if (missing.Count == 0)
+    {
+        Console.WriteLine($"preflight: all tooling present (pm={PackageManagerDetection.DisplayName(prePm)}).");
+    }
+    else
+    {
+        Console.WriteLine($"preflight: missing {string.Join(", ", missing)} — run `drederick doctor --install` to fix.");
+    }
+}
+
 var kb = KnowledgeBase.Load(opts.MemoryPath);
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode);
@@ -99,7 +136,7 @@ if (opts.UseAgent)
     {
         Console.Error.WriteLine("--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.");
         audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = "no_api_key" });
-        runner = new AdaptiveRunner(audit, opts.Parallelism);
+        runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency);
     }
     else
     {
@@ -108,7 +145,7 @@ if (opts.UseAgent)
 }
 else
 {
-    runner = new AdaptiveRunner(audit, opts.Parallelism);
+    runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency);
 }
 
 using var cts = new CancellationTokenSource();
@@ -128,16 +165,19 @@ catch (Exception ex)
     audit.Record("session.error", new Dictionary<string, object?> { ["error"] = ex.Message });
 }
 
-// Persist findings.
+// Persist findings. Sort by target at emit time so report.md / report.json are
+// stable diffs regardless of the concurrent execution order of the worker pool.
 var allFindings = targets
     .Select(t => toolbox.Findings.TryGetValue(t, out var f) ? f : null)
     .Where(f => f is not null)
     .Select(f => f!)
+    .OrderBy(f => f.Target, StringComparer.Ordinal)
     .ToList();
 
 JsonReport.Write(Path.Combine(opts.OutputDir, "report.json"), allFindings, scope.Source);
 MarkdownReport.Write(Path.Combine(opts.OutputDir, "report.md"), allFindings, scope.Source);
 ManualCommandsCheatsheet.Write(opts.OutputDir, allFindings, emitCheatsheet: opts.LabMode);
+new SqliteReport(opts.OutputDir).WriteReport(allFindings);
 
 kb.Merge(allFindings);
 kb.Save(opts.MemoryPath);

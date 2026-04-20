@@ -20,12 +20,19 @@ namespace Drederick.Agent;
 public sealed class AdaptiveRunner : IReconAgentRunner
 {
     private readonly AuditLog _audit;
-    private readonly int _parallelism;
+    private readonly int _hostConcurrency;
+    private readonly int _serviceConcurrency;
 
     public AdaptiveRunner(AuditLog audit, int parallelism = 4)
+        : this(audit, hostConcurrency: parallelism, serviceConcurrency: 8)
+    {
+    }
+
+    public AdaptiveRunner(AuditLog audit, int hostConcurrency, int serviceConcurrency)
     {
         _audit = audit;
-        _parallelism = Math.Max(1, parallelism);
+        _hostConcurrency = Math.Max(1, hostConcurrency);
+        _serviceConcurrency = Math.Max(1, serviceConcurrency);
     }
 
     public async Task RunAsync(
@@ -38,24 +45,20 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         {
             ["runner"] = nameof(AdaptiveRunner),
             ["targets"] = targets,
+            ["host_concurrency"] = _hostConcurrency,
+            ["service_concurrency"] = _serviceConcurrency,
         });
 
-        using var gate = new SemaphoreSlim(_parallelism);
-        var perHost = targets.Select(async t =>
-        {
-            await gate.WaitAsync(ct).ConfigureAwait(false);
-            try { await RunOneAsync(t, tools, prior, ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
+        var pool = new HostWorkerPool(_hostConcurrency, _serviceConcurrency);
+        await pool.RunAsync(
+            targets,
+            (target, svcPool, token) => RunOneAsync(target, tools, prior, svcPool, token),
+            onHostError: (host, ex) => _audit.Record("runner.host_error", new Dictionary<string, object?>
             {
-                _audit.Record("runner.host_error", new Dictionary<string, object?>
-                {
-                    ["target"] = t, ["error"] = ex.Message,
-                });
-            }
-            finally { gate.Release(); }
-        });
-        await Task.WhenAll(perHost).ConfigureAwait(false);
+                ["target"] = host,
+                ["error"] = ex.Message,
+            }),
+            ct).ConfigureAwait(false);
 
         tools.Finalize(targets);
         _audit.Record("runner.finish", new Dictionary<string, object?>
@@ -68,6 +71,7 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         string target,
         ReconToolbox tools,
         KnowledgeBase prior,
+        ServiceWorkerPool svcPool,
         CancellationToken ct)
     {
         _audit.Record("runner.plan", new Dictionary<string, object?>
@@ -110,8 +114,8 @@ public sealed class AdaptiveRunner : IReconAgentRunner
 
         if (f.Nmap.OpenPorts.Count == 0) return;
 
-        // Step 3: fan out to HTTP / TLS probes on discovered services.
-        var followUps = new List<Task>();
+        // Step 3: fan out to HTTP / TLS probes on discovered services through
+        // the bounded per-host service channel (true back-pressure).
         foreach (var port in f.Nmap.OpenPorts)
         {
             var svc = (port.Service ?? "").ToLowerInvariant();
@@ -121,15 +125,28 @@ public sealed class AdaptiveRunner : IReconAgentRunner
 
             if (isTls)
             {
-                followUps.Add(SafeRun(() => tools.TlsProbeAsync(target, port.Port, ct)));
-                followUps.Add(SafeRun(() => tools.HttpProbeAsync(target, port.Port, useTls: true, ct)));
+                var tlsPort = port.Port;
+                await svcPool.EnqueueAsync(new ScanJob(
+                    tools.Tools.First(t => t.Name == "tls"),
+                    target, tlsPort,
+                    token => SafeRun(() => tools.TlsProbeAsync(target, tlsPort, token))),
+                    ct).ConfigureAwait(false);
+                await svcPool.EnqueueAsync(new ScanJob(
+                    tools.Tools.First(t => t.Name == "http"),
+                    target, tlsPort,
+                    token => SafeRun(() => tools.HttpProbeAsync(target, tlsPort, useTls: true, token))),
+                    ct).ConfigureAwait(false);
             }
             else if (isHttp)
             {
-                followUps.Add(SafeRun(() => tools.HttpProbeAsync(target, port.Port, useTls: false, ct)));
+                var httpPort = port.Port;
+                await svcPool.EnqueueAsync(new ScanJob(
+                    tools.Tools.First(t => t.Name == "http"),
+                    target, httpPort,
+                    token => SafeRun(() => tools.HttpProbeAsync(target, httpPort, useTls: false, token))),
+                    ct).ConfigureAwait(false);
             }
         }
-        await Task.WhenAll(followUps).ConfigureAwait(false);
     }
 
     private async Task SafeRun(Func<Task<string>> f)

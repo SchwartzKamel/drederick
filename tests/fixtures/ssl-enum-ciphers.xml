@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun>
+<host>
+<address addr="10.10.10.5" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="443">
+<state state="open" reason="syn-ack"/>
+<service name="https"/>
+<script id="ssl-enum-ciphers" output="&#10;| ssl-enum-ciphers:&#10;|   TLSv1.2:&#10;|     ciphers:&#10;|       TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 - A&#10;|       TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 - A&#10;|   TLSv1.3:&#10;|     ciphers:&#10;|       TLS_AES_128_GCM_SHA256 - A&#10;|_  least strength: A">
+<table key="TLSv1.2">
+<table key="ciphers">
+<table>
+<elem key="name">TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256</elem>
+<elem key="kex_info">ecdh_x25519</elem>
+<elem key="strength">A</elem>
+</table>
+<table>
+<elem key="name">TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384</elem>
+<elem key="kex_info">ecdh_x25519</elem>
+<elem key="strength">A</elem>
+</table>
+</table>
+<table key="compressors">
+<elem>NULL</elem>
+</table>
+<elem key="cipher preference">server</elem>
+</table>
+<table key="TLSv1.3">
+<table key="ciphers">
+<table>
+<elem key="name">TLS_AES_128_GCM_SHA256</elem>
+<elem key="kex_info">ecdh_x25519</elem>
+<elem key="strength">A</elem>
+</table>
+</table>
+<elem key="cipher preference">server</elem>
+</table>
+<elem key="least strength">A</elem>
+</script>
+</port>
+</ports>
+</host>
+</nmaprun>

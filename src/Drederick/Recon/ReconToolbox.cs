@@ -17,11 +17,44 @@ public sealed class ReconToolbox
     private readonly HttpProbeTool _http;
     private readonly TlsProbeTool _tls;
     private readonly DnsProbeTool _dns;
+    private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
     private readonly ConcurrentDictionary<(string target, string tool), int> _calls = new();
     private int _toolCallsTotal;
 
+    public ReconToolbox(
+        IEnumerable<IReconTool> tools,
+        AuditLog audit,
+        ToolBudget? budget = null)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+        var materialized = tools.ToList();
+
+        _nmap = materialized.OfType<NmapTool>().SingleOrDefault()
+            ?? throw new ArgumentException(
+                $"{nameof(ReconToolbox)} requires exactly one {nameof(NmapTool)}.", nameof(tools));
+        _http = materialized.OfType<HttpProbeTool>().SingleOrDefault()
+            ?? throw new ArgumentException(
+                $"{nameof(ReconToolbox)} requires exactly one {nameof(HttpProbeTool)}.", nameof(tools));
+        _tls = materialized.OfType<TlsProbeTool>().SingleOrDefault()
+            ?? throw new ArgumentException(
+                $"{nameof(ReconToolbox)} requires exactly one {nameof(TlsProbeTool)}.", nameof(tools));
+        _dns = materialized.OfType<DnsProbeTool>().SingleOrDefault()
+            ?? throw new ArgumentException(
+                $"{nameof(ReconToolbox)} requires exactly one {nameof(DnsProbeTool)}.", nameof(tools));
+
+        _tools = materialized;
+        _audit = audit;
+        Budget = budget ?? ToolBudget.Default;
+    }
+
+    /// <summary>
+    /// Back-compat constructor preserving the original positional 4-scanner
+    /// signature so existing callers (Program.cs, tests) do not have to
+    /// change. New code should prefer the <see cref="IEnumerable{IReconTool}"/>
+    /// overload to support dynamically registered scanners.
+    /// </summary>
     public ReconToolbox(
         NmapTool nmap,
         HttpProbeTool http,
@@ -29,14 +62,14 @@ public sealed class ReconToolbox
         DnsProbeTool dns,
         AuditLog audit,
         ToolBudget? budget = null)
+        : this(new IReconTool[] { nmap, http, tls, dns }, audit, budget)
     {
-        _nmap = nmap;
-        _http = http;
-        _tls = tls;
-        _dns = dns;
-        _audit = audit;
-        Budget = budget ?? ToolBudget.Default;
     }
+
+    /// <summary>All registered recon tools, in registration order. Exposed so
+    /// the LLM runner can enumerate tool metadata (<see cref="IReconTool.Name"/>,
+    /// <see cref="IReconTool.Description"/>) without hard-coding the set.</summary>
+    public IReadOnlyList<IReconTool> Tools => (IReadOnlyList<IReconTool>)_tools;
 
     public ToolBudget Budget { get; }
 

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -Pn -p 22 --script ssh2-enum-algos -oX - 10.10.10.5" start="1700000000" startstr="Tue Nov 14 00:00:00 2023" version="7.94">
+<host starttime="1700000000" endtime="1700000001">
+<status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="10.10.10.5" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="22">
+<state state="open" reason="syn-ack" reason_ttl="64"/>
+<service name="ssh" product="OpenSSH" version="8.4p1 Debian 5+deb11u1" extrainfo="protocol 2.0" method="probed" conf="10"/>
+<script id="ssh2-enum-algos" output="&#10;  kex_algorithms: (4)&#10;      curve25519-sha256&#10;      curve25519-sha256@libssh.org&#10;      diffie-hellman-group-exchange-sha256&#10;      diffie-hellman-group16-sha512&#10;  server_host_key_algorithms: (2)&#10;      rsa-sha2-512&#10;      ssh-ed25519&#10;  encryption_algorithms: (3)&#10;      chacha20-poly1305@openssh.com&#10;      aes256-gcm@openssh.com&#10;      aes128-ctr&#10;  mac_algorithms: (2)&#10;      hmac-sha2-512-etm@openssh.com&#10;      hmac-sha2-256-etm@openssh.com&#10;  compression_algorithms: (2)&#10;      none&#10;      zlib@openssh.com&#10;">
+<table key="kex_algorithms">
+<elem>curve25519-sha256</elem>
+<elem>curve25519-sha256@libssh.org</elem>
+<elem>diffie-hellman-group-exchange-sha256</elem>
+<elem>diffie-hellman-group16-sha512</elem>
+</table>
+<table key="server_host_key_algorithms">
+<elem>rsa-sha2-512</elem>
+<elem>ssh-ed25519</elem>
+</table>
+<table key="encryption_algorithms">
+<elem>chacha20-poly1305@openssh.com</elem>
+<elem>aes256-gcm@openssh.com</elem>
+<elem>aes128-ctr</elem>
+</table>
+<table key="mac_algorithms">
+<elem>hmac-sha2-512-etm@openssh.com</elem>
+<elem>hmac-sha2-256-etm@openssh.com</elem>
+</table>
+<table key="compression_algorithms">
+<elem>none</elem>
+<elem>zlib@openssh.com</elem>
+</table>
+</script>
+</port>
+</ports>
+<times srtt="1000" rttvar="1000" to="100000"/>
+</host>
+<runstats>
+<finished time="1700000001" timestr="Tue Nov 14 00:00:01 2023" elapsed="1.00" summary="Nmap done" exit="success"/>
+<hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

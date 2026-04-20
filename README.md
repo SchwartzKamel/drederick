@@ -2,6 +2,9 @@
 
 > **Drederick E. Tatum** — Heavyweight HTB/CTF champion.
 
+![Drederick Tatum](https://comb.io/NOqy8w.gif)
+
+
 Drederick is a scope-enforced, adaptive reconnaissance harness for **authorized
 lab and CTF environments only** (Hack The Box, TryHackMe, CTF ranges, Vulnhub,
 vulhub, or infrastructure you are explicitly authorized to assess). It performs

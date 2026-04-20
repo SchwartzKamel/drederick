@@ -12,8 +12,13 @@ namespace Drederick.Recon;
 /// certificate's subject, SAN list, issuer, validity window, and negotiated
 /// protocol version. Does not attempt client authentication.
 /// </summary>
-public sealed class TlsProbeTool
+public sealed class TlsProbeTool : IReconTool
 {
+    public string Name => "tls";
+
+    public string Description =>
+        "Complete a TLS handshake and return the peer certificate subject, SAN, issuer, and expiry.";
+
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
 
@@ -26,9 +31,10 @@ public sealed class TlsProbeTool
     public async Task<TlsResult> ProbeAsync(string target, int port, CancellationToken ct = default)
     {
         _scope.Require(target);
-        _audit.Record("tls.request", new Dictionary<string, object?>
+        _audit.Record("tls.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
         });
 
         var result = new TlsResult { Port = port };
@@ -74,10 +80,19 @@ public sealed class TlsProbeTool
         {
             _audit.Record("tls.error", new Dictionary<string, object?>
             {
-                ["target"] = target, ["port"] = port, ["error"] = ex.Message,
+                ["target"] = target,
+                ["port"] = port,
+                ["error"] = ex.Message,
             });
             result.Error = ex.Message;
         }
+        _audit.Record("tls.finish", new Dictionary<string, object?>
+        {
+            ["target"] = target,
+            ["port"] = port,
+            ["tls_version"] = result.TlsVersion,
+            ["error"] = result.Error,
+        });
         return result;
     }
 }
