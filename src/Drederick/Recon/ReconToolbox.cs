@@ -13,10 +13,28 @@ namespace Drederick.Recon;
 /// </summary>
 public sealed class ReconToolbox
 {
+    // NOTE: LdapTool (Drederick.Recon.Ldap.ILdapClient) and KerberosTool
+    // (Drederick.Recon.Kerberos.ILdapClient) each define their own LDAP client
+    // abstraction in a sub-namespace. The two interfaces have different shapes
+    // and live in different sub-namespaces, so there is no ambiguity at the
+    // call sites. Unifying them under a single Drederick.Recon.Common.ILdapClient
+    // would be a safe refactor but requires editing both scanner files and is
+    // intentionally deferred. TODO: unify once scanner authors green-light a
+    // shared interface shape.
     private readonly NmapTool _nmap;
     private readonly HttpProbeTool _http;
     private readonly TlsProbeTool _tls;
     private readonly DnsProbeTool _dns;
+    private readonly SmbTool? _smb;
+    private readonly FtpTool? _ftp;
+    private readonly SshTool? _ssh;
+    private readonly SnmpTool? _snmp;
+    private readonly LdapTool? _ldap;
+    private readonly RpcTool? _rpc;
+    private readonly KerberosTool? _kerberos;
+    private readonly DnsZoneTransferTool? _dnsAxfr;
+    private readonly HttpContentDiscoveryTool? _httpContentDiscovery;
+    private readonly TlsCipherEnumTool? _tlsCipherEnum;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -43,6 +61,21 @@ public sealed class ReconToolbox
         _dns = materialized.OfType<DnsProbeTool>().SingleOrDefault()
             ?? throw new ArgumentException(
                 $"{nameof(ReconToolbox)} requires exactly one {nameof(DnsProbeTool)}.", nameof(tools));
+
+        // New scanners are optional so the legacy 4-tool positional constructor
+        // (and any tests constructed against the original surface) continues to
+        // work. Methods that require a missing scanner throw
+        // InvalidOperationException at call time.
+        _smb = materialized.OfType<SmbTool>().SingleOrDefault();
+        _ftp = materialized.OfType<FtpTool>().SingleOrDefault();
+        _ssh = materialized.OfType<SshTool>().SingleOrDefault();
+        _snmp = materialized.OfType<SnmpTool>().SingleOrDefault();
+        _ldap = materialized.OfType<LdapTool>().SingleOrDefault();
+        _rpc = materialized.OfType<RpcTool>().SingleOrDefault();
+        _kerberos = materialized.OfType<KerberosTool>().SingleOrDefault();
+        _dnsAxfr = materialized.OfType<DnsZoneTransferTool>().SingleOrDefault();
+        _httpContentDiscovery = materialized.OfType<HttpContentDiscoveryTool>().SingleOrDefault();
+        _tlsCipherEnum = materialized.OfType<TlsCipherEnumTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -152,6 +185,178 @@ public sealed class ReconToolbox
         var r = await _dns.ProbeAsync(target, ct).ConfigureAwait(false);
         GetOrCreate(target).Dns = r;
         return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe SMB on 139/445 using nmap's safe discovery scripts and, when available, " +
+                 "enum4linux-ng with read-only flags. Returns advertised dialects, OS/computer " +
+                 "identity, signing posture, and (anonymously-listable) shares. Never authenticates.")]
+    public async Task<string> SmbProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        CancellationToken ct = default)
+    {
+        var tool = _smb ?? throw new InvalidOperationException("SmbTool is not registered.");
+        Charge(target, "smb");
+        var r = await tool.ProbeAsync(target, ct).ConfigureAwait(false);
+        GetOrCreate(target).Smb.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe FTP: grab the banner and attempt an anonymous (USER anonymous / PASS anonymous@) " +
+                 "login. When accepted, list the server root. Never brute-forces credentials.")]
+    public async Task<string> FtpProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (1-65535).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _ftp ?? throw new InvalidOperationException("FtpTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "ftp");
+        var r = await tool.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).Ftp.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe SSH: read the banner and parse the KEX/host-key/cipher/MAC algorithm lists " +
+                 "from the server's SSH2_MSG_KEXINIT. Unauthenticated, read-only.")]
+    public async Task<string> SshProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (1-65535).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _ssh ?? throw new InvalidOperationException("SshTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "ssh");
+        var r = await tool.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).Ssh.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe SNMP (UDP 161) by walking a small set of system OIDs against the 'public' " +
+                 "community using snmpwalk. Read-only and capped in output size. Does not attempt " +
+                 "community brute force.")]
+    public async Task<string> SnmpProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("UDP port number (1-65535).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _snmp ?? throw new InvalidOperationException("SnmpTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "snmp");
+        var r = await tool.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).Snmp.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe LDAP: attempt an anonymous bind and, when permitted, read the RootDSE " +
+                 "(namingContexts, supportedControl, supportedLDAPVersion, supportedSASLMechanisms). " +
+                 "Never performs credentialed enumeration or brute force.")]
+    public async Task<string> LdapProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (typically 389 or 636).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _ldap ?? throw new InvalidOperationException("LdapTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "ldap");
+        var r = await tool.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).Ldap.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe RPC portmapper (111): list registered RPC programs via rpcinfo -p and, when " +
+                 "available, nmap's rpcinfo NSE script. Read-only.")]
+    public async Task<string> RpcProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (typically 111).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _rpc ?? throw new InvalidOperationException("RpcTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "rpc");
+        var r = await tool.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).Rpc.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe Kerberos-adjacent surface via LDAP RootDSE: infer the Kerberos realm and, " +
+                 "when an anonymous bind is permitted, enumerate servicePrincipalName values in the " +
+                 "directory. Never requests TGTs, never AS-REP roasts, never brute-forces.")]
+    public async Task<string> KerberosProbeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("LDAP TCP port number (typically 389 or 636).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _kerberos ?? throw new InvalidOperationException("KerberosTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "kerberos");
+        var r = await tool.ProbeAsync(target, port, null, null, ct).ConfigureAwait(false);
+        GetOrCreate(target).Kerberos.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Attempt a DNS zone transfer (AXFR) for a domain against an explicit nameserver IP " +
+                 "using dig. The nameserver MUST be inside the authorized scope; the domain is a " +
+                 "label only. Read-only — AXFR is a pure query.")]
+    public async Task<string> DnsZoneTransferAsync(
+        [Description("DNS domain to request an AXFR for, e.g. 'example.lab'.")] string domain,
+        [Description("Nameserver IP address to query (must be in scope).")] string nameserver,
+        CancellationToken ct = default)
+    {
+        var tool = _dnsAxfr ?? throw new InvalidOperationException("DnsZoneTransferTool is not registered.");
+        if (string.IsNullOrWhiteSpace(domain))
+            throw new ArgumentException("domain must not be empty.", nameof(domain));
+        if (string.IsNullOrWhiteSpace(nameserver))
+            throw new ArgumentException("nameserver must not be empty.", nameof(nameserver));
+        Charge(nameserver, "dns-axfr");
+        var r = await tool.ProbeAsync(domain, nameserver, ct).ConfigureAwait(false);
+        GetOrCreate(nameserver).DnsZoneTransfer.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Path-only HTTP content discovery: GET a bounded list of common paths under a base " +
+                 "URL, recording interesting statuses (200/201/204/301/302/307/401/403) and sizes. " +
+                 "Rate-limited, no parameter or credential brute-forcing.")]
+    public async Task<string> HttpContentDiscoveryAsync(
+        [Description("Absolute base URL, e.g. 'http://10.0.0.5:8080'. Host must be in scope.")] string baseUrl,
+        CancellationToken ct = default)
+    {
+        var tool = _httpContentDiscovery
+            ?? throw new InvalidOperationException("HttpContentDiscoveryTool is not registered.");
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new ArgumentException("baseUrl must not be empty.", nameof(baseUrl));
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) ||
+            (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException(
+                $"baseUrl '{baseUrl}' must be an absolute http/https URL.", nameof(baseUrl));
+        }
+        Charge(baseUri.Host, "http-content-discovery");
+        var r = await tool.ProbeAsync(baseUrl, ct).ConfigureAwait(false);
+        GetOrCreate(baseUri.Host).HttpContentDiscovery.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Enumerate the TLS cipher suites and protocol versions a service supports using " +
+                 "nmap's ssl-enum-ciphers NSE script. Returns per-version cipher lists and grades. " +
+                 "Read-only.")]
+    public async Task<string> TlsCipherEnumAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (typically 443).")] int port,
+        CancellationToken ct = default)
+    {
+        var tool = _tlsCipherEnum
+            ?? throw new InvalidOperationException("TlsCipherEnumTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "tls-cipher-enum");
+        var r = await tool.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).TlsCipherEnum.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    private static void ValidatePort(int port)
+    {
+        if (port < 1 || port > 65535)
+            throw new ArgumentOutOfRangeException(nameof(port), port, "port must be in [1, 65535].");
     }
 
     public void Finalize(IEnumerable<string> targets)

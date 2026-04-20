@@ -12,6 +12,16 @@ public sealed class CommandLineOptions
     public int Parallelism { get; set; } = 4;
 
     /// <summary>
+    /// Enable HTTP content discovery (bounded, path-only wordlist probe) on
+    /// discovered HTTP(S) services during an AdaptiveRunner run. Off by
+    /// default: content discovery generates many more requests than a plain
+    /// HTTP probe and should be an explicit operator opt-in even inside a lab
+    /// scope. The LLM runner can still invoke the tool on request regardless
+    /// of this flag — this gates only the deterministic auto-dispatch.
+    /// </summary>
+    public bool ContentDiscovery { get; set; }
+
+    /// <summary>
     /// Number of hosts scanned concurrently by the bounded worker pool.
     /// Default 4, hard cap 32. Driven by <c>--host-concurrency</c>; when the
     /// flag is omitted, falls back to <see cref="Parallelism"/> for backward
@@ -46,6 +56,17 @@ public sealed class CommandLineOptions
     /// <summary>Skip the interactive [y/N] confirmation before running installs.</summary>
     public bool AssumeYes { get; set; }
 
+    // --- datasette-integration: serve subcommand --------------------------------
+    /// <summary>Serve subcommand selected (first positional arg "serve"). Launches datasette against out/findings.db.</summary>
+    public bool ServeSubcommand { get; set; }
+    /// <summary>Bind host for `drederick serve`. Default 127.0.0.1.</summary>
+    public string ServeHost { get; set; } = "127.0.0.1";
+    /// <summary>Bind port for `drederick serve`. Default 8001.</summary>
+    public int ServePort { get; set; } = 8001;
+    /// <summary>Whether `drederick serve` should pass --open to datasette. Default true.</summary>
+    public bool ServeOpenBrowser { get; set; } = true;
+    // --- end datasette-integration ----------------------------------------------
+
     public static CommandLineOptions Parse(string[] args)
     {
         var o = new CommandLineOptions();
@@ -55,6 +76,13 @@ public sealed class CommandLineOptions
             o.DoctorSubcommand = true;
             start = 1;
         }
+        // --- datasette-integration: serve subcommand dispatch ------------------
+        else if (args.Length > 0 && args[0] == "serve")
+        {
+            o.ServeSubcommand = true;
+            start = 1;
+        }
+        // --- end datasette-integration -----------------------------------------
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -91,6 +119,8 @@ public sealed class CommandLineOptions
                     o.UseAgent = true; break;
                 case "--expand":
                     o.Expand = true; break;
+                case "--content-discovery":
+                    o.ContentDiscovery = true; break;
                 case "-j":
                 case "--parallel":
                     {
@@ -110,6 +140,28 @@ public sealed class CommandLineOptions
                         o._hostConcurrencyExplicit = true;
                         break;
                     }
+                // --- datasette-integration: serve flags ------------------------
+                case "--host":
+                    if (!o.ServeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.ServeHost = RequireNext(args, ref i, a);
+                    break;
+                case "--port":
+                    if (!o.ServeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 65535)
+                            throw new ArgumentException($"--port must be a TCP port in [1, 65535], got '{v}'.");
+                        o.ServePort = n;
+                        break;
+                    }
+                case "--no-open":
+                    if (!o.ServeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.ServeOpenBrowser = false;
+                    break;
+                // --- end datasette-integration ---------------------------------
                 case "--service-concurrency":
                     {
                         var v = RequireNext(args, ref i, a);
@@ -148,12 +200,17 @@ public sealed class CommandLineOptions
         USAGE:
           drederick --scope <file> [--target <ip>]... [options]
           drederick doctor [--install | --doctor-fix] [-y|--yes]
+          drederick serve [--host <ip>] [--port <n>] [--no-open] [-o <dir>]
 
         SUBCOMMANDS:
           doctor               Check operator-workstation tooling (nmap, searchsploit,
                                python3/2, go, ruby, git, curl, jq, datasette). With
                                --install, install missing tools via the system package
                                manager (never re-execs as root; asks [y/N] first).
+          serve                Launch Datasette against <out>/findings.db with the
+                               bundled metadata (datasette/metadata.json). Requires
+                               the `datasette` binary on PATH; run `drederick doctor
+                               --install` if it is missing. Default bind 127.0.0.1:8001.
 
         REQUIRED:
           -s, --scope <file>   Scope file (one CIDR/IP per line, '#' comments).
@@ -183,6 +240,10 @@ public sealed class CommandLineOptions
                                follow-ups) in flight per host. Range [1, 64].
                                Default: 8.
           --allow-broad        Permit scope entries broader than the active lab/strict cap.
+          --content-discovery  Enable bounded, path-only HTTP content discovery against
+                               discovered HTTP(S) services. Off by default (even in lab
+                               mode) — content discovery generates extra request volume
+                               and should be an explicit operator opt-in.
           --lab                Lab/CTF mode (DEFAULT). Relaxes scope-breadth cap to /8 (v4)
                                and /32 (v6), enables extra ENUMERATION NSE categories
                                (safe,default,discovery,version), and emits a per-host

@@ -129,6 +129,36 @@ memory/
 └── findings.json   # cross-run knowledge base (loaded on next run)
 ```
 
+## Datasette dashboard
+
+Every run writes `out/findings.db` — a small SQLite database produced by
+[`SqliteReport`](src/Drederick/Reporting/SqliteReport.cs). It contains
+normalised `hosts`, `services`, `findings`, `cves`, `poc_refs`,
+`poc_sources`, and `tooling` tables, so you can browse a recon pass
+point-and-click instead of grepping `report.md`.
+
+A ready-to-use [Datasette](https://datasette.io/) metadata file lives at
+[`datasette/metadata.json`](datasette/metadata.json) with labelled tables,
+sensible facets (`proto`/`service`/`product`, CVE CVSS + published date,
+PoC source, ...), and canned queries (top CVEs by CVSS, services with
+public PoCs, PoC refs grouped by source, ...). See
+[`docs/DATASETTE.md`](docs/DATASETTE.md) for the full schema reference.
+
+Launch it via the built-in subcommand (requires the `datasette` binary —
+`drederick doctor --install` will fetch it):
+
+```bash
+drederick serve --out out/
+# or customise:
+drederick serve --out out/ --host 0.0.0.0 --port 8001 --no-open
+```
+
+Equivalent one-liner without the wrapper:
+
+```bash
+datasette serve out/findings.db --metadata datasette/metadata.json
+```
+
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, components, planned
@@ -142,6 +172,8 @@ memory/
 - [`docs/COMPARISON.md`](docs/COMPARISON.md) — Drederick vs AutoRecon /
   nmapAutomator / Reconnoitre.
 - [`docs/UI_GUIDE.md`](docs/UI_GUIDE.md) — planned point-and-click UI (WIP).
+- [`docs/DATASETTE.md`](docs/DATASETTE.md) — `out/findings.db` schema
+  reference, facets, and canned queries for the Datasette dashboard.
 
 ## Architecture (short version)
 

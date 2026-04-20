@@ -1,0 +1,82 @@
+{
+  "title": "Drederick findings",
+  "description": "Scope-enforced recon findings emitted by the drederick harness. See docs/DATASETTE.md for the schema reference.",
+  "license": "MIT",
+  "license_url": "https://opensource.org/licenses/MIT",
+  "databases": {
+    "findings": {
+      "description": "SQLite database written by Drederick.Reporting.SqliteReport at the end of every run (out/findings.db). One row per discovered host, service, finding, CVE, PoC reference, fetched PoC artifact, and detected operator tool.",
+      "tables": {
+        "hosts": {
+          "title": "Hosts",
+          "description": "One row per in-scope target that produced at least one finding. Keyed by address (IPv4/IPv6 string); hostname is populated from the DNS probe when available.",
+          "label_column": "address",
+          "sort_desc": "last_seen"
+        },
+        "services": {
+          "title": "Services",
+          "description": "TCP/UDP services discovered by the nmap probe, one row per (host, port, proto). product/version come from nmap -sV.",
+          "facets": ["proto", "service", "product"],
+          "sort": "port"
+        },
+        "findings": {
+          "title": "Findings",
+          "description": "Raw probe output keyed to a host (and optionally a service). 'kind' is the probe type (nmap, nmap-script, http, tls, dns, cve, ...). 'data_json' is the structured payload for that finding.",
+          "facets": ["kind", "host_id"],
+          "sort_desc": "created_at"
+        },
+        "cves": {
+          "title": "CVEs",
+          "description": "CVE records annotated onto services by the enrichment layer. 'cvss' is the numeric base score (0.0-10.0); 'published' is an ISO-8601 timestamp. Facet buckets are shown raw — for score bands or year buckets, use the canned queries.",
+          "label_column": "cve_id",
+          "facets": ["cvss", "published"],
+          "sort_desc": "cvss"
+        },
+        "poc_refs": {
+          "title": "PoC references",
+          "description": "Pointers to public proof-of-concept material for a given CVE (ExploitDB ID, GitHub repo, Metasploit module name, etc). References only — Drederick never executes PoCs.",
+          "facets": ["source"]
+        },
+        "poc_sources": {
+          "title": "PoC sources (fetched artifacts)",
+          "description": "Local cache of fetched PoC content keyed by (source, external_id) with sha256 for integrity. Used to de-duplicate downloads across runs.",
+          "facets": ["source"]
+        },
+        "tooling": {
+          "title": "Operator tooling",
+          "description": "Result of `drederick doctor` — detected operator-workstation tools (nmap, searchsploit, datasette, ...), their versions, and where they were found on PATH.",
+          "label_column": "name",
+          "facets": ["source"],
+          "sort": "name"
+        }
+      },
+      "queries": {
+        "cves_by_host": {
+          "title": "CVEs by host",
+          "description": "Every (host, service) that has at least one CVE finding, joined to the cves table. Ordered by CVSS descending.",
+          "sql": "SELECT h.address, s.port, s.service, s.product, s.version, c.cve_id, c.cvss, c.summary FROM hosts h JOIN services s ON s.host_id = h.id JOIN findings f ON f.service_id = s.id JOIN cves c ON c.cve_id = json_extract(f.data_json, '$.cve_id') WHERE f.kind = 'cve' ORDER BY c.cvss DESC"
+        },
+        "services_with_pocs": {
+          "title": "Services with public PoCs",
+          "description": "Services whose annotated CVE has at least one entry in poc_refs. Ordered by CVSS descending, then host/port for stability.",
+          "sql": "SELECT h.address, s.port, s.service, s.product, s.version, c.cve_id, c.cvss, p.source AS poc_source, p.external_id, p.url FROM hosts h JOIN services s ON s.host_id = h.id JOIN findings f ON f.service_id = s.id JOIN cves c ON c.cve_id = json_extract(f.data_json, '$.cve_id') JOIN poc_refs p ON p.cve_id = c.cve_id WHERE f.kind = 'cve' ORDER BY c.cvss DESC, h.address, s.port"
+        },
+        "pocs_by_source": {
+          "title": "PoC references grouped by source",
+          "description": "Count of PoC references per upstream source (exploit-db, github, metasploit, ...).",
+          "sql": "SELECT source, COUNT(*) AS ref_count FROM poc_refs GROUP BY source ORDER BY ref_count DESC"
+        },
+        "tooling_detected": {
+          "title": "Operator tooling detected",
+          "description": "All tools detected by `drederick doctor` in alphabetical order.",
+          "sql": "SELECT * FROM tooling ORDER BY name"
+        },
+        "top_cves_by_cvss": {
+          "title": "Top 50 CVEs by CVSS",
+          "description": "Top 50 CVEs annotated onto this run, highest CVSS first. NULL CVSS values sort last.",
+          "sql": "SELECT cve_id, cvss, summary FROM cves ORDER BY cvss DESC NULLS LAST LIMIT 50"
+        }
+      }
+    }
+  }
+}

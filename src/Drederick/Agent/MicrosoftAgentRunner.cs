@@ -63,6 +63,26 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             AIFunctionFactory.Create(tools.DnsProbeAsync, name: "dns_probe"),
         };
 
+        // Extended scanner surface: only expose a tool if the underlying
+        // scanner was registered on the toolbox (callers may construct a
+        // toolbox with just the original four). We detect by IReconTool.Name.
+        void AddIf(string toolName, AITool t)
+        {
+            if (tools.Tools.Any(x => x.Name == toolName)) aiTools.Add(t);
+        }
+        AddIf("smb", AIFunctionFactory.Create(tools.SmbProbeAsync, name: "smb_probe"));
+        AddIf("ftp", AIFunctionFactory.Create(tools.FtpProbeAsync, name: "ftp_probe"));
+        AddIf("ssh", AIFunctionFactory.Create(tools.SshProbeAsync, name: "ssh_probe"));
+        AddIf("snmp", AIFunctionFactory.Create(tools.SnmpProbeAsync, name: "snmp_probe"));
+        AddIf("ldap", AIFunctionFactory.Create(tools.LdapProbeAsync, name: "ldap_probe"));
+        AddIf("rpc", AIFunctionFactory.Create(tools.RpcProbeAsync, name: "rpc_probe"));
+        AddIf("kerberos", AIFunctionFactory.Create(tools.KerberosProbeAsync, name: "kerberos_probe"));
+        AddIf("dns-axfr", AIFunctionFactory.Create(tools.DnsZoneTransferAsync, name: "dns_zone_transfer"));
+        AddIf("http-content-discovery",
+            AIFunctionFactory.Create(tools.HttpContentDiscoveryAsync, name: "http_content_discovery"));
+        AddIf("tls-cipher-enum",
+            AIFunctionFactory.Create(tools.TlsCipherEnumAsync, name: "tls_cipher_enum"));
+
         AIAgent agent = _chatClient.AsAIAgent(
             instructions: BuildSystemPrompt(),
             name: "drederick",

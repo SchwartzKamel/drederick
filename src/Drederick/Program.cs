@@ -2,6 +2,7 @@ using Drederick.Agent;
 using Drederick.Audit;
 using Drederick.Cli;
 using Drederick.Doctor;
+using Drederick.Enrichment;
 using Drederick.Memory;
 using Drederick.Recon;
 using Drederick.Reporting;
@@ -41,6 +42,58 @@ if (opts.DoctorSubcommand)
     }
     return 0;
 }
+
+// --- datasette-integration: serve subcommand -------------------------------
+if (opts.ServeSubcommand)
+{
+    var dbPath = Path.Combine(opts.OutputDir, "findings.db");
+    if (!File.Exists(dbPath))
+    {
+        Console.Error.WriteLine($"serve: no database at {dbPath}. Run a recon pass first.");
+        return 2;
+    }
+    var metadataPath = Path.Combine("datasette", "metadata.json");
+    var datasetteArgs = new List<string>
+    {
+        "serve", dbPath,
+        "--host", opts.ServeHost,
+        "--port", opts.ServePort.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+    if (File.Exists(metadataPath))
+    {
+        datasetteArgs.Add("--metadata");
+        datasetteArgs.Add(metadataPath);
+    }
+    else
+    {
+        Console.Error.WriteLine($"serve: warning: {metadataPath} not found; launching datasette without --metadata.");
+    }
+    if (opts.ServeOpenBrowser) datasetteArgs.Add("--open");
+
+    var psi = new System.Diagnostics.ProcessStartInfo("datasette")
+    {
+        UseShellExecute = false,
+    };
+    foreach (var arg in datasetteArgs) psi.ArgumentList.Add(arg);
+    try
+    {
+        using var proc = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("Process.Start returned null.");
+        proc.WaitForExit();
+        return proc.ExitCode;
+    }
+    catch (System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine("serve: `datasette` is not on PATH. Install it with `drederick doctor --install` (or `pipx install datasette`).");
+        return 127;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"serve: failed to launch datasette: {ex.Message}");
+        return 1;
+    }
+}
+// --- end datasette-integration ---------------------------------------------
 
 if (string.IsNullOrEmpty(opts.ScopePath))
 {
@@ -125,7 +178,24 @@ var nmap = new NmapTool(scope, audit, labMode: opts.LabMode);
 var http = new HttpProbeTool(scope, audit);
 var tls = new TlsProbeTool(scope, audit);
 var dns = new DnsProbeTool(scope, audit);
-var toolbox = new ReconToolbox(nmap, http, tls, dns, audit);
+var smb = new SmbTool(scope, audit);
+var ftp = new FtpTool(scope, audit);
+var ssh = new SshTool(scope, audit);
+var snmp = new SnmpTool(scope, audit);
+var ldap = new LdapTool(scope, audit);
+var rpc = new RpcTool(scope, audit);
+var kerberos = new KerberosTool(scope, audit);
+var dnsAxfr = new DnsZoneTransferTool(scope, audit);
+var httpContentDiscovery = new HttpContentDiscoveryTool(scope, audit);
+var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
+var toolbox = new ReconToolbox(
+    new IReconTool[]
+    {
+        nmap, http, tls, dns,
+        smb, ftp, ssh, snmp, ldap, rpc, kerberos,
+        dnsAxfr, httpContentDiscovery, tlsCipherEnum,
+    },
+    audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);
 
 IReconAgentRunner runner;
@@ -136,7 +206,7 @@ if (opts.UseAgent)
     {
         Console.Error.WriteLine("--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.");
         audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = "no_api_key" });
-        runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency);
+        runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency, opts.ContentDiscovery);
     }
     else
     {
@@ -145,7 +215,7 @@ if (opts.UseAgent)
 }
 else
 {
-    runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency);
+    runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency, opts.ContentDiscovery);
 }
 
 using var cts = new CancellationTokenSource();
@@ -178,6 +248,30 @@ JsonReport.Write(Path.Combine(opts.OutputDir, "report.json"), allFindings, scope
 MarkdownReport.Write(Path.Combine(opts.OutputDir, "report.md"), allFindings, scope.Source);
 ManualCommandsCheatsheet.Write(opts.OutputDir, allFindings, emitCheatsheet: opts.LabMode);
 new SqliteReport(opts.OutputDir).WriteReport(allFindings);
+
+// ANCHOR: cve-annotator-wiring (owned by cve-annotator task)
+// On-by-default CVE enrichment: fingerprinted services are matched against
+// the local NVD JSON feed. Disable with DREDERICK_SKIP_CVE=1 (no new CLI flag
+// to avoid stepping on scanner-registration / datasette-integration edits).
+if (!string.Equals(Environment.GetEnvironmentVariable("DREDERICK_SKIP_CVE"), "1", StringComparison.Ordinal))
+{
+    try
+    {
+        var annotator = new CveAnnotator();
+        var annotation = await annotator.AnnotateAsync(allFindings, opts.OutputDir, cts.Token);
+        audit.Record("cve.annotate", new Dictionary<string, object?>
+        {
+            ["cves"] = annotation.CveCount,
+            ["findings"] = annotation.FindingCount,
+            ["cache_loaded"] = annotation.CacheLoaded,
+        });
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        Console.Error.WriteLine($"cve-annotate: {ex.Message}");
+        audit.Record("cve.annotate.error", new Dictionary<string, object?> { ["error"] = ex.Message });
+    }
+}
 
 kb.Merge(allFindings);
 kb.Save(opts.MemoryPath);
