@@ -16,25 +16,38 @@ public sealed class NmapTool
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
     private readonly string _nmapPath;
+    private readonly bool _labMode;
+
+    // Strict (non-lab) NSE categories. Safe + default only.
+    // safe    : scripts that do not attempt anything unsafe against the target
+    // default : the curated default set
+    private const string NseCategoriesStrict = "safe,default";
+
+    // Lab/CTF NSE categories. Adds discovery + version for richer enumeration.
+    // Still explicitly excludes exploit, intrusive, brute, vuln, dos, malware.
+    // discovery : active discovery of networks/services
+    // version   : version-detection helper scripts
+    private const string NseCategoriesLab = "safe,default,discovery,version";
 
     // -Pn           : targets often drop ICMP in HTB/CTF environments
     // -sV -sC       : service/version + default NSE scripts
-    // --script      : restrict to safe+default categories only
+    // --script      : restrict to enumeration categories only (lab vs strict)
     // --top-ports   : sensible default when the agent hasn't asked for -p-
-    private static readonly string[] BaseArgs =
+    private static readonly string[] BaseArgsCommon =
     [
         "-Pn", "-sV", "-sC",
         "-T4", "--min-rate", "1000",
-        "--script", "safe,default",
-        "-oX", "-",
     ];
 
-    public NmapTool(Scope.Scope scope, AuditLog audit, string? nmapPath = null)
+    public NmapTool(Scope.Scope scope, AuditLog audit, string? nmapPath = null, bool labMode = true)
     {
         _scope = scope;
         _audit = audit;
         _nmapPath = nmapPath ?? "nmap";
+        _labMode = labMode;
     }
+
+    public string NseCategories => _labMode ? NseCategoriesLab : NseCategoriesStrict;
 
     public async Task<NmapResult> ScanAsync(
         string target,
@@ -43,7 +56,11 @@ public sealed class NmapTool
     {
         _scope.Require(target);
 
-        var args = new List<string>(BaseArgs);
+        var args = new List<string>(BaseArgsCommon);
+        args.Add("--script");
+        args.Add(NseCategories);
+        args.Add("-oX");
+        args.Add("-");
         // Port spec: either user/agent-supplied (e.g. "1-65535", "80,443"), or top-1000 by default.
         if (!string.IsNullOrWhiteSpace(portSpec))
         {

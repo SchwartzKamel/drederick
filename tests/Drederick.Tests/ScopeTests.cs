@@ -65,20 +65,58 @@ public class ScopeTests
     [Fact]
     public void Overbroad_V4_Is_Refused_Without_AllowBroad()
     {
-        Assert.Throws<ScopeException>(() => ScopeLoader.Parse("10.0.0.0/8"));
+        // /8 is over the strict cap of /16. Lab mode is the default everywhere
+        // else, so test strict behavior explicitly.
+        Assert.Throws<ScopeException>(() => ScopeLoader.Parse("10.0.0.0/8", labMode: false));
     }
 
     [Fact]
     public void Overbroad_V4_Is_Allowed_With_AllowBroad()
     {
-        var s = ScopeLoader.Parse("10.0.0.0/8", allowBroad: true);
+        var s = ScopeLoader.Parse("10.0.0.0/8", allowBroad: true, labMode: false);
         Assert.True(s.Contains("10.1.2.3"));
     }
 
     [Fact]
     public void Overbroad_V6_Is_Refused_Without_AllowBroad()
     {
+        // /16 is under the lab cap of /32 as well, so strict-vs-lab doesn't matter here.
         Assert.Throws<ScopeException>(() => ScopeLoader.Parse("fd00::/16"));
+    }
+
+    [Fact]
+    public void Lab_Mode_Allows_V4_Slash_8_By_Default()
+    {
+        // Default LabMode=true lifts the v4 cap to /8.
+        var s = ScopeLoader.Parse("10.0.0.0/8");
+        Assert.True(s.Contains("10.1.2.3"));
+    }
+
+    [Fact]
+    public void Lab_Mode_Still_Refuses_Wildcard_V4()
+    {
+        Assert.Throws<ScopeException>(() => ScopeLoader.Parse("0.0.0.0/0"));
+    }
+
+    [Fact]
+    public void Lab_Mode_Still_Refuses_Wider_Than_Slash_8_V4()
+    {
+        // /4 is broader than the /8 lab cap and is not an explicit wildcard,
+        // but must still be refused without --allow-broad.
+        Assert.Throws<ScopeException>(() => ScopeLoader.Parse("10.0.0.0/4"));
+    }
+
+    [Fact]
+    public void Lab_Mode_Allows_V6_Slash_32_By_Default()
+    {
+        var s = ScopeLoader.Parse("fd00::/32");
+        Assert.True(s.Contains("fd00::1"));
+    }
+
+    [Fact]
+    public void Strict_Mode_Refuses_Slash_8_That_Lab_Would_Allow()
+    {
+        Assert.Throws<ScopeException>(() => ScopeLoader.Parse("10.0.0.0/8", labMode: false));
     }
 
     [Fact]
