@@ -326,6 +326,146 @@
         </Grid>
       </TabItem>
 
+      <!-- NOTES TAB  -->
+      <TabItem Header="Notes">
+        <Grid RowDefinitions="Auto,Auto,*" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Create and manage notes related to your assessment. Notes are stored in findings.db and support tagging, flagging, and file attachments." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Notes.OutputDir, Mode=TwoWay}" />
+            <Button    Grid.Column="2" Content="Refresh" Margin="8,0,0,0" Command="{Binding Notes.LoadNotesCommand}" />
+            <Button    Grid.Column="3" Content="New Note" Margin="8,0,0,0" Classes="accent" Click="OnClearNoteSelection" />
+            <Button    Grid.Column="4" Content="Flags Only" Margin="8,0,0,0" Command="{Binding Notes.GetFlagsCommand}" />
+            <TextBox   Grid.Column="5" Text="{Binding Notes.SearchTerm, Mode=TwoWay}" Watermark="Search..." Margin="8,0,0,0" Width="150" />
+          </Grid>
+
+          <!-- Split: list on left, detail/form on right -->
+          <Grid Grid.Row="2" ColumnDefinitions="2*,3*" Margin="0,8">
+            <!-- Left pane: Notes list -->
+            <Border Grid.Column="0" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,6" Spacing="8">
+                  <TextBlock Text="Notes" FontWeight="Bold" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Notes.Status, StringFormat='— {0}'}" Foreground="#AAA" VerticalAlignment="Center" FontSize="11" />
+                </StackPanel>
+                <ListBox ItemsSource="{Binding Notes.NotesList}" 
+                         SelectedItem="{Binding Notes.SelectedNote, Mode=TwoWay}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Margin="0,4" Spacing="2">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Grid.Column="0" Text="{Binding Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Grid.Column="1" Text="🚩" Foreground="#FF6B6B" FontSize="11" 
+                                     IsVisible="{Binding IsFlag}" Margin="4,0,0,0" />
+                        </Grid>
+                        <TextBlock Text="{Binding Category, StringFormat='Category: {0}'}" Foreground="#9CDCFE" FontSize="10" />
+                        <TextBlock Text="{Binding CreatedAt, StringFormat='Created: {0}'}" Foreground="#888" FontSize="9" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+            </Border>
+
+            <!-- Right pane: Detail/Form -->
+            <Border Grid.Column="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="8,0,0,0">
+              <ScrollViewer>
+                <StackPanel Margin="12" Spacing="12">
+                  <!-- Display selected note if any -->
+                  <StackPanel Spacing="4" Margin="0,0,0,8" IsVisible="{Binding Notes.SelectedNote}">
+                    <TextBlock Text="Note Details" FontWeight="Bold" FontSize="13" />
+                    
+                    <StackPanel Spacing="4" Margin="0,8,0,0">
+                      <TextBlock Text="Title" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <TextBlock Text="{Binding Notes.Title}" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,8,0,0">
+                      <TextBlock Text="Category" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <TextBlock Text="{Binding Notes.Category}" FontSize="12" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,8,0,0" IsVisible="{Binding Notes.IsFlag}">
+                      <TextBlock Text="🚩 Flagged Note" Foreground="#FF6B6B" FontWeight="Bold" FontSize="11" />
+                      <TextBlock Text="{Binding Notes.FlagFormat}" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,8,0,0">
+                      <TextBlock Text="Tags" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <TextBlock Text="{Binding Notes.Tags}" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" Margin="0,8,0,0">
+                      <TextBlock Text="Content" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <Border BorderBrush="#333" BorderThickness="1" CornerRadius="2" Padding="6" Background="#1E1E1E">
+                        <TextBlock Text="{Binding Notes.Content}" FontSize="11" TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" />
+                      </Border>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                      <Button Content="Archive" Command="{Binding Notes.ArchiveNoteCommand}" />
+                      <Button Content="Delete" Command="{Binding Notes.DeleteNoteCommand}" Classes="accent" />
+                      <Button Content="Clear" Click="OnClearNoteSelection" HorizontalAlignment="Right" />
+                    </StackPanel>
+                  </StackPanel>
+
+                  <!-- Form for creating new note -->
+                  <StackPanel Spacing="12" IsVisible="{Binding !Notes.SelectedNote}">
+                    <TextBlock Text="Create New Note" FontWeight="Bold" FontSize="13" Margin="0,0,0,4" />
+
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="Title *" Foreground="#DCDCAA" FontWeight="Bold" FontSize="11" />
+                      <TextBox Text="{Binding Notes.Title, Mode=TwoWay}" Watermark="Note title (required)" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="Category" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <ComboBox SelectedItem="{Binding Notes.Category, Mode=TwoWay}">
+                        <ComboBoxItem>note</ComboBoxItem>
+                        <ComboBoxItem>flag</ComboBoxItem>
+                        <ComboBoxItem>credential</ComboBoxItem>
+                        <ComboBoxItem>exploit</ComboBoxItem>
+                        <ComboBoxItem>screenshot</ComboBoxItem>
+                        <ComboBoxItem>command</ComboBoxItem>
+                      </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="Tags" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <TextBox Text="{Binding Notes.Tags, Mode=TwoWay}" Watermark="Comma-separated tags" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="Content" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                      <TextBox Text="{Binding Notes.Content, Mode=TwoWay}" 
+                               AcceptsReturn="True" Height="80"
+                               Watermark="Note content (optional)" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,4">
+                      <StackPanel Spacing="8">
+                        <CheckBox Content="Flag this note" IsChecked="{Binding Notes.IsFlag, Mode=TwoWay}" />
+                        <StackPanel Spacing="4" IsEnabled="{Binding Notes.IsFlag}">
+                          <TextBlock Text="Flag Format" Foreground="#9CDCFE" FontWeight="Bold" FontSize="11" />
+                          <TextBox Text="{Binding Notes.FlagFormat, Mode=TwoWay}" Watermark="e.g., CRITICAL, TODO, FOLLOW_UP" />
+                        </StackPanel>
+                      </StackPanel>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Button Content="Save" Command="{Binding Notes.CreateNoteCommand}" Classes="accent" />
+                      <Button Content="Cancel" Click="OnClearNoteSelection" />
+                    </StackPanel>
+                  </StackPanel>
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+          </Grid>
+        </Grid>
+      </TabItem>
+
       <!-- INIT TAB  -->
       <TabItem Header="Init">
         <ScrollViewer>
