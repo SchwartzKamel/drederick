@@ -77,6 +77,15 @@ public sealed class CommandLineOptions
     /// <summary>Skip the interactive [y/N] confirmation before running installs.</summary>
     public bool AssumeYes { get; set; }
 
+    // --- init subcommand: first-time setup wizard ---------------------------------
+    /// <summary>Init subcommand selected (first positional arg "init"). Interactive setup wizard.</summary>
+    public bool InitSubcommand { get; set; }
+    /// <summary>With --skip-creds: skip credential setup step.</summary>
+    public bool InitSkipCreds { get; set; }
+    /// <summary>With --skip-scope: skip scope file creation step.</summary>
+    public bool InitSkipScope { get; set; }
+    // --- end init subcommand --------------------------------------------------
+
     // --- datasette-integration: serve subcommand --------------------------------
     /// <summary>Serve subcommand selected (first positional arg "serve"). Launches datasette against out/findings.db.</summary>
     public bool ServeSubcommand { get; set; }
@@ -124,6 +133,13 @@ public sealed class CommandLineOptions
             start = 1;
         }
         // --- end datasette-integration -----------------------------------------
+        // --- init subcommand dispatch ------------------------------------------
+        else if (args.Length > 0 && args[0] == "init")
+        {
+            o.InitSubcommand = true;
+            start = 1;
+        }
+        // --- end init subcommand -----------------------------------------------
         // --- binary-analyzer subcommand dispatch -----
         else if (args.Length > 0 && args[0] == "analyze")
         {
@@ -241,6 +257,18 @@ public sealed class CommandLineOptions
                     break;
                 // END ANCHOR: datasette-bootstrap-flag-parse
                 // --- end datasette-integration ---------------------------------
+                // --- init subcommand flags ---------------------------------
+                case "--skip-creds":
+                    if (!o.InitSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.InitSkipCreds = true;
+                    break;
+                case "--skip-scope":
+                    if (!o.InitSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.InitSkipScope = true;
+                    break;
+                // --- end init subcommand flags ----------------------------
                 // --- binary-analyzer subcommand flags -----------
                 case "--json":
                     if (!o.AnalyzeSubcommand)
@@ -298,6 +326,7 @@ public sealed class CommandLineOptions
           drederick doctor [--install | --doctor-fix] [-y|--yes]
           drederick serve [--host <ip>] [--port <n>] [--no-open] [-o <dir>]
                           [--datasette-path <path>] [--no-auto-install] [-y|--yes]
+          drederick init [--skip-creds] [--skip-scope] [-y|--yes]
           drederick analyze <binary-path> [--json] [--verbose] [--output <file>] [-s <scope>]
 
         SUBCOMMANDS:
@@ -312,6 +341,11 @@ public sealed class CommandLineOptions
                                Pass --datasette-path to use an explicit binary,
                                or --no-auto-install to require one already present.
                                Default bind 127.0.0.1:8001.
+          init                 Interactive first-time setup wizard. Verifies tools,
+                               optionally sets up credentials, and creates a sample
+                               scope file. Pass --skip-creds to skip credential setup,
+                               --skip-scope to skip scope file creation, or --yes for
+                               non-interactive mode.
           analyze              Assess binary security hardening, dependencies, and
                                suspicious characteristics. Requires a binary path.
                                With --scope, enforces scope on the binary path.

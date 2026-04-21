@@ -46,6 +46,17 @@ if (opts.DoctorSubcommand)
     return 0;
 }
 
+// --- init subcommand: first-time setup wizard --------------------------------
+if (opts.InitSubcommand)
+{
+    Directory.CreateDirectory(opts.OutputDir);
+    var initAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var initAudit = new AuditLog(initAuditPath);
+    var initCmd = new InitCommand(Console.In, Console.Out, Console.Error, initAudit);
+    return await initCmd.ExecuteAsync(opts);
+}
+// --- end init subcommand -------------------------------------------------------
+
 // --- datasette-integration: serve subcommand -------------------------------
 if (opts.ServeSubcommand)
 {

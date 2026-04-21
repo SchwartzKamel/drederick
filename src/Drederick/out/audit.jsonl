@@ -6,3 +6,185 @@
 {"ts":"2026-04-21T05:41:20.7828242\u002B00:00","pid":547555,"event":"binary-analyzer.finish","file_path":"/bin/bash","findings_count":5,"duration_ms":120}
 {"ts":"2026-04-21T05:41:55.7809466\u002B00:00","pid":548162,"event":"binary-analyzer.start","file_path":"/bin/bash"}
 {"ts":"2026-04-21T05:41:55.8970880\u002B00:00","pid":548162,"event":"binary-analyzer.finish","file_path":"/bin/bash","findings_count":5,"duration_ms":116}
+{"ts":"2026-04-21T06:04:44.9148978\u002B00:00","pid":551051,"event":"init.start","skip_creds":false,"skip_scope":false,"assume_yes":true}
+{"ts":"2026-04-21T06:04:45.0161282\u002B00:00","pid":551051,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.0616895\u002B00:00","pid":551051,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.0825463\u002B00:00","pid":551051,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:04:45.1357745\u002B00:00","pid":551051,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.1986557\u002B00:00","pid":551051,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.2970050\u002B00:00","pid":551051,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.3012603\u002B00:00","pid":551051,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:04:45.3473495\u002B00:00","pid":551051,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:04:45.3547549\u002B00:00","pid":551051,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:04:45.4393343\u002B00:00","pid":551051,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.6221294\u002B00:00","pid":551051,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.7760158\u002B00:00","pid":551051,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.8518839\u002B00:00","pid":551051,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:45.8950668\u002B00:00","pid":551051,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.1259392\u002B00:00","pid":551051,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.1996749\u002B00:00","pid":551051,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.2589560\u002B00:00","pid":551051,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.3214248\u002B00:00","pid":551051,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.3803089\u002B00:00","pid":551051,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.4364814\u002B00:00","pid":551051,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.4372617\u002B00:00","pid":551051,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.4830999\u002B00:00","pid":551051,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.5292167\u002B00:00","pid":551051,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:04:46.5801295\u002B00:00","pid":551051,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:18.6405835\u002B00:00","pid":551234,"event":"init.start","skip_creds":true,"skip_scope":true,"assume_yes":true}
+{"ts":"2026-04-21T06:05:18.7270113\u002B00:00","pid":551234,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:18.7717217\u002B00:00","pid":551234,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:18.7871869\u002B00:00","pid":551234,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:05:18.8344514\u002B00:00","pid":551234,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:18.8853239\u002B00:00","pid":551234,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:18.9323364\u002B00:00","pid":551234,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:18.9357064\u002B00:00","pid":551234,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:05:18.9464000\u002B00:00","pid":551234,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:05:18.9493016\u002B00:00","pid":551234,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:05:19.0075009\u002B00:00","pid":551234,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.1348549\u002B00:00","pid":551234,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.2783112\u002B00:00","pid":551234,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.3181188\u002B00:00","pid":551234,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.3499011\u002B00:00","pid":551234,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.4899236\u002B00:00","pid":551234,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.5455881\u002B00:00","pid":551234,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.6040793\u002B00:00","pid":551234,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.6661206\u002B00:00","pid":551234,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.7202086\u002B00:00","pid":551234,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.7760300\u002B00:00","pid":551234,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.7768496\u002B00:00","pid":551234,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.8259222\u002B00:00","pid":551234,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.8787454\u002B00:00","pid":551234,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:05:19.9226860\u002B00:00","pid":551234,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.4394080\u002B00:00","pid":551868,"event":"init.start","skip_creds":true,"skip_scope":true,"assume_yes":false}
+{"ts":"2026-04-21T06:08:43.5254282\u002B00:00","pid":551868,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.5724272\u002B00:00","pid":551868,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.5831032\u002B00:00","pid":551868,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:08:43.6575109\u002B00:00","pid":551868,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.7348595\u002B00:00","pid":551868,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.7871764\u002B00:00","pid":551868,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.7897577\u002B00:00","pid":551868,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:08:43.7959160\u002B00:00","pid":551868,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:08:43.7973136\u002B00:00","pid":551868,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:08:43.8526853\u002B00:00","pid":551868,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:43.9675213\u002B00:00","pid":551868,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.1064018\u002B00:00","pid":551868,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.1538290\u002B00:00","pid":551868,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.1871907\u002B00:00","pid":551868,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.3028022\u002B00:00","pid":551868,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.3502682\u002B00:00","pid":551868,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.3925505\u002B00:00","pid":551868,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.4337918\u002B00:00","pid":551868,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.4695677\u002B00:00","pid":551868,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.5014629\u002B00:00","pid":551868,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.5021126\u002B00:00","pid":551868,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.5368378\u002B00:00","pid":551868,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.5684681\u002B00:00","pid":551868,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.6024939\u002B00:00","pid":551868,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:08:44.6504332\u002B00:00","pid":551868,"event":"init.finish","status":"success"}
+{"ts":"2026-04-21T06:09:48.8581992\u002B00:00","pid":552908,"event":"init.start","skip_creds":true,"skip_scope":true,"assume_yes":false}
+{"ts":"2026-04-21T06:09:48.9341197\u002B00:00","pid":552908,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:48.9732002\u002B00:00","pid":552908,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:48.9878928\u002B00:00","pid":552908,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:09:49.0348773\u002B00:00","pid":552908,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.0878913\u002B00:00","pid":552908,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.1268114\u002B00:00","pid":552908,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.1290962\u002B00:00","pid":552908,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:09:49.1349653\u002B00:00","pid":552908,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:09:49.1361440\u002B00:00","pid":552908,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:09:49.1722085\u002B00:00","pid":552908,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.2890067\u002B00:00","pid":552908,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.4018006\u002B00:00","pid":552908,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.4909278\u002B00:00","pid":552908,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.5576163\u002B00:00","pid":552908,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.7166127\u002B00:00","pid":552908,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.7456282\u002B00:00","pid":552908,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.7812952\u002B00:00","pid":552908,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.8232795\u002B00:00","pid":552908,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.8542426\u002B00:00","pid":552908,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.8869145\u002B00:00","pid":552908,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.8877142\u002B00:00","pid":552908,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.9380311\u002B00:00","pid":552908,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:49.9792254\u002B00:00","pid":552908,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:50.0111716\u002B00:00","pid":552908,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:50.0676794\u002B00:00","pid":552908,"event":"init.finish","status":"success"}
+{"ts":"2026-04-21T06:09:56.2046270\u002B00:00","pid":552975,"event":"init.start","skip_creds":true,"skip_scope":false,"assume_yes":false}
+{"ts":"2026-04-21T06:09:56.2945920\u002B00:00","pid":552975,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.3962241\u002B00:00","pid":552975,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.4124709\u002B00:00","pid":552975,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:09:56.4704836\u002B00:00","pid":552975,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.5229655\u002B00:00","pid":552975,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.5844507\u002B00:00","pid":552975,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.5888639\u002B00:00","pid":552975,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:09:56.5954847\u002B00:00","pid":552975,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:09:56.5967766\u002B00:00","pid":552975,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:09:56.6503982\u002B00:00","pid":552975,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.7907310\u002B00:00","pid":552975,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.9318937\u002B00:00","pid":552975,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:56.9754151\u002B00:00","pid":552975,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.0221878\u002B00:00","pid":552975,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.1568578\u002B00:00","pid":552975,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.1986695\u002B00:00","pid":552975,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.2344095\u002B00:00","pid":552975,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.2727695\u002B00:00","pid":552975,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.3107505\u002B00:00","pid":552975,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.3488658\u002B00:00","pid":552975,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.3493969\u002B00:00","pid":552975,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.3860820\u002B00:00","pid":552975,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.4454461\u002B00:00","pid":552975,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.5392006\u002B00:00","pid":552975,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:09:57.6106120\u002B00:00","pid":552975,"event":"init.finish","status":"success"}
+{"ts":"2026-04-21T06:10:07.0325761\u002B00:00","pid":553062,"event":"init.start","skip_creds":false,"skip_scope":true,"assume_yes":false}
+{"ts":"2026-04-21T06:10:07.1730735\u002B00:00","pid":553062,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.2368379\u002B00:00","pid":553062,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.2529186\u002B00:00","pid":553062,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:10:07.2915132\u002B00:00","pid":553062,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.3326478\u002B00:00","pid":553062,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.3700516\u002B00:00","pid":553062,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.3722324\u002B00:00","pid":553062,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:10:07.3780565\u002B00:00","pid":553062,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:10:07.3793347\u002B00:00","pid":553062,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:10:07.4295155\u002B00:00","pid":553062,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.6151631\u002B00:00","pid":553062,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.8196381\u002B00:00","pid":553062,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:07.9868056\u002B00:00","pid":553062,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:08.1866291\u002B00:00","pid":553062,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.1613117\u002B00:00","pid":553062,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.2539122\u002B00:00","pid":553062,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.3475678\u002B00:00","pid":553062,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.4821101\u002B00:00","pid":553062,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.5297309\u002B00:00","pid":553062,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.6422845\u002B00:00","pid":553062,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.6434989\u002B00:00","pid":553062,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.8485836\u002B00:00","pid":553062,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.9056533\u002B00:00","pid":553062,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:09.9651610\u002B00:00","pid":553062,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:10.0363451\u002B00:00","pid":553062,"event":"init.finish","status":"success"}
+{"ts":"2026-04-21T06:10:16.3869983\u002B00:00","pid":553135,"event":"init.start","skip_creds":false,"skip_scope":true,"assume_yes":false}
+{"ts":"2026-04-21T06:10:16.4615818\u002B00:00","pid":553135,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.4920648\u002B00:00","pid":553135,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.5038415\u002B00:00","pid":553135,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
+{"ts":"2026-04-21T06:10:16.5397367\u002B00:00","pid":553135,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.5709790\u002B00:00","pid":553135,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.6016679\u002B00:00","pid":553135,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.6041730\u002B00:00","pid":553135,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
+{"ts":"2026-04-21T06:10:16.6100347\u002B00:00","pid":553135,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
+{"ts":"2026-04-21T06:10:16.6112392\u002B00:00","pid":553135,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
+{"ts":"2026-04-21T06:10:16.6454821\u002B00:00","pid":553135,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.7353963\u002B00:00","pid":553135,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.8250762\u002B00:00","pid":553135,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.8618029\u002B00:00","pid":553135,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:16.8917795\u002B00:00","pid":553135,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.0721959\u002B00:00","pid":553135,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.1410319\u002B00:00","pid":553135,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.1909865\u002B00:00","pid":553135,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.2468968\u002B00:00","pid":553135,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.2925310\u002B00:00","pid":553135,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.3328825\u002B00:00","pid":553135,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.3335826\u002B00:00","pid":553135,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.3672866\u002B00:00","pid":553135,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.4092564\u002B00:00","pid":553135,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.4510851\u002B00:00","pid":553135,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:10:17.4550978\u002B00:00","pid":553135,"event":"init.credential_setup","started":true}
+{"ts":"2026-04-21T06:10:17.4661045\u002B00:00","pid":553135,"event":"init.credential_setup","status":"complete","has_token":true,"has_proxy":true}
+{"ts":"2026-04-21T06:10:17.5310530\u002B00:00","pid":553135,"event":"init.finish","status":"success"}
