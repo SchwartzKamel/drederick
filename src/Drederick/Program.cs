@@ -5,6 +5,7 @@ using Drederick.Cli;
 using Drederick.Doctor;
 using Drederick.Enrichment;
 using Drederick.Memory;
+using Drederick.Ops;
 using Drederick.Recon;
 using Drederick.Reporting;
 using Drederick.Scope;
@@ -199,6 +200,46 @@ Console.WriteLine(opts.LabMode
 }
 
 var kb = KnowledgeBase.Load(opts.MemoryPath);
+
+// ANCHOR: vpn-preflight (owned by vpn-htb-ergonomics task)
+// Before queueing any scan jobs: resolve --htb-host aliases via /etc/hosts,
+// then decide whether any target sits in a known HTB CIDR. If so, probe for
+// an active tun*/tap* VPN and warn (or abort with --require-vpn) when the
+// tunnel is down. Always records the outcome to audit + findings.db tooling.
+foreach (var htbHost in opts.HtbHosts)
+{
+    var resolved = HtbRanges.TryResolve(htbHost);
+    if (resolved is null)
+    {
+        Console.Error.WriteLine($"--htb-host {htbHost}: could not resolve via /etc/hosts or DNS; skipping.");
+        audit.Record("vpn.htb_host.unresolved", new Dictionary<string, object?> { ["host"] = htbHost });
+        continue;
+    }
+    var resolvedStr = resolved.ToString();
+    if (!targets.Contains(resolvedStr, StringComparer.OrdinalIgnoreCase))
+    {
+        targets.Add(resolvedStr);
+    }
+    audit.Record("vpn.htb_host.resolved", new Dictionary<string, object?>
+    {
+        ["host"] = htbHost,
+        ["ip"] = resolvedStr,
+    });
+}
+{
+    var vpnReport = new SqliteReport(opts.OutputDir);
+    var vpnOutcome = VpnPreflight.Run(
+        new VpnPreflight.Options(targets, opts.RequireVpn, opts.SkipVpnCheck),
+        audit,
+        vpnReport,
+        Console.Error);
+    if (vpnOutcome == VpnPreflightOutcome.AbortNoVpn)
+    {
+        Console.Error.WriteLine("vpn-preflight: --require-vpn is set and no tun* interface is up. Aborting.");
+        return 3;
+    }
+}
+// END ANCHOR: vpn-preflight
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode);
 var http = new HttpProbeTool(scope, audit);

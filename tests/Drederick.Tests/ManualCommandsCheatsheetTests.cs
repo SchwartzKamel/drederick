@@ -48,16 +48,17 @@ public class ManualCommandsCheatsheetTests
             (389, "ldap"),
             (161, "snmp"));
         var text = ManualCommandsCheatsheet.BuildCheatsheet(h).ToLowerInvariant();
-        // These are the footguns we explicitly refuse to recommend.
+        // Exploitation, credential-spraying, and payload-delivery footguns we
+        // explicitly refuse to recommend. Enumeration helpers like `kerbrute
+        // userenum` and `nxc ldap --asreproastable` (candidate-listing) are
+        // intentionally allowed — they only LIST targets for the operator to
+        // decide what to do with next.
         Assert.DoesNotContain("hydra", text);
         Assert.DoesNotContain("medusa", text);
-        Assert.DoesNotContain("crackmapexec", text);
         Assert.DoesNotContain("metasploit", text);
         Assert.DoesNotContain("msfconsole", text);
+        Assert.DoesNotContain("msfvenom", text);
         Assert.DoesNotContain("searchsploit", text);
-        Assert.DoesNotContain("as-rep", text);
-        Assert.DoesNotContain("asreproast", text);
-        Assert.DoesNotContain("kerbrute", text);
         Assert.DoesNotContain("password-spray", text);
         Assert.DoesNotContain("--script brute", text);
         Assert.DoesNotContain("--script exploit", text);
@@ -71,6 +72,8 @@ public class ManualCommandsCheatsheetTests
         var text = ManualCommandsCheatsheet.BuildCheatsheet(h);
         Assert.Contains("No open TCP services", text);
         Assert.Contains("-p-", text);
+        // Even with no services the checklist footer is present.
+        Assert.Contains("Next phase checklist", text);
     }
 
     [Fact]

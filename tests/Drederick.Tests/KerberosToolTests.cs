@@ -2,7 +2,7 @@ using Drederick.Audit;
 using Drederick.Recon;
 using Drederick.Scope;
 using Xunit;
-using KerbLdap = Drederick.Recon.Kerberos;
+using KerbLdap = Drederick.Recon.Shared;
 
 namespace Drederick.Tests;
 

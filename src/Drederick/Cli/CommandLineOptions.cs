@@ -49,6 +49,15 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool LabMode { get; set; } = true;
 
+    // ANCHOR: vpn-preflight-options (owned by vpn-htb-ergonomics task)
+    /// <summary>Abort the run if an HTB CIDR target is passed but no tun*/tap* VPN interface is up.</summary>
+    public bool RequireVpn { get; set; }
+    /// <summary>Skip the VPN preflight check entirely (including the HTB CIDR detection).</summary>
+    public bool SkipVpnCheck { get; set; }
+    /// <summary>Explicit <c>.htb</c> hostnames to resolve via /etc/hosts and add to the target set.</summary>
+    public List<string> HtbHosts { get; } = new();
+    // END ANCHOR: vpn-preflight-options
+
     // ANCHOR: poc-aggregator-option (owned by poc-aggregator task)
     /// <summary>
     /// When true (the DEFAULT), the post-recon PoC aggregator copies public
@@ -146,6 +155,14 @@ public sealed class CommandLineOptions
                 case "--no-fetch-poc":
                     o.FetchPoc = false; break;
                 // END ANCHOR: poc-aggregator-flag-parse
+                // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
+                case "--require-vpn":
+                    o.RequireVpn = true; break;
+                case "--skip-vpn-check":
+                    o.SkipVpnCheck = true; break;
+                case "--htb-host":
+                    o.HtbHosts.Add(RequireNext(args, ref i, a)); break;
+                // END ANCHOR: vpn-preflight-flag-parse
                 case "-j":
                 case "--parallel":
                     {
@@ -291,6 +308,12 @@ public sealed class CommandLineOptions
                                executes fetched PoCs.
           --no-fetch-poc       Record PoC references (URLs, module names, template paths)
                                only; do not copy any PoC bytes locally.
+          --require-vpn        Abort with a non-zero exit if any resolved target falls inside
+                               a known Hack The Box CIDR and no tun*/tap* VPN interface is up.
+          --skip-vpn-check     Disable the HTB / VPN preflight entirely.
+          --htb-host <host>    Explicit .htb hostname to resolve via /etc/hosts and add to the
+                               target set (repeatable). Useful when the scope file lists an IP
+                               but the operator only knows the HTB hostname.
           --lab                Lab/CTF mode (DEFAULT). Relaxes scope-breadth cap to /8 (v4)
                                and /32 (v6), enables extra ENUMERATION NSE categories
                                (safe,default,discovery,version), and emits a per-host

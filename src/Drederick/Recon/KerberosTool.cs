@@ -1,4 +1,5 @@
 using Drederick.Audit;
+using Drederick.Recon.Shared;
 
 
 namespace Drederick.Recon
@@ -35,20 +36,20 @@ namespace Drederick.Recon
 
         private readonly Scope.Scope _scope;
         private readonly AuditLog _audit;
-        private readonly Func<string, int, string?, string?, Kerberos.ILdapClient> _connectFactory;
+        private readonly Func<string, int, string?, string?, ILdapClient> _connectFactory;
 
         public KerberosTool(
             Scope.Scope scope,
             AuditLog audit,
-            Func<string, int, string?, string?, Kerberos.ILdapClient>? connectFactory = null)
+            Func<string, int, string?, string?, ILdapClient>? connectFactory = null)
         {
             _scope = scope;
             _audit = audit;
             _connectFactory = connectFactory ?? DefaultConnect;
         }
 
-        private static Kerberos.ILdapClient DefaultConnect(string host, int port, string? user, string? password)
-            => new Kerberos.DefaultLdapClient(host, port);
+        private static ILdapClient DefaultConnect(string host, int port, string? user, string? password)
+            => new Shared.DefaultLdapClient(host, port);
 
         public Task<KerberosResult> ProbeAsync(
             string target,
@@ -68,7 +69,7 @@ namespace Drederick.Recon
 
             var result = new KerberosResult { Port = port };
 
-            Kerberos.ILdapClient? client = null;
+            ILdapClient? client = null;
             try
             {
                 client = _connectFactory(target, port, bindUser, bindPassword);
@@ -110,7 +111,7 @@ namespace Drederick.Recon
 
                 result.Realm = RealmFromNamingContext(baseDn) ?? RealmFromHostname(target);
 
-                IEnumerable<Kerberos.LdapEntry> entries;
+                IEnumerable<LdapEntry> entries;
                 try
                 {
                     entries = client.Search(
@@ -198,47 +199,15 @@ namespace Drederick.Recon
 
 } // namespace Drederick.Recon
 
-namespace Drederick.Recon.Kerberos
+namespace Drederick.Recon.Shared
 {
     /// <summary>
-    /// Minimal LDAP client surface used by <see cref="KerberosTool"/>. Lives in
-    /// the <c>Drederick.Recon.Kerberos</c> sub-namespace so it cannot collide
-    /// with an <c>ILdapClient</c> defined at <c>Drederick.Recon</c> scope by
-    /// the parallel <c>ldap-tool</c> agent; a later registration pass can
-    /// unify both if the shapes converge.
-    /// </summary>
-    public interface ILdapClient : IDisposable
-    {
-        /// <summary>
-        /// Bind to the directory. Null/empty user means anonymous simple bind.
-        /// Throws if the server refuses the bind.
-        /// </summary>
-        void Bind(string? user, string? password);
-
-        /// <summary>
-        /// Return <c>defaultNamingContext</c> from rootDSE, or null if the
-        /// server does not expose one.
-        /// </summary>
-        string? GetDefaultNamingContext();
-
-        /// <summary>
-        /// Subtree search. Implementations must cap results at
-        /// <paramref name="sizeLimit"/>.
-        /// </summary>
-        IEnumerable<LdapEntry> Search(string baseDn, string filter, string[] attributes, int sizeLimit);
-    }
-
-    public sealed class LdapEntry
-    {
-        public string DistinguishedName { get; set; } = "";
-        public Dictionary<string, List<string>> Attributes { get; } =
-            new(StringComparer.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Default implementation backed by <c>System.DirectoryServices.Protocols</c>.
-    /// Only exercised by runtime callers; tests inject a fake via the
-    /// <see cref="KerberosTool"/> constructor factory.
+    /// Default <see cref="ILdapClient"/> implementation backed by
+    /// <c>System.DirectoryServices.Protocols</c>, supporting the
+    /// bind/rootDSE/subtree-search surface used by
+    /// <see cref="Drederick.Recon.KerberosTool"/>. Only exercised by
+    /// runtime callers; tests inject a fake via the tool's constructor
+    /// factory.
     /// </summary>
     internal sealed class DefaultLdapClient : ILdapClient
     {

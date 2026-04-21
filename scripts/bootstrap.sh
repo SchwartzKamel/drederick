@@ -23,10 +23,25 @@ apt-get install -y \
   git \
   curl \
   jq \
-  pipx
+  pipx \
+  hashcat \
+  john \
+  responder \
+  gobuster \
+  ffuf \
+  sqlmap \
+  nuclei \
+  seclists \
+  evil-winrm \
+  enum4linux-ng \
+  wfuzz \
+  python3-impacket
 
 # pipx / datasette must live in the invoking user's home, not root's.
 REAL_USER="${SUDO_USER:-$USER}"
-sudo -u "$REAL_USER" -H bash -lc 'pipx ensurepath && pipx install datasette'
+sudo -u "$REAL_USER" -H bash -lc 'pipx ensurepath && pipx install datasette && pipx install netexec || true'
+
+# kerbrute has no apt package; install via Go into the invoking user's GOPATH.
+sudo -u "$REAL_USER" -H bash -lc 'command -v go >/dev/null && go install github.com/ropnop/kerbrute@latest || true'
 
 echo "bootstrap: done. run 'drederick doctor' to verify."

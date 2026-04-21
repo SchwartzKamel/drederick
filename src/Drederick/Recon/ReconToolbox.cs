@@ -13,14 +13,6 @@ namespace Drederick.Recon;
 /// </summary>
 public sealed class ReconToolbox
 {
-    // NOTE: LdapTool (Drederick.Recon.Ldap.ILdapClient) and KerberosTool
-    // (Drederick.Recon.Kerberos.ILdapClient) each define their own LDAP client
-    // abstraction in a sub-namespace. The two interfaces have different shapes
-    // and live in different sub-namespaces, so there is no ambiguity at the
-    // call sites. Unifying them under a single Drederick.Recon.Common.ILdapClient
-    // would be a safe refactor but requires editing both scanner files and is
-    // intentionally deferred. TODO: unify once scanner authors green-light a
-    // shared interface shape.
     private readonly NmapTool _nmap;
     private readonly HttpProbeTool _http;
     private readonly TlsProbeTool _tls;

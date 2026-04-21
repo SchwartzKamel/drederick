@@ -18,6 +18,7 @@ public class DatasetteMetadataTests : IDisposable
 
     public void Dispose()
     {
+        SqliteConnection.ClearAllPools();
         try { Directory.Delete(_dir, recursive: true); } catch { }
     }
 

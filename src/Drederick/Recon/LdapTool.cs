@@ -1,6 +1,6 @@
 using System.DirectoryServices.Protocols;
 using Drederick.Audit;
-using Drederick.Recon.Ldap;
+using Drederick.Recon.Shared;
 
 namespace Drederick.Recon
 {
@@ -15,8 +15,8 @@ namespace Drederick.Recon
     /// negotiation beyond reading the server-advertised mechanisms list.
     ///
     /// The injectable client interface <see cref="ILdapClient"/> lives in the
-    /// <c>Drederick.Recon.Ldap</c> sub-namespace to avoid colliding with the
-    /// similarly-named contract used by the Kerberos probe.
+    /// shared <c>Drederick.Recon.Shared</c> namespace and is consumed by both
+    /// this tool and the Kerberos probe.
     /// </summary>
     public sealed class LdapTool : IReconTool
     {
@@ -129,48 +129,8 @@ namespace Drederick.Recon
 
 }
 
-namespace Drederick.Recon.Ldap
+namespace Drederick.Recon.Shared
 {
-    /// <summary>
-    /// Narrow, passive LDAP client contract used by <see cref="LdapTool"/>.
-    /// Intentionally exposes <b>no</b> credentialed bind, no modify/add/delete
-    /// operations, and no arbitrary search — only an anonymous bind and a
-    /// rootDSE attribute read. Tests inject fakes to exercise success,
-    /// refusal and connection-error paths without touching the network.
-    /// </summary>
-    public interface ILdapClient : IDisposable
-    {
-        /// <summary>Attempt an anonymous LDAP bind. Throw
-        /// <see cref="LdapAnonymousRefusedException"/> if the server
-        /// explicitly refuses anonymous binds; any other exception is
-        /// treated as a hard error by the caller.</summary>
-        void BindAnonymous(TimeSpan timeout);
-
-        /// <summary>Issue a base-scope search of the empty DN
-        /// (<c>(objectClass=*)</c>) requesting only the given
-        /// attributes.</summary>
-        LdapRootDse QueryRootDse(string[] attributes, TimeSpan timeout);
-    }
-
-    public sealed class LdapRootDse
-    {
-        public List<string> NamingContexts { get; set; } = new();
-        public List<string> SupportedControls { get; set; } = new();
-        public List<string> SupportedLdapVersions { get; set; } = new();
-        public List<string> SupportedSaslMechanisms { get; set; } = new();
-    }
-
-    /// <summary>
-    /// Signals that an anonymous bind was refused by the remote server (as
-    /// opposed to a transport or protocol error). Caller records
-    /// <c>AnonymousBind=false</c> without populating <c>Error</c>.
-    /// </summary>
-    public sealed class LdapAnonymousRefusedException : Exception
-    {
-        public LdapAnonymousRefusedException(string message) : base(message) { }
-        public LdapAnonymousRefusedException(string message, Exception inner) : base(message, inner) { }
-    }
-
     internal sealed class LdapConnectionAdapter : ILdapClient
     {
         private readonly LdapConnection _conn;

@@ -1,7 +1,7 @@
 using System.Reflection;
 using Drederick.Audit;
 using Drederick.Recon;
-using Drederick.Recon.Ldap;
+using Drederick.Recon.Shared;
 using Drederick.Scope;
 using Xunit;
 
@@ -146,13 +146,54 @@ public class LdapToolTests
     }
 
     [Fact]
-    public void ILdapClient_Exposes_No_Credentialed_Bind()
+    public void LdapTool_Never_Invokes_Credentialed_Bind()
     {
-        // Structural/negative test: the LDAP client contract surfaces only
-        // an anonymous bind. No method accepting a username/password/
-        // credential object is reachable — preventing the tool (or any
-        // future refactor) from accidentally attempting a credentialed bind.
-        var methods = typeof(ILdapClient).GetMethods(BindingFlags.Public | BindingFlags.Instance);
+        // Structural/negative test: after the ILdapClient consolidation the
+        // shared interface surfaces a credentialed Bind(user, password) for
+        // the Kerberos probe, so we can no longer enforce "no credentialed
+        // bind" at the type-system level. Instead, assert at the source
+        // level that LdapTool.cs never invokes it — the tool must only
+        // call BindAnonymous on its client.
+        string? dir = AppContext.BaseDirectory;
+        string? sourcePath = null;
+        for (int i = 0; i < 10 && dir is not null; i++)
+        {
+            var candidate = Path.Combine(dir, "src", "Drederick", "Recon", "LdapTool.cs");
+            if (File.Exists(candidate)) { sourcePath = candidate; break; }
+            dir = Path.GetDirectoryName(dir);
+        }
+        Assert.NotNull(sourcePath);
+        var src = File.ReadAllText(sourcePath!);
+
+        // Strip // line comments and XML doc so the prose in the class
+        // summary (which legitimately mentions credentialed binds as
+        // something we do NOT do) cannot trip the guard.
+        var lines = src.Split('\n');
+        var code = string.Join('\n', lines
+            .Select(l =>
+            {
+                var trimmed = l.TrimStart();
+                if (trimmed.StartsWith("//")) return string.Empty;
+                return l;
+            }));
+
+        // The anonymous-only contract method:
+        Assert.Contains("BindAnonymous", code);
+        // Forbidden: any non-anonymous bind invocation, or NetworkCredential use.
+        Assert.DoesNotContain("client.Bind(", code);
+        Assert.DoesNotContain(".Bind(user", code);
+        Assert.DoesNotContain("NetworkCredential", code);
+    }
+
+    [Fact]
+    public void ILdapClient_LdapTool_Surface_Exposes_No_Credentialed_Bind()
+    {
+        // The specific methods LdapTool consumes (BindAnonymous, QueryRootDse)
+        // must never surface credential-shaped parameters, even though the
+        // unified ILdapClient also carries a Bind(user, password) overload
+        // used only by the Kerberos probe.
+        var methods = typeof(ILdapClient).GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.Name is "BindAnonymous" or "QueryRootDse");
         foreach (var m in methods)
         {
             foreach (var p in m.GetParameters())

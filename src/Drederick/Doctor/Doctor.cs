@@ -10,6 +10,8 @@ namespace Drederick.Doctor;
 public sealed class DoctorRunner
 {
     // Canonical, ordered list. First entry (nmap) is required for recon.
+    // HTB/CTF pentest tooling is appended after the originals so existing
+    // reports and snapshots stay stable for the first ten entries.
     public static readonly IReadOnlyList<string> Tools = new[]
     {
         "nmap",
@@ -22,10 +24,72 @@ public sealed class DoctorRunner
         "curl",
         "jq",
         "datasette",
+        // HTB/CTF tools:
+        "netexec",
+        "impacket",
+        "hashcat",
+        "john",
+        "responder",
+        "gobuster",
+        "ffuf",
+        "sqlmap",
+        "nuclei",
+        "kerbrute",
+        "seclists",
+        "evil-winrm",
+        "enum4linux-ng",
+        "wfuzz",
     };
 
     // Tools that are strictly required for drederick's recon core.
     private static readonly HashSet<string> Required = new() { "nmap" };
+
+    /// <summary>
+    /// Per-tool detection metadata: alternate binary names to search under
+    /// and version-probe argument(s) to try. Tools whose "installation" is
+    /// a directory rather than a binary (e.g. <c>seclists</c>) are handled
+    /// directly in <see cref="Detect"/>.
+    /// </summary>
+    public sealed record ToolSpec(
+        string Name,
+        string[] Aliases,
+        string[] VersionArgs);
+
+    public static readonly IReadOnlyDictionary<string, ToolSpec> Specs =
+        new Dictionary<string, ToolSpec>
+        {
+            ["searchsploit"] = new("searchsploit", Array.Empty<string>(), new[] { "-h" }),
+            ["netexec"] = new("netexec", new[] { "nxc", "crackmapexec" }, new[] { "--version" }),
+            ["impacket"] = new("impacket", new[] { "impacket-GetNPUsers", "GetNPUsers.py" }, new[] { "--help" }),
+            ["hashcat"] = new("hashcat", Array.Empty<string>(), new[] { "--version" }),
+            ["john"] = new("john", Array.Empty<string>(), new[] { "--version" }),
+            ["responder"] = new("responder", new[] { "Responder", "Responder.py" }, new[] { "-h" }),
+            ["gobuster"] = new("gobuster", Array.Empty<string>(), new[] { "version" }),
+            ["ffuf"] = new("ffuf", Array.Empty<string>(), new[] { "-V" }),
+            ["sqlmap"] = new("sqlmap", Array.Empty<string>(), new[] { "--version" }),
+            ["nuclei"] = new("nuclei", Array.Empty<string>(), new[] { "-version" }),
+            ["kerbrute"] = new("kerbrute", Array.Empty<string>(), new[] { "version" }),
+            ["evil-winrm"] = new("evil-winrm", Array.Empty<string>(), new[] { "--version", "-h" }),
+            ["enum4linux-ng"] = new("enum4linux-ng", Array.Empty<string>(), new[] { "--help" }),
+            ["wfuzz"] = new("wfuzz", Array.Empty<string>(), new[] { "--version" }),
+        };
+
+    /// <summary>
+    /// Filesystem paths accepted as "seclists is installed". Evaluated at call
+    /// time so tests can override <c>HOME</c>.
+    /// </summary>
+    public static IReadOnlyList<string> SeclistsCandidateDirs()
+    {
+        var home = Environment.GetEnvironmentVariable("HOME")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return new[]
+        {
+            "/usr/share/seclists",
+            "/usr/share/SecLists",
+            System.IO.Path.Combine(home, "seclists"),
+            System.IO.Path.Combine(home, "SecLists"),
+        };
+    }
 
     private readonly AuditLog _audit;
     private readonly IToolLocator _locator;
@@ -44,12 +108,40 @@ public sealed class DoctorRunner
         var results = new List<ToolInfo>(Tools.Count);
         foreach (var t in Tools)
         {
-            var path = _locator.Which(t);
+            Specs.TryGetValue(t, out var spec);
+            string? path = null;
             string? version = null;
-            if (path is not null)
+
+            if (t == "seclists")
             {
-                version = TryGetVersion(path, t);
+                foreach (var dir in SeclistsCandidateDirs())
+                {
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    {
+                        path = dir;
+                        break;
+                    }
+                }
             }
+            else
+            {
+                // Try the canonical name, then any declared aliases (e.g.
+                // netexec falls back to `nxc` / `crackmapexec`).
+                path = _locator.Which(t);
+                if (path is null && spec is not null)
+                {
+                    foreach (var alias in spec.Aliases)
+                    {
+                        path = _locator.Which(alias);
+                        if (path is not null) break;
+                    }
+                }
+                if (path is not null)
+                {
+                    version = TryGetVersion(path, t);
+                }
+            }
+
             var info = new ToolInfo(t, Found: path is not null, Version: version, Path: path, DetectedAt: now);
             results.Add(info);
             _audit.Record("doctor.detect", new Dictionary<string, object?>
@@ -65,13 +157,12 @@ public sealed class DoctorRunner
 
     private string? TryGetVersion(string path, string name)
     {
-        // Most tools respond to --version; a handful prefer -v / -V. Try the
-        // common forms in order and take the first non-empty first-line output.
-        string[] argForms = name switch
-        {
-            "searchsploit" => new[] { "-h" },
-            _ => new[] { "--version" },
-        };
+        // Most tools respond to --version; some prefer -v / -V / -h / a
+        // `version` subcommand. Per-tool overrides live in Specs; everything
+        // else falls through to `--version`.
+        string[] argForms = Specs.TryGetValue(name, out var spec) && spec.VersionArgs.Length > 0
+            ? spec.VersionArgs
+            : new[] { "--version" };
         foreach (var arg in argForms)
         {
             try
