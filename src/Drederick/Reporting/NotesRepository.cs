@@ -18,6 +18,27 @@ public sealed class NotesRepository
             throw new ArgumentException("databasePath is required", nameof(databasePath));
         }
         _dbPath = databasePath;
+        EnsureSchema();
+    }
+
+    /// <summary>
+    /// Ensures the notes table exists. Safe to call repeatedly (idempotent).
+    /// Creates the database file if missing so note operations work standalone
+    /// before any scan has produced findings.db.
+    /// </summary>
+    private void EnsureSchema()
+    {
+        var dir = Path.GetDirectoryName(_dbPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        using var conn = new SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = NotesSchema.GetCreateTableDdl();
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>

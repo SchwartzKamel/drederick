@@ -464,6 +464,12 @@ public sealed class CommandLineOptions
                                --json: machine-readable output. --verbose: include
                                detailed strings and dependencies. --output: write
                                results to file (default: stdout).
+          note <op>            Manage operator notes in findings.db
+                               (CTF flags, creds, screenshots, observations).
+                               Ops: add, list, view, search, flags, archive,
+                               delete. Flags: --title, --content, --flag,
+                               --tags, --category, --host, --file, --archived,
+                               --json. See 'drederick note' (no args) for help.
 
         REQUIRED:
           -s, --scope <file>   Scope file (one CIDR/IP per line, '#' comments).
