@@ -233,6 +233,7 @@ public sealed class DoctorRunner
 
         var hasPipx = _locator.Which("pipx") is not null;
         var hasUv = _locator.Which("uv") is not null;
+        var isRoot = IsRoot();
 
         var plan = new List<(ToolInfo Tool, InstallRecipe? Recipe)>();
         foreach (var t in missing)
@@ -249,14 +250,19 @@ public sealed class DoctorRunner
                 output.WriteLine($"  - {t.Name}: no recipe for {PackageManagerDetection.DisplayName(pm)} (skip)");
                 continue;
             }
-            var prefix = r.NeedsSudo ? "sudo " : string.Empty;
+            var prefix = (r.NeedsSudo && !isRoot) ? "sudo " : string.Empty;
             output.WriteLine($"  - {t.Name}: {prefix}{r.Command}");
             if (r.NeedsSudo) needsAnySudo = true;
         }
-        if (needsAnySudo)
+        if (needsAnySudo && !isRoot)
         {
             output.WriteLine("doctor: some steps require sudo. Drederick will NOT re-exec as root.");
             output.WriteLine("        It will invoke the commands shown above via `sudo`, which may prompt you.");
+            output.WriteLine("        If sudo prompts are getting swallowed, rerun as root: `sudo drederick doctor --install`");
+        }
+        if (isRoot)
+        {
+            output.WriteLine("doctor: running as root — sudo prefixes will be stripped.");
         }
 
         if (!assumeYes)
@@ -319,26 +325,125 @@ public sealed class DoctorRunner
             }
             // END ANCHOR: datasette-bootstrap
 
-            var cmd = r.NeedsSudo ? $"sudo {r.Command}" : r.Command;
-            output.WriteLine($"doctor: running: {cmd}");
-            int exit;
-            try
+            var (exit, _) = RunInstallStep(r.Command, r.NeedsSudo, isRoot, t.Name, output);
+
+            if (exit != 0 && !string.IsNullOrEmpty(r.FallbackCommand))
             {
-                (exit, _, _) = _runner.RunShell(cmd, timeoutSeconds: 600);
+                output.WriteLine($"doctor: {t.Name} primary install failed (exit={exit}); trying fallback.");
+                if (!string.IsNullOrEmpty(r.FallbackRationale))
+                {
+                    output.WriteLine($"  rationale: {r.FallbackRationale}");
+                }
+                var (fbExit, _) = RunInstallStep(r.FallbackCommand!, r.FallbackNeedsSudo, isRoot, t.Name, output);
+                if (fbExit == 0)
+                {
+                    exit = 0;
+                }
             }
-            catch (Exception ex)
-            {
-                output.WriteLine($"doctor: {t.Name} install failed to launch: {ex.Message}");
-                exit = -1;
-            }
+
             outcomes.Add(new InstallOutcome(t.Name, r.Command, exit, Skipped: false));
-            _audit.Record("doctor.install", new Dictionary<string, object?>
-            {
-                ["name"] = t.Name,
-                ["command"] = cmd,
-                ["exit_code"] = exit,
-            });
         }
         return outcomes;
+    }
+
+    /// <summary>
+    /// Run one install command, log a doctor.install audit event, print stderr on
+    /// failure, and return the exit code and the shell-escaped command actually
+    /// invoked (after sudo/GOBIN massaging). Never throws — exceptions produce
+    /// exit code -1 and are logged.
+    /// </summary>
+    private (int Exit, string Command) RunInstallStep(string command, bool needsSudo, bool isRoot, string toolName, TextWriter output)
+    {
+        // Re-point `go install …` at a PATH-visible dir so the freshly built
+        // binary is actually runnable, instead of landing in ~/go/bin (not on
+        // PATH on most Kali/Parrot boxes).
+        var cmd = RewriteGoInstall(command, isRoot);
+        // Strip the sudo prefix when we're already root — sudo still works,
+        // but stripping avoids spurious prompts and keeps audit entries clean.
+        if (needsSudo && !isRoot)
+        {
+            cmd = $"sudo {cmd}";
+        }
+        output.WriteLine($"doctor: running: {cmd}");
+        int exit;
+        string stderr = string.Empty;
+        string stdout = string.Empty;
+        try
+        {
+            (exit, stdout, stderr) = _runner.RunShell(cmd, timeoutSeconds: 600);
+        }
+        catch (Exception ex)
+        {
+            output.WriteLine($"doctor: {toolName} install failed to launch: {ex.Message}");
+            exit = -1;
+        }
+        if (exit != 0)
+        {
+            var trimmedErr = (stderr ?? string.Empty).Trim();
+            var trimmedOut = (stdout ?? string.Empty).Trim();
+            if (trimmedErr.Length > 0)
+            {
+                output.WriteLine($"  stderr: {Truncate(trimmedErr, 1200)}");
+            }
+            if (trimmedErr.Length == 0 && trimmedOut.Length > 0)
+            {
+                output.WriteLine($"  stdout: {Truncate(trimmedOut, 1200)}");
+            }
+        }
+        _audit.Record("doctor.install", new Dictionary<string, object?>
+        {
+            ["name"] = toolName,
+            ["command"] = cmd,
+            ["exit_code"] = exit,
+            ["stderr_tail"] = Truncate((stderr ?? string.Empty).Trim(), 800),
+        });
+        return (exit, cmd);
+    }
+
+    private static string Truncate(string s, int max)
+        => s.Length <= max ? s : s.Substring(0, max) + "…[truncated]";
+
+    /// <summary>
+    /// If this is a `go install …` command, prefix it with
+    /// <c>GOBIN=&lt;destdir&gt;</c> so the built binary lands on PATH.
+    /// Destination is <c>/usr/local/bin</c> when running as root, otherwise
+    /// <c>$HOME/.local/bin</c> (created if missing).
+    /// </summary>
+    private static string RewriteGoInstall(string command, bool isRoot)
+    {
+        if (!command.TrimStart().StartsWith("go install ", StringComparison.Ordinal))
+        {
+            return command;
+        }
+        string gobin;
+        if (isRoot)
+        {
+            gobin = "/usr/local/bin";
+        }
+        else
+        {
+            var home = Environment.GetEnvironmentVariable("HOME")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            gobin = System.IO.Path.Combine(home, ".local", "bin");
+        }
+        try { System.IO.Directory.CreateDirectory(gobin); } catch { /* best-effort */ }
+        // GOBIN overrides GOPATH/bin for `go install` — this is the supported go tool contract.
+        return $"GOBIN={ShellQuote(gobin)} {command}";
+    }
+
+    private static string ShellQuote(string s)
+        => s.Contains('\'') ? "\"" + s.Replace("\"", "\\\"") + "\"" : $"'{s}'";
+
+    private static bool IsRoot()
+    {
+        // On Linux/macOS, $UID=0 (euid 0) means root. .NET 8+ exposes this
+        // directly via Environment.IsPrivilegedProcess; fall back to UserName
+        // for older runtimes or edge cases where euid != ruid.
+        try
+        {
+            if (Environment.IsPrivilegedProcess) return true;
+        }
+        catch { /* not available on all runtimes */ }
+        return string.Equals(Environment.UserName, "root", StringComparison.Ordinal);
     }
 }

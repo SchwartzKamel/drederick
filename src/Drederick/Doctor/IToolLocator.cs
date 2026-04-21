@@ -22,7 +22,35 @@ public sealed class PathToolLocator : IToolLocator
         else
         {
             var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-            _dirs = path.Split(System.IO.Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+            var parts = path.Split(System.IO.Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+            // Include Go's default bin dirs too — `go install` drops binaries
+            // there even when the operator hasn't yet added them to PATH.
+            // Without this, Which("nuclei") misses a nuclei that was just
+            // installed via `go install`, and doctor thinks install failed.
+            foreach (var d in GoBinFallbacks())
+            {
+                if (!parts.Contains(d)) parts.Add(d);
+            }
+            _dirs = parts.ToArray();
+        }
+    }
+
+    private static IEnumerable<string> GoBinFallbacks()
+    {
+        var gobin = Environment.GetEnvironmentVariable("GOBIN");
+        if (!string.IsNullOrEmpty(gobin)) yield return gobin;
+        var gopath = Environment.GetEnvironmentVariable("GOPATH");
+        if (!string.IsNullOrEmpty(gopath))
+        {
+            yield return System.IO.Path.Combine(gopath, "bin");
+        }
+        var home = Environment.GetEnvironmentVariable("HOME")
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(home))
+        {
+            yield return System.IO.Path.Combine(home, "go", "bin");
+            yield return System.IO.Path.Combine(home, ".local", "bin");
         }
     }
 

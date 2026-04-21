@@ -9,7 +9,10 @@ public sealed record InstallRecipe(
     string ToolName,
     string Command,
     bool NeedsSudo,
-    string Rationale);
+    string Rationale,
+    string? FallbackCommand = null,
+    bool FallbackNeedsSudo = false,
+    string? FallbackRationale = null);
 
 public static class InstallRecipes
 {
@@ -104,7 +107,10 @@ public static class InstallRecipes
             case "gobuster":
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y gobuster", true,
-                        "gobuster DNS/dir/vhost brute-forcer.");
+                        "gobuster DNS/dir/vhost brute-forcer.",
+                        FallbackCommand: "go install github.com/OJ/gobuster/v3@latest",
+                        FallbackNeedsSudo: false,
+                        FallbackRationale: "fallback: go install (requires Go on PATH).");
                 if (pm == PackageManager.Brew)
                     return new InstallRecipe(tool, "brew install gobuster", false,
                         "gobuster DNS/dir/vhost brute-forcer.");
@@ -116,7 +122,10 @@ public static class InstallRecipes
             case "ffuf":
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y ffuf", true,
-                        "ffuf web fuzzer.");
+                        "ffuf web fuzzer.",
+                        FallbackCommand: "go install github.com/ffuf/ffuf/v2@latest",
+                        FallbackNeedsSudo: false,
+                        FallbackRationale: "fallback: go install (requires Go on PATH).");
                 if (pm == PackageManager.Brew)
                     return new InstallRecipe(tool, "brew install ffuf", false, "ffuf web fuzzer.");
                 return new InstallRecipe(tool,
@@ -142,7 +151,10 @@ public static class InstallRecipes
                 // Go install is the upstream-blessed path; Kali apt also works.
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y nuclei", true,
-                        "nuclei template scanner (Kali apt).");
+                        "nuclei template scanner (Kali apt).",
+                        FallbackCommand: "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
+                        FallbackNeedsSudo: false,
+                        FallbackRationale: "fallback: go install (upstream-recommended; requires Go on PATH).");
                 return new InstallRecipe(tool,
                     "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
                     NeedsSudo: false,
