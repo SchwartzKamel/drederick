@@ -48,6 +48,82 @@
           "label_column": "name",
           "facets": ["source"],
           "sort": "name"
+        },
+        "notes": {
+          "title": "Notes",
+          "description": "Researcher annotations: flagged findings, tactical notes, file attachments, and categorized observations linked to hosts or services.",
+          "label_column": "title",
+          "searchable": ["title", "content", "tags"],
+          "sort_desc": "created_at",
+          "facets": ["category", "is_flag", "is_archived"],
+          "columns": {
+            "id": {
+              "description": "Primary key."
+            },
+            "title": {
+              "description": "Note title (searchable)."
+            },
+            "content": {
+              "description": "Note body text."
+            },
+            "created_at": {
+              "description": "ISO-8601 timestamp when created."
+            },
+            "updated_at": {
+              "description": "ISO-8601 timestamp of last modification.",
+              "hidden": true
+            },
+            "created_by": {
+              "description": "Username of the note creator.",
+              "hidden": true
+            },
+            "is_flag": {
+              "description": "True if this note is marked as a tactical flag (📍)."
+            },
+            "flag_format": {
+              "description": "Flag style or format when is_flag=true.",
+              "hidden": true
+            },
+            "tags": {
+              "description": "Comma-separated tags for filtering and search."
+            },
+            "category": {
+              "description": "Note category (e.g., 'finding', 'tactic', 'observation', 'todo')."
+            },
+            "host_id": {
+              "description": "Foreign key → hosts.id. Links note to a target host.",
+              "foreign_key": ["findings", "hosts", "id"]
+            },
+            "service_id": {
+              "description": "Foreign key → services.id. Links note to a specific service.",
+              "hidden": true
+            },
+            "file_data": {
+              "description": "Binary attachment (BLOB).",
+              "hidden": true
+            },
+            "file_name": {
+              "description": "Filename of the attachment."
+            },
+            "file_mime_type": {
+              "description": "MIME type of the attachment.",
+              "hidden": true
+            },
+            "file_size": {
+              "description": "Size in bytes of the attachment.",
+              "hidden": true
+            },
+            "source": {
+              "description": "Origin of the note (e.g., 'cli', 'web', 'api').",
+              "hidden": true
+            },
+            "is_archived": {
+              "description": "True if the note is archived (soft-deleted)."
+            }
+          },
+          "units": {
+            "file_size": "bytes"
+          }
         }
       },
       "queries": {
