@@ -1,6 +1,8 @@
 using Drederick.Agent;
 using Drederick.Audit;
+using Drederick.Enrichment;
 using Drederick.Memory;
+using Drederick.Ops;
 using Drederick.Recon;
 using Drederick.Reporting;
 using Drederick.Scope;
@@ -147,6 +149,26 @@ public sealed class DrederickHost
         var toolbox = BuildToolbox(scope, audit, options.LabMode);
         toolbox.SeedFromKnowledgeBase(kb, targets);
 
+        // VPN preflight — optional, matches CLI's Program.cs behaviour. When
+        // RequireVpn is set and the tunnel is down for an HTB target, abort
+        // before any scanner work runs.
+        if (options.VpnPreflight)
+        {
+            var vpnReport = new SqliteReport(options.OutputDir);
+            var outcome = VpnPreflight.Run(
+                new VpnPreflight.Options(targets, options.RequireVpn, SkipVpnCheck: false),
+                audit,
+                vpnReport,
+                stderr: TextWriter.Null);
+            Emit(progress, ScanEventKind.VpnPreflight, message: outcome.ToString());
+            if (outcome == VpnPreflightOutcome.AbortNoVpn)
+            {
+                audit.Record("session.aborted", new Dictionary<string, object?> { ["reason"] = "vpn-required" });
+                throw new InvalidOperationException(
+                    "VPN preflight: require-vpn is set and no tun* interface is up for the HTB target(s).");
+            }
+        }
+
         IReconAgentRunner runner;
         if (options.UseAgent)
         {
@@ -207,6 +229,59 @@ public sealed class DrederickHost
         ManualCommandsCheatsheet.Write(options.OutputDir, allFindings, emitCheatsheet: options.LabMode);
         new SqliteReport(options.OutputDir).WriteReport(allFindings);
         Emit(progress, ScanEventKind.ReportWritten, message: "findings.db");
+
+        // CVE annotation — matches CLI behaviour: default on, tolerates
+        // offline (NvdCache returns empty on failure). Errors are audited
+        // but never abort the run.
+        if (options.AnnotateCves)
+        {
+            try
+            {
+                var annotator = new CveAnnotator();
+                var annotation = await annotator.AnnotateAsync(allFindings, options.OutputDir, ct).ConfigureAwait(false);
+                audit.Record("cve.annotate", new Dictionary<string, object?>
+                {
+                    ["cves"] = annotation.CveCount,
+                    ["findings"] = annotation.FindingCount,
+                    ["cache_loaded"] = annotation.CacheLoaded,
+                });
+                Emit(progress, ScanEventKind.CveAnnotated,
+                    message: $"{annotation.CveCount} CVE(s) across {annotation.FindingCount} finding(s)");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                audit.Record("cve.annotate.error", new Dictionary<string, object?> { ["error"] = ex.Message });
+                Emit(progress, ScanEventKind.Error, message: $"cve-annotate: {ex.Message}");
+            }
+        }
+
+        // PoC aggregation — matches CLI behaviour. Invariant: aggregate +
+        // present, never execute. We only record references (URL, SHA-256,
+        // optional cached-path); nothing is launched from the cache.
+        if (options.AggregatePocRefs)
+        {
+            try
+            {
+                var pocAggregator = new PocAggregator();
+                var pocResult = await pocAggregator
+                    .AggregateAsync(allFindings, options.OutputDir, options.FetchPocSource, ct)
+                    .ConfigureAwait(false);
+                audit.Record("poc.aggregate", new Dictionary<string, object?>
+                {
+                    ["cves"] = pocResult.CveCount,
+                    ["refs"] = pocResult.RefCount,
+                    ["cached"] = pocResult.CachedCount,
+                    ["fetch_poc"] = options.FetchPocSource,
+                });
+                Emit(progress, ScanEventKind.PocAggregated,
+                    message: $"{pocResult.RefCount} ref(s) across {pocResult.CveCount} CVE(s); cached={pocResult.CachedCount}");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                audit.Record("poc.aggregate.error", new Dictionary<string, object?> { ["error"] = ex.Message });
+                Emit(progress, ScanEventKind.Error, message: $"poc-aggregate: {ex.Message}");
+            }
+        }
 
         kb.Merge(allFindings);
         kb.Save(options.MemoryPath);

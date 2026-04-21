@@ -107,10 +107,19 @@
             </DockPanel>
           </Border>
 
-          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8" Spacing="16">
-            <CheckBox Content="Lab/CTF mode" IsChecked="{Binding Run.LabMode, Mode=TwoWay}" />
-            <CheckBox Content="Use agent runner (requires OPENAI_API_KEY)" IsChecked="{Binding Run.UseAgent, Mode=TwoWay}" />
-            <CheckBox Content="Allow-broad" IsChecked="{Binding Run.AllowBroad, Mode=TwoWay}" />
+          <StackPanel Grid.Row="3" Orientation="Vertical" Margin="0,8">
+            <StackPanel Orientation="Horizontal" Spacing="16">
+              <CheckBox Content="Lab/CTF mode" IsChecked="{Binding Run.LabMode, Mode=TwoWay}" />
+              <CheckBox Content="Use agent runner (requires OPENAI_API_KEY)" IsChecked="{Binding Run.UseAgent, Mode=TwoWay}" />
+              <CheckBox Content="Allow-broad" IsChecked="{Binding Run.AllowBroad, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,6,0,0">
+              <CheckBox Content="Annotate CVEs"        IsChecked="{Binding Run.AnnotateCves, Mode=TwoWay}" />
+              <CheckBox Content="Aggregate PoC refs"   IsChecked="{Binding Run.AggregatePocRefs, Mode=TwoWay}" />
+              <CheckBox Content="Cache PoC source"     IsChecked="{Binding Run.FetchPocSource, Mode=TwoWay}" />
+              <CheckBox Content="VPN preflight"        IsChecked="{Binding Run.VpnPreflight, Mode=TwoWay}" />
+              <CheckBox Content="Require VPN (abort if down)" IsChecked="{Binding Run.RequireVpn, Mode=TwoWay}" />
+            </StackPanel>
           </StackPanel>
 
           <Grid Grid.Row="4" ColumnDefinitions="*,*" Margin="0,8">
@@ -169,6 +178,88 @@
               </ListBox.ItemTemplate>
             </ListBox>
           </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- DOCTOR TAB =============================================== -->
+      <TabItem Header="Doctor">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Detect / install operator-workstation tooling. Drederick never re-execs as root — some recipes may prompt you for sudo themselves. Scans a target? No. This only modifies your workstation, at your consent." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Doctor.OutputDir, Mode=TwoWay}" />
+            <Button    Grid.Column="2" Content="Detect" Margin="8,0,0,0" Command="{Binding Doctor.DetectCommand}" />
+          </Grid>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16" Margin="0,8">
+            <TextBlock Text="Package manager:" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Doctor.PackageManager}" Foreground="#9CDCFE" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Doctor.StatusLine}" Foreground="#AAA" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <Border Grid.Row="3" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+            <ListBox ItemsSource="{Binding Doctor.Tools}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="80,140,180,*" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding Status}"  Foreground="#DCDCAA" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}"    FontWeight="Bold" />
+                    <TextBlock Grid.Column="2" Text="{Binding Version}" Foreground="#AAA" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="3" Text="{Binding Path}"    Foreground="#888" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+
+          <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <CheckBox Content="I consent to install missing tools (may invoke sudo)"
+                      IsChecked="{Binding Doctor.InstallConfirmed, Mode=TwoWay}" />
+            <Button   Content="Install missing" Classes="accent"
+                      Command="{Binding Doctor.InstallMissingCommand}" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- FINDINGS TAB ============================================= -->
+      <TabItem Header="Findings">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Read-only summary of out/findings.db. For SQL-queryable triage, click 'Open in Datasette' to launch drederick serve." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Findings.OutputDir, Mode=TwoWay}" />
+            <Button    Grid.Column="2" Content="Reload" Margin="8,0,0,0" Command="{Binding Findings.ReloadCommand}" />
+            <Button    Grid.Column="3" Content="Open in Datasette" Margin="8,0,0,0"
+                       Classes="accent" Command="{Binding Findings.OpenDatasetteCommand}" />
+          </Grid>
+
+          <Border Grid.Row="2" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="0,8">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,6" Spacing="16">
+                <TextBlock Text="{Binding Findings.HostCount,    StringFormat='hosts: {0}'}"   Foreground="#9CDCFE" />
+                <TextBlock Text="{Binding Findings.ServiceCount, StringFormat='services: {0}'}" Foreground="#DCDCAA" />
+                <TextBlock Text="{Binding Findings.CveCount,     StringFormat='CVEs: {0}'}"    Foreground="#CE9178" />
+                <TextBlock Text="{Binding Findings.PocRefCount,  StringFormat='PoC refs: {0}'}" Foreground="#C586C0" />
+              </StackPanel>
+              <ListBox ItemsSource="{Binding Findings.Rows}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="180,80,*" Margin="0,2">
+                      <TextBlock Grid.Column="0" Text="{Binding Address}"      FontWeight="Bold" />
+                      <TextBlock Grid.Column="1" Text="{Binding ServiceCount, StringFormat='{}{0} svc'}" Foreground="#AAA" />
+                      <TextBlock Grid.Column="2" Text="{Binding Services}"     Foreground="#888" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+
+          <TextBlock Grid.Row="3" Text="{Binding Findings.Status}" Foreground="#AAA" Margin="0,4,0,0" TextWrapping="Wrap" />
         </Grid>
       </TabItem>
 

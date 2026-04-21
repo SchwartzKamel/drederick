@@ -21,4 +21,9 @@ public sealed record RunOptions(
     bool UseAgent = false,
     int HostConcurrency = 4,
     int ServiceConcurrency = 8,
-    bool ContentDiscovery = false);
+    bool ContentDiscovery = false,
+    bool AnnotateCves = true,
+    bool AggregatePocRefs = true,
+    bool FetchPocSource = true,
+    bool VpnPreflight = true,
+    bool RequireVpn = false);

@@ -74,6 +74,21 @@ public sealed partial class RunViewModel : ObservableObject
     private string _memoryPath = "memory/findings.json";
 
     [ObservableProperty]
+    private bool _annotateCves = true;
+
+    [ObservableProperty]
+    private bool _aggregatePocRefs = true;
+
+    [ObservableProperty]
+    private bool _fetchPocSource = true;
+
+    [ObservableProperty]
+    private bool _vpnPreflight = true;
+
+    [ObservableProperty]
+    private bool _requireVpn;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStart))]
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
@@ -132,6 +147,26 @@ public sealed partial class RunViewModel : ObservableObject
         ErrorMessage = null;
         _progress.Clear();
 
+        // Audit the UI-driven run start for parity with CLI auditability.
+        try
+        {
+            Directory.CreateDirectory(OutputDir);
+            using var audit = new Drederick.Audit.AuditLog(Path.Combine(OutputDir, "audit.jsonl"));
+            audit.Record("ui.run.start", new Dictionary<string, object?>
+            {
+                ["targets"] = Targets.ToArray(),
+                ["lab_mode"] = LabMode,
+                ["use_agent"] = UseAgent,
+                ["allow_broad"] = AllowBroad,
+                ["annotate_cves"] = AnnotateCves,
+                ["aggregate_poc_refs"] = AggregatePocRefs,
+                ["fetch_poc_source"] = FetchPocSource,
+                ["vpn_preflight"] = VpnPreflight,
+                ["require_vpn"] = RequireVpn,
+            });
+        }
+        catch { /* non-fatal — DrederickHost will also record session.start */ }
+
         var opts = new RunOptions(
             ScopePath: _scope.ScopePath,
             Targets: Targets.ToList(),
@@ -139,7 +174,12 @@ public sealed partial class RunViewModel : ObservableObject
             MemoryPath: MemoryPath,
             LabMode: LabMode,
             AllowBroad: AllowBroad,
-            UseAgent: UseAgent);
+            UseAgent: UseAgent,
+            AnnotateCves: AnnotateCves,
+            AggregatePocRefs: AggregatePocRefs,
+            FetchPocSource: FetchPocSource,
+            VpnPreflight: VpnPreflight,
+            RequireVpn: RequireVpn);
 
         var progress = new Progress<ScanEvent>(_progress.Append);
         _cts = new CancellationTokenSource();
