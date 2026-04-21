@@ -411,7 +411,11 @@ public sealed class DoctorRunner
     /// </summary>
     private static string RewriteGoInstall(string command, bool isRoot)
     {
-        if (!command.TrimStart().StartsWith("go install ", StringComparison.Ordinal))
+        // Match `go install` anywhere a shell token can start — at the start of
+        // the command or after `;`, `&&`, `||`, `|`, or whitespace. Fallback
+        // commands wrap `go install` inside bootstrap shells, so a simple
+        // "starts with" check would miss them.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(command, @"(^|[;&|\s])go\s+install\s"))
         {
             return command;
         }
@@ -427,8 +431,10 @@ public sealed class DoctorRunner
             gobin = System.IO.Path.Combine(home, ".local", "bin");
         }
         try { System.IO.Directory.CreateDirectory(gobin); } catch { /* best-effort */ }
-        // GOBIN overrides GOPATH/bin for `go install` — this is the supported go tool contract.
-        return $"GOBIN={ShellQuote(gobin)} {command}";
+        // Export GOBIN at the front of the shell so every inner `go install`
+        // (including ones inside bootstrap scripts) inherits it. GOBIN
+        // overrides GOPATH/bin for `go install` — supported go-tool contract.
+        return $"export GOBIN={ShellQuote(gobin)}; {command}";
     }
 
     private static string ShellQuote(string s)

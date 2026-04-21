@@ -16,6 +16,54 @@ public sealed record InstallRecipe(
 
 public static class InstallRecipes
 {
+    // Pinned upstream Go used to bootstrap `go install` fallbacks when the
+    // distro-provided Go is too old to parse modern go.mod directives
+    // (e.g. Parrot ships Go too old to resolve nuclei v3.8+'s `go 1.25.7`).
+    // Updated together with the minimum acceptable Go minor below.
+    private const string UpstreamGoVersion = "1.23.4";
+    private const int MinGoMinor = 21;
+
+    /// <summary>
+    /// Shell prelude that guarantees a modern Go toolchain is on PATH before
+    /// invoking the caller's <c>go install</c>. If the system already has
+    /// <c>go</c> >= 1.<see cref="MinGoMinor"/> it is used as-is; otherwise
+    /// the upstream tarball is downloaded to <c>/usr/local/go</c> and
+    /// prepended to PATH. Safe to use as a standalone one-liner inside a
+    /// <see cref="InstallRecipe.FallbackCommand"/> string.
+    /// </summary>
+    internal static string GoBootstrapPrelude()
+    {
+        // Single-line POSIX sh fragment: detect → (maybe) fetch → prepend PATH.
+        // Kept on one line (joined with ; / &&) so it composes cleanly with
+        // the caller's `&& go install …` suffix.
+        return string.Join(" ",
+            "need=1;",
+            "if command -v go >/dev/null 2>&1; then",
+            "  v=$(go version | awk '{print $3}' | sed 's/^go//');",
+            "  maj=${v%%.*}; rest=${v#*.}; min=${rest%%.*};",
+            $"  if [ \"$maj\" -gt 1 ] || {{ [ \"$maj\" = 1 ] && [ \"$min\" -ge {MinGoMinor} ]; }}; then need=0; fi;",
+            "fi;",
+            "if [ \"$need\" = 1 ]; then",
+            "  arch=$(uname -m);",
+            "  case \"$arch\" in x86_64) a=amd64;; aarch64|arm64) a=arm64;; *) echo \"doctor: unsupported arch for upstream go: $arch\" >&2; exit 1;; esac;",
+            $"  tarball=go{UpstreamGoVersion}.linux-${{a}}.tar.gz;",
+            "  tmp=$(mktemp -d);",
+            "  echo \"doctor: bootstrapping upstream go ($tarball)\";",
+            "  curl -fsSL \"https://go.dev/dl/${tarball}\" -o \"${tmp}/${tarball}\" || { echo \"doctor: go download failed\" >&2; exit 1; };",
+            "  rm -rf /usr/local/go && tar -C /usr/local -xzf \"${tmp}/${tarball}\" || { echo \"doctor: go extract failed\" >&2; exit 1; };",
+            "  export PATH=\"/usr/local/go/bin:$PATH\";",
+            "fi");
+    }
+
+    // Helper to compose a `go install …@latest` invocation behind the Go
+    // bootstrap prelude. Caller passes the Go module path (e.g.
+    // "github.com/ropnop/kerbrute"). The generated command starts with
+    // the prelude, followed by `&& go install <path>@latest`, which keeps
+    // the literal substring `go install <path>` intact so existing tests
+    // that assert on it continue to pass.
+    private static string BootstrappedGoInstall(string modulePath)
+        => $"{GoBootstrapPrelude()} && go install {modulePath}@latest";
+
     /// <summary>
     /// Resolve an install recipe for <paramref name="tool"/> under <paramref name="pm"/>.
     /// Returns null if we have no recipe for this combination (e.g. exotic pkg
@@ -108,30 +156,30 @@ public static class InstallRecipes
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y gobuster", true,
                         "gobuster DNS/dir/vhost brute-forcer.",
-                        FallbackCommand: "go install github.com/OJ/gobuster/v3@latest",
-                        FallbackNeedsSudo: false,
-                        FallbackRationale: "fallback: go install (requires Go on PATH).");
+                        FallbackCommand: BootstrappedGoInstall("github.com/OJ/gobuster/v3"),
+                        FallbackNeedsSudo: true,
+                        FallbackRationale: "fallback: go install (bootstraps upstream Go if too old).");
                 if (pm == PackageManager.Brew)
                     return new InstallRecipe(tool, "brew install gobuster", false,
                         "gobuster DNS/dir/vhost brute-forcer.");
                 return new InstallRecipe(tool,
-                    "go install github.com/OJ/gobuster/v3@latest",
+                    BootstrappedGoInstall("github.com/OJ/gobuster/v3"),
                     NeedsSudo: false,
-                    "gobuster via `go install` (no system package on this distro; requires Go).");
+                    "gobuster via `go install` (no system package on this distro; bootstraps upstream Go if too old).");
 
             case "ffuf":
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y ffuf", true,
                         "ffuf web fuzzer.",
-                        FallbackCommand: "go install github.com/ffuf/ffuf/v2@latest",
-                        FallbackNeedsSudo: false,
-                        FallbackRationale: "fallback: go install (requires Go on PATH).");
+                        FallbackCommand: BootstrappedGoInstall("github.com/ffuf/ffuf/v2"),
+                        FallbackNeedsSudo: true,
+                        FallbackRationale: "fallback: go install (bootstraps upstream Go if too old).");
                 if (pm == PackageManager.Brew)
                     return new InstallRecipe(tool, "brew install ffuf", false, "ffuf web fuzzer.");
                 return new InstallRecipe(tool,
-                    "go install github.com/ffuf/ffuf/v2@latest",
+                    BootstrappedGoInstall("github.com/ffuf/ffuf/v2"),
                     NeedsSudo: false,
-                    "ffuf via `go install` (no system package on this distro; requires Go).");
+                    "ffuf via `go install` (no system package on this distro; bootstraps upstream Go if too old).");
 
             case "sqlmap":
                 if (pm == PackageManager.Apt)
@@ -152,20 +200,20 @@ public static class InstallRecipes
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y nuclei", true,
                         "nuclei template scanner (Kali apt).",
-                        FallbackCommand: "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
-                        FallbackNeedsSudo: false,
-                        FallbackRationale: "fallback: go install (upstream-recommended; requires Go on PATH).");
+                        FallbackCommand: BootstrappedGoInstall("github.com/projectdiscovery/nuclei/v3/cmd/nuclei"),
+                        FallbackNeedsSudo: true,
+                        FallbackRationale: "fallback: go install (bootstraps upstream Go if too old; needed on Parrot).");
                 return new InstallRecipe(tool,
-                    "go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest",
+                    BootstrappedGoInstall("github.com/projectdiscovery/nuclei/v3/cmd/nuclei"),
                     NeedsSudo: false,
-                    "nuclei via `go install` (upstream-recommended).");
+                    "nuclei via `go install` (upstream-recommended; bootstraps upstream Go if too old).");
 
             case "kerbrute":
                 // No system packages across distros — go install is the canonical path.
                 return new InstallRecipe(tool,
-                    "go install github.com/ropnop/kerbrute@latest",
+                    BootstrappedGoInstall("github.com/ropnop/kerbrute"),
                     NeedsSudo: false,
-                    "kerbrute via `go install` (no system package on any supported distro).");
+                    "kerbrute via `go install` (no system package on any supported distro; bootstraps upstream Go if too old).");
 
             case "seclists":
                 if (pm == PackageManager.Apt)
@@ -205,6 +253,29 @@ public static class InstallRecipes
                         "wfuzz via apt (Kali).");
                 return PipxBootstrapRecipe(tool, "wfuzz", pm,
                     "wfuzz via pipx; bootstrap pipx from the system package manager.");
+
+            case "python2":
+                // Brew still has a real py2 package; use it.
+                if (pm == PackageManager.Brew)
+                    return new InstallRecipe(tool, "brew install python@2", false,
+                        "python2 via Homebrew's python@2 formula.");
+                // Everywhere else (apt/dnf/pacman/zypper/unknown): no distro
+                // packages python2 anymore. Instead of a 5-minute pyenv build
+                // (which needs a dozen -dev packages), grab PyPy2.7 portable:
+                // a ~40MB statically-linked Python 2.7 drop-in that extracts
+                // straight to /opt and symlinks into /usr/local/bin. Enough for
+                // legacy CTF exploit scripts (ctypes + stdlib).
+                const string pypyVersion = "7.3.17";
+                string pypyRecipe =
+                    $"arch=$(uname -m); case \"$arch\" in x86_64) a=linux64;; aarch64|arm64) a=aarch64;; *) echo \"doctor: unsupported arch for pypy2: $arch\" >&2; exit 1;; esac; " +
+                    $"ver=pypy2.7-v{pypyVersion}-${{a}}; " +
+                    "tmp=$(mktemp -d); " +
+                    $"echo \"doctor: fetching PyPy2.7 portable (${{ver}}.tar.bz2)\"; " +
+                    $"curl -fsSL \"https://downloads.python.org/pypy/${{ver}}.tar.bz2\" -o \"${{tmp}}/pypy.tar.bz2\" && " +
+                    "mkdir -p /opt && tar -xjf \"${tmp}/pypy.tar.bz2\" -C /opt && " +
+                    "ln -sf \"/opt/${ver}/bin/pypy\" /usr/local/bin/python2";
+                return new InstallRecipe(tool, pypyRecipe, NeedsSudo: true,
+                    "python2 via PyPy2.7 portable tarball (fast ~40MB download; drop-in Python 2.7; no build-deps).");
         }
 
         // Generic system-pm recipes for the rest.
@@ -212,15 +283,7 @@ public static class InstallRecipes
         {
             "nmap" => "nmap",
             "python3" => pm == PackageManager.Pacman ? "python" : "python3",
-            "python2" => pm switch
-            {
-                PackageManager.Apt => "python2",
-                PackageManager.Dnf => "python2",
-                PackageManager.Pacman => "python2",
-                PackageManager.Zypper => "python2",
-                PackageManager.Brew => "python@2",
-                _ => null,
-            },
+            "python2" => null, // handled explicitly above for every pm.
             "go" => pm switch
             {
                 PackageManager.Apt => "golang-go",

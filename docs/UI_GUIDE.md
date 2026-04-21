@@ -52,14 +52,13 @@ the current UI.
 
 ### Planned architecture
 
-```text
-  Browser (React/TS/Tailwind)
-        │  fetch + SignalR
-        ▼
-  ASP.NET Core host (src/Drederick.Web)
-        │
-        ▼
-  Drederick core (Recon / Scope / Audit / Memory / Enrichment)
+```mermaid
+flowchart TD
+    Browser["Browser<br/>(React / TS / Tailwind)"]
+    Host["ASP.NET Core host<br/>(src/Drederick.Web)"]
+    Core["Drederick core<br/>(Recon / Scope / Audit /<br/>Memory / Enrichment)"]
+    Browser -->|fetch + SignalR| Host
+    Host --> Core
 ```
 
 - **Bind:** `127.0.0.1` only.

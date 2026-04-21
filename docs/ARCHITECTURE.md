@@ -36,66 +36,19 @@ are still in the roadmap; everything else is in the tree today.
 
 ## Layers {#layers}
 
-```text
-                      ┌───────────────────────────┐
-                      │   CLI  (Drederick.Cli)    │
-                      │   Options, help, flags    │
-                      └─────────────┬─────────────┘
-                                    ▼
-                      ┌───────────────────────────┐
-                      │   Scope (default-deny)    │  lab: /8 v4, /32 v6
-                      │   ScopeLoader → Scope     │  strict: /16 v4, /48 v6
-                      └─────────────┬─────────────┘
-                                    ▼
-                      ┌───────────────────────────┐
-                      │   Doctor (preflight)      │  optional; `drederick
-                      │   detects / installs      │  doctor [--install]`
-                      │   operator tooling        │
-                      └─────────────┬─────────────┘
-                                    ▼
-        ┌────────────────── ReconToolbox ─────────────────┐
-        │   Audit (JSONL) │ Budget │ IReadOnlyList<IReconTool>
-        │                                                 │
-        │   NmapTool    HttpProbeTool   TlsProbeTool      │
-        │   DnsProbeTool                                  │
-        │   SmbTool     FtpTool         SshTool           │
-        │   SnmpTool    LdapTool        RpcTool           │
-        │   KerberosTool (SPN listing only)               │
-        │   DnsZoneTransferTool (AXFR)                    │
-        │   HttpContentDiscoveryTool (path-only)          │
-        │   TlsCipherEnumTool                             │
-        └─────────────────────┬───────────────────────────┘
-                              ▼
-                   ┌── HostWorkerPool ──┐
-                   │ bounded Channel<…> │
-                   │ --host-concurrency │
-                   │ --service-conc.    │
-                   └──────────┬─────────┘
-                              ▼
-           ┌───────────── Runner ──────────────┐
-           │   AdaptiveRunner (deterministic)  │
-           │   MicrosoftAgentRunner (LLM)      │
-           └──────────────────┬────────────────┘
-                              ▼
-                ┌──────── Enrichment ──────────┐
-                │   CveAnnotator (NVD 2.0)     │
-                │   PocAggregator (searchsploit│
-                │   / GHSA / MSF / nuclei)     │
-                │   — aggregate + present,     │
-                │     never execute.           │
-                └──────────────┬───────────────┘
-                               ▼
-                ┌──────── Reporting ──────────┐
-                │  JsonReport  MarkdownReport │
-                │  ManualCommandsCheatsheet   │
-                │  SqliteReport (findings.db) │
-                └──────────────┬──────────────┘
-                               ▼
-           ┌───────── Presentation / Memory ─────────┐
-           │  `drederick serve` → Datasette          │
-           │  Planned: Drederick.Web + React UI      │
-           │  KnowledgeBase (memory/findings.json)   │
-           └─────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    CLI["CLI (Drederick.Cli)<br/>Options, help, flags"]
+    Scope["Scope (default-deny)<br/>ScopeLoader → Scope<br/>lab: /8 v4, /32 v6 · strict: /16 v4, /48 v6"]
+    Doctor["Doctor (preflight)<br/>optional; drederick doctor [--install]<br/>detects / installs operator tooling"]
+    Toolbox["ReconToolbox<br/>Audit (JSONL) · Budget · IReadOnlyList&lt;IReconTool&gt;<br/>─────<br/>NmapTool · HttpProbeTool · TlsProbeTool<br/>DnsProbeTool<br/>SmbTool · FtpTool · SshTool<br/>SnmpTool · LdapTool · RpcTool<br/>KerberosTool (SPN listing only)<br/>DnsZoneTransferTool (AXFR)<br/>HttpContentDiscoveryTool (path-only)<br/>TlsCipherEnumTool"]
+    Pool["HostWorkerPool<br/>bounded Channel&lt;…&gt;<br/>--host-concurrency<br/>--service-concurrency"]
+    Runner["Runner<br/>AdaptiveRunner (deterministic)<br/>MicrosoftAgentRunner (LLM)"]
+    Enrich["Enrichment<br/>CveAnnotator (NVD 2.0)<br/>PocAggregator (searchsploit / GHSA / MSF / nuclei)<br/>— aggregate + present, never execute"]
+    Report["Reporting<br/>JsonReport · MarkdownReport<br/>ManualCommandsCheatsheet<br/>SqliteReport (findings.db)"]
+    Present["Presentation / Memory<br/>drederick serve → Datasette<br/>Planned: Drederick.Web + React UI<br/>KnowledgeBase (memory/findings.json)"]
+
+    CLI --> Scope --> Doctor --> Toolbox --> Pool --> Runner --> Enrich --> Report --> Present
 ```
 
 ## Components {#components}

@@ -121,23 +121,13 @@ scope check lives inside each recon tool, not at the UI boundary
 <a id="architecture"></a>
 ## Architecture
 
-```
-  +---------------------+
-  |  Drederick.UI       |     (Avalonia 11.3, net10)
-  |  Views/ViewModels   |
-  +----------+----------+
-             |  IProgress<ScanEvent>, CancellationToken
-             v
-  +---------------------+
-  |  DrederickHost      |     (src/Drederick/Host/, same assembly as CLI)
-  |  RunAsync(Scope,…)  |
-  +----------+----------+
-             |   ReconToolbox + AdaptiveRunner | MicrosoftAgentRunner
-             v
-  +---------------------+
-  |  Scope-enforced     |     (@invariant-id:scope-in-every-tool)
-  |  IReconTool scanners|
-  +---------------------+
+```mermaid
+flowchart TD
+    UI["Drederick.UI<br/>Views / ViewModels<br/>(Avalonia 11.3, net10)"]
+    Host["DrederickHost<br/>RunAsync(Scope, …)<br/>(src/Drederick/Host/, same assembly as CLI)"]
+    Scanners["Scope-enforced IReconTool scanners<br/>(@invariant-id:scope-in-every-tool)"]
+    UI -->|"IProgress&lt;ScanEvent&gt;, CancellationToken"| Host
+    Host -->|"ReconToolbox + AdaptiveRunner / MicrosoftAgentRunner"| Scanners
 ```
 
 ### `DrederickHost` façade

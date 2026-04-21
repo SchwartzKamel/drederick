@@ -205,10 +205,14 @@ Result of `drederick doctor`. Unique on `name`.
 
 ### How the tables join
 
-```text
-hosts 1─┬─< services 1─< findings >─1 cves 1─< poc_refs >─1 poc_sources
-        │                              (via json_extract(data_json,'$.cve_id'))
-        └─< findings (host-level kinds like 'dns')
+```mermaid
+erDiagram
+    hosts ||--o{ services : has
+    services ||--o{ findings : "service-scoped findings (nullable service_id)"
+    hosts ||--o{ findings : "host-level kinds (e.g. dns)"
+    findings }o..o| cves : "via json_extract(data_json,'$.cve_id') — not a real FK"
+    cves ||--o{ poc_refs : references
+    poc_refs }o..o| poc_sources : "optional local cache"
 ```
 
 The `findings ↔ cves` join is not a SQL foreign key — `findings.data_json`

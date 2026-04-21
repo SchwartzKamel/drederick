@@ -315,30 +315,17 @@ read [`AGENTS.md`](AGENTS.md) first.
 <a id="architecture-short"></a>
 ## Architecture (short version)
 
-```text
-CLI ──► Scope (default-deny allow-list; lab/strict prefix caps)
-         │
-         ▼
-    ReconToolbox  ◄── AuditLog (JSONL, thread-safe)
-         │
- ┌───────┴────────────────────────────────────────┐
- │  14 IReconTool scanners; each re-checks scope  │
- │  on entry and excludes forbidden NSE cats.     │
- └───────┬────────────────────────────────────────┘
-         ▼
-  HostWorkerPool  (bounded Channel<ScanJob>)
-         │
-         ▼
-  AdaptiveRunner  or  MicrosoftAgentRunner
-         │
-         ▼
-  Enrichment: CveAnnotator → PocAggregator
-         │                 (never executes PoCs)
-         ▼
-  Reporting: JSON / Markdown / SqliteReport (findings.db)
-         │
-         ▼
-  Datasette (`drederick serve`) + KnowledgeBase (memory/findings.json)
+```mermaid
+flowchart TD
+    CLI["CLI"] --> Scope["Scope<br/>(default-deny allow-list;<br/>lab/strict prefix caps)"]
+    Scope --> Toolbox["ReconToolbox"]
+    Audit["AuditLog<br/>(JSONL, thread-safe)"] --> Toolbox
+    Toolbox --> Tools["14 IReconTool scanners<br/>each re-checks scope on entry<br/>and excludes forbidden NSE cats"]
+    Tools --> Pool["HostWorkerPool<br/>(bounded Channel&lt;ScanJob&gt;)"]
+    Pool --> Runner["AdaptiveRunner<br/>or MicrosoftAgentRunner"]
+    Runner --> Enrich["Enrichment:<br/>CveAnnotator → PocAggregator<br/>(never executes PoCs)"]
+    Enrich --> Report["Reporting:<br/>JSON / Markdown /<br/>SqliteReport (findings.db)"]
+    Report --> Present["Datasette (drederick serve)<br/>+ KnowledgeBase<br/>(memory/findings.json)"]
 ```
 
 Scope enforcement lives **inside every tool**, not at the CLI boundary.
