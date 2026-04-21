@@ -74,7 +74,7 @@ public class SqliteReportTests : IDisposable
 
         using var conn = new SqliteConnection($"Data Source={report.DatabasePath}");
         conn.Open();
-        var expected = new[] { "hosts", "services", "findings", "cves", "poc_refs", "poc_sources", "tooling" };
+        var expected = new[] { "hosts", "services", "findings", "cves", "poc_refs", "poc_sources", "tooling", "notes" };
         foreach (var t in expected)
         {
             using var cmd = conn.CreateCommand();
@@ -107,6 +107,8 @@ public class SqliteReportTests : IDisposable
             GetColumns(conn, "poc_sources"));
         Assert.Superset(new HashSet<string> { "id", "name", "version", "source", "path", "detected_at" },
             GetColumns(conn, "tooling"));
+        Assert.Superset(new HashSet<string> { "id", "title", "content", "created_at", "updated_at", "created_by", "is_flag", "flag_format", "tags", "category", "host_id", "service_id", "file_data", "file_name", "file_mime_type", "file_size", "source", "is_archived" },
+            GetColumns(conn, "notes"));
     }
 
     [Fact]

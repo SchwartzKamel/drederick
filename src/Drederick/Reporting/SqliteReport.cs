@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS tooling (
   detected_at TEXT NOT NULL,
   UNIQUE(name)
 );
+" + NotesSchema.GetCreateTableDdl() + @"
 ";
         cmd.ExecuteNonQuery();
     }
