@@ -211,6 +211,11 @@ $DRED --scope scope.yaml --target 10.10.10.5 --no-fetch-poc --out out/
 # Skip CVE annotation entirely (airgapped / no NVD cache).
 DREDERICK_SKIP_CVE=1 $DRED --scope scope.yaml --target 10.10.10.5 --out out/
 
+# Launch the Avalonia point-and-click operator console. Scope and targets
+# can be composed entirely inside the GUI — no scope file on disk required.
+# Same scope/no-exec invariants as the CLI; see docs/UI.md.
+dotnet run --project src/Drederick.UI
+
 # Doctor: detect operator tooling (read-only report).
 $DRED doctor
 

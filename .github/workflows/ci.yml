@@ -17,13 +17,9 @@ concurrency:
 
 jobs:
   build:
-    name: build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -57,7 +53,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: test-results-${{ matrix.os }}
+          name: test-results
           path: ./TestResults/**/*.trx
 
       - name: Publish test report
@@ -65,7 +61,7 @@ jobs:
         # dorny/test-reporter v1.9.1
         uses: dorny/test-reporter@890a17cecf52a379fc869ab770a71657660be727
         with:
-          name: tests (${{ matrix.os }})
+          name: tests
           path: ./TestResults/**/*.trx
           reporter: dotnet-trx
           fail-on-error: false

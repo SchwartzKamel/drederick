@@ -165,6 +165,16 @@ if (opts.AnalyzeSubcommand)
 }
 // --- end binary-analyzer-wiring -----------------------------------------------
 
+// ANCHOR: note-subcommand-wiring
+if (!string.IsNullOrEmpty(opts.NoteSubcommand))
+{
+    var databasePath = Path.Combine(opts.OutputDir, "findings.db");
+    var noteCmd = new NoteCommand(databasePath);
+    var exitCode = noteCmd.Execute(opts);
+    return exitCode;
+}
+// --- end note-subcommand-wiring -----------------------------------------------
+
 if (string.IsNullOrEmpty(opts.ScopePath))
 {
     Console.Error.WriteLine("--scope is required.");

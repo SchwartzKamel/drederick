@@ -13,6 +13,7 @@ related:
   - MODULES.md
   - DATASETTE.md
   - DB_SCHEMA.md
+  - UI.md
   - UI_GUIDE.md
   - COMPARISON.md
 ---
@@ -51,6 +52,7 @@ related:
 | [`DATASETTE.md`](DATASETTE.md) | humans | Triaging findings in the current UI. | human |
 | [`DB_SCHEMA.md`](DB_SCHEMA.md) | agents | Machine-readable schema, JOIN patterns, stable invariants. | agent |
 | [`UI_GUIDE.md`](UI_GUIDE.md) | humans | Current vs planned UI; React dashboard design. | human |
+| [`UI.md`](UI.md) | humans | Avalonia point-and-click operator console (`Drederick.UI`): quickstart, invariants, tests. | human |
 | [`COMPARISON.md`](COMPARISON.md) | humans | Choosing between drederick / AutoRecon / nmapAutomator / Reconnoitre. | human |
 | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) | humans + agents | Symptom-to-fix: doctor detection, scope refusals, Datasette launch, NVD cache, PoC cache. | both |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | humans | Contributor workflow: branch, test, PR etiquette. | human |

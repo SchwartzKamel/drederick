@@ -48,7 +48,10 @@ each recording to AuditLog JSONL and metered by ToolBudget) → Runner
 (AdaptiveRunner deterministic, or MicrosoftAgentRunner LLM-driven) → Reporting
 (JSON + Markdown + per-host workdir + `manual_commands.txt` in lab mode) +
 Memory/KnowledgeBase (`memory/findings.json`, loaded on next run)`. Sources
-live under `src/Drederick/{Agent,Audit,Cli,Memory,Recon,Reporting,Scope}/`.
+live under `src/Drederick/{Agent,Audit,Cli,Host,Memory,Recon,Reporting,Scope}/`.
+The Avalonia operator console (`src/Drederick.UI/`) is a point-and-click
+front-end that calls the same scope-enforced tools via
+`DrederickHost` — see [`docs/UI.md`](../docs/UI.md).
 
 ## Non-negotiable invariants
 

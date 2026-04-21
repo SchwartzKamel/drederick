@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Drederick.UI</RootNamespace>
+    <AssemblyName>drederick-ui</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+
+    <!-- Avalonia XAML IL (compile-time XAML and compiled bindings). -->
+    <UseAvaloniaXamlIl>true</UseAvaloniaXamlIl>
+    <AvaloniaXamlIlEnableCompiledBindings>true</AvaloniaXamlIlEnableCompiledBindings>
+    <AvaloniaUseXamlIl>true</AvaloniaUseXamlIl>
+    <AvaloniaUseCompiledBindings>true</AvaloniaUseCompiledBindings>
+
+    <!-- We intentionally do NOT publish single-file / trimmed for the UI in
+         the first iteration; `dotnet run` is the supported entry point. -->
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia 11.3.x (net10 compatible). Bonsai's template uses 11.1.1 /
+         Microsoft.Extensions.* 8.0.0; we deliberately go net10-native. -->
+    <PackageReference Include="Avalonia" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+    <!-- Transitive upgrade for GHSA-xrw6-gwf8-vvr9 (Tmds.DBus) — Avalonia
+         11.3.11 still pulls 0.21.2; force >= 0.21.3. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference the core drederick engine (Exe project). UI must call
+         ReconToolbox / AdaptiveRunner via DrederickHost; it must not spawn
+         scanner subprocesses on its own (@invariant-id:scope-in-every-tool,
+         @invariant-id:aggregate-not-execute). -->
+    <ProjectReference Include="..\Drederick\Drederick.csproj">
+      <!-- Don't carry the referenced exe's Main into our output; we have our
+           own. Keep the assembly available for type lookup. -->
+      <Private>true</Private>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

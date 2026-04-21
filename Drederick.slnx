@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Drederick/Drederick.csproj" />
+    <Project Path="src/Drederick.UI/Drederick.UI.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Drederick.Tests/Drederick.Tests.csproj" />
+    <Project Path="tests/Drederick.UI.Tests/Drederick.UI.Tests.csproj" />
   </Folder>
 </Solution>

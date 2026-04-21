@@ -1,0 +1,410 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Drederick.UI.ViewModels"
+        mc:Ignorable="d"
+        x:Class="Drederick.UI.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="980" Height="720"
+        MinWidth="760" MinHeight="520">
+  <Design.DataContext>
+    <vm:MainWindowViewModel />
+  </Design.DataContext>
+
+  <DockPanel>
+    <!-- Status strip -->
+    <Border DockPanel.Dock="Bottom" Padding="12,6" Background="#1F1F1F" BorderBrush="#333" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding Progress.Status}" Foreground="#CCC" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Foreground="#AAA"
+                   Text="{Binding Progress.HostCount, StringFormat='hosts: {0}'}" />
+        <TextBlock Grid.Column="2" Margin="16,0" VerticalAlignment="Center" Foreground="#AAA"
+                   Text="{Binding Progress.ToolCalls, StringFormat='tool calls: {0}'}" />
+        <TextBlock Grid.Column="3" Margin="16,0" VerticalAlignment="Center" Foreground="#FF8888"
+                   Text="{Binding Run.ErrorMessage}" />
+      </Grid>
+    </Border>
+
+    <TabControl Margin="12">
+
+      <!-- SCOPE TAB  -->
+      <TabItem Header="Scope">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Author scope entirely in the GUI (one CIDR per line below) or point at an existing file. Scope is default-deny; wildcards (0.0.0.0/0, ::/0) are always refused." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Scope file:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Scope.ScopePath, Mode=TwoWay}" Watermark="(none — using inline text)" />
+            <Button    Grid.Column="2" Content="Browse…"   Margin="8,0,0,0" Click="OnBrowseScope" />
+            <Button    Grid.Column="3" Content="Save inline…" Margin="8,0,0,0" Click="OnSaveScope" />
+          </Grid>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8" Spacing="16">
+            <CheckBox Content="Lab/CTF mode" IsChecked="{Binding Scope.LabMode, Mode=TwoWay}" />
+            <CheckBox Content="Allow broad scope (/16+ v4, /48+ v6)" IsChecked="{Binding Scope.AllowBroad, Mode=TwoWay}" />
+            <Button   Content="Re-parse" Command="{Binding Scope.ReparseCommand}" />
+          </StackPanel>
+
+          <Grid Grid.Row="3" ColumnDefinitions="2*,*" Margin="0,8">
+            <Border Grid.Column="0" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+              <TextBox AcceptsReturn="True" TextWrapping="NoWrap"
+                       FontFamily="Consolas,Menlo,monospace"
+                       Text="{Binding Scope.InlineText, Mode=TwoWay}"
+                       Watermark="# one CIDR per line&#x0A;10.10.10.0/24&#x0A;10.10.11.42/32" />
+            </Border>
+
+            <Border Grid.Column="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="8,0,0,0">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Parsed entries" FontWeight="Bold" Margin="8,6" />
+                <ListBox ItemsSource="{Binding Scope.Entries}" />
+              </DockPanel>
+            </Border>
+          </Grid>
+
+          <Border Grid.Row="4" Padding="10" CornerRadius="4" Margin="0,8,0,0"
+                  Background="#3A1515" BorderBrush="#8B2F2F" BorderThickness="1"
+                  IsVisible="{Binding Scope.HasError}">
+            <StackPanel>
+              <TextBlock Text="Scope error" FontWeight="Bold" Foreground="#FFCCCC" />
+              <TextBlock Text="{Binding Scope.ErrorMessage}" TextWrapping="Wrap" Foreground="#FFCCCC" Margin="0,4,0,0" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- RUN TAB  -->
+      <TabItem Header="Run">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8">
+
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+            <TextBlock Grid.Column="0" Text="Scope status:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding Scope.EntriesSummary}" Foreground="#AAA" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,8">
+            <TextBlock Grid.Column="0" Text="Add target:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Run.PendingTarget, Mode=TwoWay}" Watermark="10.10.10.42  (must be inside the loaded scope)" />
+            <Button    Grid.Column="2" Content="Add" Margin="8,0,0,0" Command="{Binding Run.AddTargetCommand}" />
+          </Grid>
+
+          <Border Grid.Row="2" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Height="140" Margin="0,4">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Text="Targets" FontWeight="Bold" Margin="8,6" />
+              <ListBox Name="TargetsList" ItemsSource="{Binding Run.Targets}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" />
+                      <Button    Grid.Column="1" Content="Remove" Padding="8,2"
+                                 Click="OnRemoveTarget" Tag="{Binding}" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+
+          <StackPanel Grid.Row="3" Orientation="Vertical" Margin="0,8">
+            <StackPanel Orientation="Horizontal" Spacing="16">
+              <CheckBox Content="Lab/CTF mode" IsChecked="{Binding Run.LabMode, Mode=TwoWay}" />
+              <CheckBox Content="Use agent runner (requires OPENAI_API_KEY)" IsChecked="{Binding Run.UseAgent, Mode=TwoWay}" />
+              <CheckBox Content="Allow-broad" IsChecked="{Binding Run.AllowBroad, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,6,0,0">
+              <CheckBox Content="Annotate CVEs"        IsChecked="{Binding Run.AnnotateCves, Mode=TwoWay}" />
+              <CheckBox Content="Aggregate PoC refs"   IsChecked="{Binding Run.AggregatePocRefs, Mode=TwoWay}" />
+              <CheckBox Content="Cache PoC source"     IsChecked="{Binding Run.FetchPocSource, Mode=TwoWay}" />
+              <CheckBox Content="VPN preflight"        IsChecked="{Binding Run.VpnPreflight, Mode=TwoWay}" />
+              <CheckBox Content="Require VPN (abort if down)" IsChecked="{Binding Run.RequireVpn, Mode=TwoWay}" />
+            </StackPanel>
+          </StackPanel>
+
+          <Grid Grid.Row="4" ColumnDefinitions="*,*" Margin="0,8">
+            <Grid Grid.Column="0" ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <TextBox   Grid.Column="1" Text="{Binding Run.OutputDir, Mode=TwoWay}" />
+            </Grid>
+            <Grid Grid.Column="1" ColumnDefinitions="Auto,*" Margin="8,0,0,0">
+              <TextBlock Grid.Column="0" Text="Memory:" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <TextBox   Grid.Column="1" Text="{Binding Run.MemoryPath, Mode=TwoWay}" />
+            </Grid>
+          </Grid>
+
+          <Border Grid.Row="5" Padding="10" CornerRadius="4" Margin="0,8"
+                  Background="#2A1F0F" BorderBrush="#8B6F2F" BorderThickness="1"
+                  IsVisible="{Binding Run.AllowBroadConfirmationRequired}">
+            <StackPanel>
+              <TextBlock Text="⚠ Allow-broad requires explicit confirmation" FontWeight="Bold" Foreground="#FFE0A0" />
+              <TextBlock TextWrapping="Wrap" Foreground="#FFE0A0" Margin="0,4,0,0"
+                         Text="This lifts the /16 v4 / /48 v6 strict caps (or /8 / /32 in lab mode). Wildcards (0.0.0.0/0, ::/0) are still refused." />
+              <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Spacing="8">
+                <Button Content="Confirm" Click="OnConfirmAllowBroad" />
+                <Button Content="Cancel"  Click="OnCancelAllowBroad" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Cancel" Command="{Binding Run.CancelCommand}" IsEnabled="{Binding Run.IsRunning}" />
+            <Button Content="Start scan" Classes="accent" Command="{Binding Run.StartCommand}" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- PROGRESS TAB  -->
+      <TabItem Header="Progress">
+        <Grid RowDefinitions="Auto,*">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16" Margin="0,0,0,8">
+            <TextBlock Text="{Binding Progress.Status}" FontWeight="Bold" VerticalAlignment="Center" />
+            <Button Content="Clear" Command="{Binding Progress.ClearCommand}" />
+          </StackPanel>
+
+          <Border Grid.Row="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+            <ListBox ItemsSource="{Binding Progress.Events}"
+                     FontFamily="Consolas,Menlo,monospace">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="120,140,140,110,*" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding Timestamp}" Foreground="#888" />
+                    <TextBlock Grid.Column="1" Text="{Binding Kind}"      Foreground="#9CDCFE" />
+                    <TextBlock Grid.Column="2" Text="{Binding Target}"    Foreground="#DCDCAA" />
+                    <TextBlock Grid.Column="3" Text="{Binding Tool}"      Foreground="#CE9178" />
+                    <TextBlock Grid.Column="4" Text="{Binding Message}"   TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- DOCTOR TAB  -->
+      <TabItem Header="Doctor">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Detect / install operator-workstation tooling. Drederick never re-execs as root — some recipes may prompt you for sudo themselves. Scans a target? No. This only modifies your workstation, at your consent." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Doctor.OutputDir, Mode=TwoWay}" />
+            <Button    Grid.Column="2" Content="Detect" Margin="8,0,0,0" Command="{Binding Doctor.DetectCommand}" />
+          </Grid>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16" Margin="0,8">
+            <TextBlock Text="Package manager:" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Doctor.PackageManager}" Foreground="#9CDCFE" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Doctor.StatusLine}" Foreground="#AAA" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <Border Grid.Row="3" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+            <ListBox ItemsSource="{Binding Doctor.Tools}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="80,140,180,*" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding Status}"  Foreground="#DCDCAA" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}"    FontWeight="Bold" />
+                    <TextBlock Grid.Column="2" Text="{Binding Version}" Foreground="#AAA" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="3" Text="{Binding Path}"    Foreground="#888" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+
+          <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <CheckBox Content="I consent to install missing tools (may invoke sudo)"
+                      IsChecked="{Binding Doctor.InstallConfirmed, Mode=TwoWay}" />
+            <Button   Content="Install missing" Classes="accent"
+                      Command="{Binding Doctor.InstallMissingCommand}" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- FINDINGS TAB  -->
+      <TabItem Header="Findings">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Read-only summary of out/findings.db. For SQL-queryable triage, click 'Open in Datasette' to launch drederick serve." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Findings.OutputDir, Mode=TwoWay}" />
+            <Button    Grid.Column="2" Content="Reload" Margin="8,0,0,0" Command="{Binding Findings.ReloadCommand}" />
+            <Button    Grid.Column="3" Content="Open in Datasette" Margin="8,0,0,0"
+                       Classes="accent" Command="{Binding Findings.OpenDatasetteCommand}" />
+          </Grid>
+
+          <Border Grid.Row="2" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="0,8">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,6" Spacing="16">
+                <TextBlock Text="{Binding Findings.HostCount,    StringFormat='hosts: {0}'}"   Foreground="#9CDCFE" />
+                <TextBlock Text="{Binding Findings.ServiceCount, StringFormat='services: {0}'}" Foreground="#DCDCAA" />
+                <TextBlock Text="{Binding Findings.CveCount,     StringFormat='CVEs: {0}'}"    Foreground="#CE9178" />
+                <TextBlock Text="{Binding Findings.PocRefCount,  StringFormat='PoC refs: {0}'}" Foreground="#C586C0" />
+              </StackPanel>
+              <ListBox ItemsSource="{Binding Findings.Rows}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="180,80,*" Margin="0,2">
+                      <TextBlock Grid.Column="0" Text="{Binding Address}"      FontWeight="Bold" />
+                      <TextBlock Grid.Column="1" Text="{Binding ServiceCount, StringFormat='{}{0} svc'}" Foreground="#AAA" />
+                      <TextBlock Grid.Column="2" Text="{Binding Services}"     Foreground="#888" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+
+          <TextBlock Grid.Row="3" Text="{Binding Findings.Status}" Foreground="#AAA" Margin="0,4,0,0" TextWrapping="Wrap" />
+        </Grid>
+      </TabItem>
+
+      <!-- ANALYZE TAB  -->
+      <TabItem Header="Analyze">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Static binary analysis: ELF, PE, Mach-O. Reads the file only — never executes it. (@invariant-id:aggregate-not-execute)" />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Binary:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Analyze.BinaryPath, Mode=TwoWay}"
+                       Watermark="/path/to/binary" />
+            <Button    Grid.Column="2" Content="Browse…" Margin="8,0,0,0"
+                       Click="OnBrowseBinary" />
+            <Button    Grid.Column="3" Content="Analyze" Margin="8,0,0,0"
+                       Classes="accent" Command="{Binding Analyze.AnalyzeCommand}" />
+          </Grid>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16" Margin="0,6">
+            <CheckBox Content="Verbose (all libs + strings)" IsChecked="{Binding Analyze.Verbose, Mode=TwoWay}" />
+            <CheckBox Content="Save JSON report to output dir"  IsChecked="{Binding Analyze.SaveJson, Mode=TwoWay}" />
+            <TextBlock Text="{Binding Analyze.StatusLine}" Foreground="#AAA" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <!-- Split: report text on left, findings list on right -->
+          <Grid Grid.Row="3" ColumnDefinitions="2*,*" Margin="0,4">
+            <Border Grid.Column="0" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+              <TextBox Text="{Binding Analyze.ReportText}"
+                       IsReadOnly="True" AcceptsReturn="True"
+                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                       TextWrapping="NoWrap" />
+            </Border>
+            <Border Grid.Column="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="8,0,0,0">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Findings" FontWeight="Bold" Margin="8,6" />
+                <ListBox ItemsSource="{Binding Analyze.Findings}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Margin="0,4">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="{Binding Severity}"  Foreground="#CE9178" FontWeight="Bold" />
+                          <TextBlock Text="{Binding Category}"  Foreground="#9CDCFE" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Title}"       FontWeight="Bold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Description}" Foreground="#AAA" TextWrapping="Wrap" FontSize="11" />
+                        <TextBlock Text="{Binding Remediation}" Foreground="#C586C0" TextWrapping="Wrap" FontSize="11" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+            </Border>
+          </Grid>
+
+          <!-- Output dir row -->
+          <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,6">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Analyze.OutputDir, Mode=TwoWay}" />
+          </Grid>
+
+          <TextBlock Grid.Row="5" Text="{Binding Analyze.StatusLine}" Foreground="#AAA"
+                     TextWrapping="Wrap" Margin="0,4,0,0" />
+        </Grid>
+      </TabItem>
+
+      <!-- INIT TAB  -->
+      <TabItem Header="Init">
+        <ScrollViewer>
+          <StackPanel Margin="0,8" Spacing="16">
+
+            <!-- Header -->
+            <TextBlock Text="First-run setup wizard" FontSize="16" FontWeight="Bold" />
+            <TextBlock TextWrapping="Wrap" Foreground="#AAA"
+                       Text="Work through each section at your own pace. All actions are opt-in; none are required to run a scan." />
+
+            <!-- §1 Doctor -->
+            <Border BorderBrush="#444" BorderThickness="0,0,0,1" Padding="0,0,0,12">
+              <StackPanel Spacing="8">
+                <TextBlock Text="1 — Verify operator tooling" FontWeight="Bold" />
+                <TextBlock Text="{Binding Init.DoctorStatus}" Foreground="#AAA" />
+                <ListBox ItemsSource="{Binding Init.DetectedTools}" MaxHeight="160">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="60,140,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Status}"  Foreground="#DCDCAA" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}"    FontWeight="Bold" />
+                        <TextBlock Grid.Column="2" Text="{Binding Version}" Foreground="#888" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Content="Detect tools" Command="{Binding Init.DetectToolsCommand}" HorizontalAlignment="Left" />
+                <TextBlock Text="To install missing tools, use the Doctor tab." Foreground="#666" FontSize="11" />
+              </StackPanel>
+            </Border>
+
+            <!-- §2 Credentials -->
+            <Border BorderBrush="#444" BorderThickness="0,0,0,1" Padding="0,0,0,12">
+              <StackPanel Spacing="8">
+                <TextBlock Text="2 — Credentials" FontWeight="Bold" />
+                <TextBlock TextWrapping="Wrap" Foreground="#AAA"
+                           Text="Optional. Stored in ~/.drederick/config.json (0600 on Unix). Never logged to audit.jsonl." />
+                <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto" HorizontalAlignment="Left">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="HTB API token:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                  <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Init.HtbToken, Mode=TwoWay}"
+                             PasswordChar="•" Width="300" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="HTTP proxy:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding Init.HttpProxy, Mode=TwoWay}"
+                             Watermark="http://127.0.0.1:8080" Width="300" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Button Content="Save credentials" Command="{Binding Init.SaveCredentialsCommand}" />
+                  <TextBlock Text="{Binding Init.CredentialStatus}" Foreground="#AAA" VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- §3 Scope -->
+            <Border BorderBrush="#444" BorderThickness="0,0,0,1" Padding="0,0,0,12">
+              <StackPanel Spacing="8">
+                <TextBlock Text="3 — Sample scope file" FontWeight="Bold" />
+                <TextBlock TextWrapping="Wrap" Foreground="#AAA"
+                           Text="Creates ~/scope.txt with commented example CIDRs. Skipped if the file already exists." />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Button Content="Create ~/scope.txt" Command="{Binding Init.CreateSampleScopeCommand}" />
+                  <TextBlock Text="{Binding Init.ScopeStatus}" Foreground="#AAA" VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- §4 Quick start -->
+            <StackPanel Spacing="8">
+              <TextBlock Text="4 — Quick start" FontWeight="Bold" />
+              <Border BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="12">
+                <TextBox Text="{Binding Init.QuickStart}"
+                         IsReadOnly="True" AcceptsReturn="True"
+                         FontFamily="Consolas,Menlo,monospace" FontSize="12" />
+              </Border>
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+    </TabControl>
+  </DockPanel>
+</Window>
