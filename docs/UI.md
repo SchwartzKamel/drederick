@@ -91,6 +91,32 @@ scope check lives inside each recon tool, not at the UI boundary
      This is the harness itself (not a scanner binary), and Datasette is
      read-only — triage stays with Datasette, per the plan's "don't
      reimplement triage" posture.
+6. **Analyze tab** *(phase 3)*
+   - Enter or **Browse…** to a local binary (ELF/PE/Mach-O).
+   - Tick **Verbose** (shows all libs + strings) and/or **Save JSON report
+     to output dir** (writes `out/<filename>.analysis.json`).
+   - Click **Analyze**: runs `BinaryAnalyzer` on the thread pool, displays
+     a text report (metadata, security posture, dependencies, strings,
+     findings) on the left and a structured findings list on the right.
+   - `@invariant-id:aggregate-not-execute`: the binary is read only; it is
+     never executed. A minimal local scope (`127.0.0.1/32`) satisfies
+     `_scope.RequireFile(path)` since that check is file-existence only.
+   - `ui.analyze.start` / `.finish` / `.error` / `.saved` audit events.
+7. **Init tab** *(phase 3)*
+   - A single scrollable form with four distinct sections, matching the
+     steps of the CLI's `drederick init` wizard:
+     - §1 **Verify operator tooling** — Detect button (read-only);
+       results shown per-tool. Consent-required install lives in the Doctor
+       tab (`@invariant-id:doctor-workstation-only`).
+     - §2 **Credentials** — masked HTB API token + HTTP proxy fields;
+       **Save credentials** writes `~/.drederick/config.json` with 0600
+       permissions on Unix. The token value is stored in the file but
+       never written to `audit.jsonl`.
+     - §3 **Sample scope file** — **Create ~/scope.txt** button; skipped
+       without error if the file already exists.
+     - §4 **Quick start** — pre-formatted cheatsheet for copy/paste.
+   - `ui.init.doctor_detect`, `ui.init.credentials_save`,
+     `ui.init.create_scope` audit events.
 
 <a id="architecture"></a>
 ## Architecture
@@ -166,6 +192,9 @@ Already landed in phase 2: **DoctorView**, **FindingsView** (with
 "Open in Datasette"), and enrichment parity (CVE annotation, PoC
 aggregation, VPN preflight) inside `DrederickHost.RunAsync`.
 
+Already landed in phase 3: **AnalyzeView** (binary security analysis) and
+**InitView** (first-run setup wizard).
+
 <a id="testing"></a>
 ## Testing
 
@@ -186,6 +215,12 @@ The UI test project covers:
   detect, without consent, or when nothing is missing; enabled only when
   all three are true).
 - `FindingsViewModelTests` — `Reload` against missing / real `findings.db`.
+- `AnalyzeViewModelTests` — CanAnalyze gating (empty/whitespace path,
+  non-empty path, busy flag); file-not-found error surfaced in StatusLine;
+  Findings collection starts empty.
+- `InitViewModelTests` — credential save writes `config.json`; sample-scope
+  creates `~/scope.txt`; skips if file already exists; `QuickStart` contains
+  key commands; `GetConfigPath` contains `.drederick/config.json`.
 - `UiAssemblyInvariantsTests` — source-tree scan refusing forbidden scanner
   binary names (`nmap`, `hydra`, `msfconsole`, `crackmapexec`, `responder`,
   `impacket-GetUserSPNs`, …) and `chmod +x` / `poc_cache` patterns.

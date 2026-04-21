@@ -78,4 +78,28 @@ public partial class MainWindow : Window
 
     private void OnConfirmAllowBroad(object? sender, RoutedEventArgs e) => Vm?.Run.ConfirmAllowBroad();
     private void OnCancelAllowBroad(object? sender, RoutedEventArgs e) => Vm?.Run.CancelAllowBroad();
+
+    // ---- Analyze tab ---------------------------------------------------
+    private async void OnBrowseBinary(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select binary to analyze",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Executables") { Patterns = new[] { "*.elf", "*.exe", "*.dll", "*.so", "*.dylib", "*" } },
+                FilePickerFileTypes.All,
+            },
+        });
+        if (files.Count > 0)
+        {
+            var path = files[0].TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                Vm.Analyze.BinaryPath = path;
+            }
+        }
+    }
 }

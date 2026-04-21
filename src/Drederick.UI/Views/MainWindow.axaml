@@ -29,7 +29,7 @@
 
     <TabControl Margin="12">
 
-      <!-- SCOPE TAB ================================================ -->
+      <!-- SCOPE TAB  -->
       <TabItem Header="Scope">
         <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,8">
           <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
@@ -75,7 +75,7 @@
         </Grid>
       </TabItem>
 
-      <!-- RUN TAB ================================================== -->
+      <!-- RUN TAB  -->
       <TabItem Header="Run">
         <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8">
 
@@ -154,7 +154,7 @@
         </Grid>
       </TabItem>
 
-      <!-- PROGRESS TAB ============================================= -->
+      <!-- PROGRESS TAB  -->
       <TabItem Header="Progress">
         <Grid RowDefinitions="Auto,*">
           <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16" Margin="0,0,0,8">
@@ -181,7 +181,7 @@
         </Grid>
       </TabItem>
 
-      <!-- DOCTOR TAB =============================================== -->
+      <!-- DOCTOR TAB  -->
       <TabItem Header="Doctor">
         <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,8">
           <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
@@ -223,7 +223,7 @@
         </Grid>
       </TabItem>
 
-      <!-- FINDINGS TAB ============================================= -->
+      <!-- FINDINGS TAB  -->
       <TabItem Header="Findings">
         <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0,8">
           <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
@@ -261,6 +261,148 @@
 
           <TextBlock Grid.Row="3" Text="{Binding Findings.Status}" Foreground="#AAA" Margin="0,4,0,0" TextWrapping="Wrap" />
         </Grid>
+      </TabItem>
+
+      <!-- ANALYZE TAB  -->
+      <TabItem Header="Analyze">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Static binary analysis: ELF, PE, Mach-O. Reads the file only — never executes it. (@invariant-id:aggregate-not-execute)" />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Binary:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Analyze.BinaryPath, Mode=TwoWay}"
+                       Watermark="/path/to/binary" />
+            <Button    Grid.Column="2" Content="Browse…" Margin="8,0,0,0"
+                       Click="OnBrowseBinary" />
+            <Button    Grid.Column="3" Content="Analyze" Margin="8,0,0,0"
+                       Classes="accent" Command="{Binding Analyze.AnalyzeCommand}" />
+          </Grid>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16" Margin="0,6">
+            <CheckBox Content="Verbose (all libs + strings)" IsChecked="{Binding Analyze.Verbose, Mode=TwoWay}" />
+            <CheckBox Content="Save JSON report to output dir"  IsChecked="{Binding Analyze.SaveJson, Mode=TwoWay}" />
+            <TextBlock Text="{Binding Analyze.StatusLine}" Foreground="#AAA" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <!-- Split: report text on left, findings list on right -->
+          <Grid Grid.Row="3" ColumnDefinitions="2*,*" Margin="0,4">
+            <Border Grid.Column="0" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+              <TextBox Text="{Binding Analyze.ReportText}"
+                       IsReadOnly="True" AcceptsReturn="True"
+                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                       TextWrapping="NoWrap" />
+            </Border>
+            <Border Grid.Column="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="8,0,0,0">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Findings" FontWeight="Bold" Margin="8,6" />
+                <ListBox ItemsSource="{Binding Analyze.Findings}">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Margin="0,4">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="{Binding Severity}"  Foreground="#CE9178" FontWeight="Bold" />
+                          <TextBlock Text="{Binding Category}"  Foreground="#9CDCFE" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Title}"       FontWeight="Bold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Description}" Foreground="#AAA" TextWrapping="Wrap" FontSize="11" />
+                        <TextBlock Text="{Binding Remediation}" Foreground="#C586C0" TextWrapping="Wrap" FontSize="11" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+            </Border>
+          </Grid>
+
+          <!-- Output dir row -->
+          <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="0,6">
+            <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Analyze.OutputDir, Mode=TwoWay}" />
+          </Grid>
+
+          <TextBlock Grid.Row="5" Text="{Binding Analyze.StatusLine}" Foreground="#AAA"
+                     TextWrapping="Wrap" Margin="0,4,0,0" />
+        </Grid>
+      </TabItem>
+
+      <!-- INIT TAB  -->
+      <TabItem Header="Init">
+        <ScrollViewer>
+          <StackPanel Margin="0,8" Spacing="16">
+
+            <!-- Header -->
+            <TextBlock Text="First-run setup wizard" FontSize="16" FontWeight="Bold" />
+            <TextBlock TextWrapping="Wrap" Foreground="#AAA"
+                       Text="Work through each section at your own pace. All actions are opt-in; none are required to run a scan." />
+
+            <!-- §1 Doctor -->
+            <Border BorderBrush="#444" BorderThickness="0,0,0,1" Padding="0,0,0,12">
+              <StackPanel Spacing="8">
+                <TextBlock Text="1 — Verify operator tooling" FontWeight="Bold" />
+                <TextBlock Text="{Binding Init.DoctorStatus}" Foreground="#AAA" />
+                <ListBox ItemsSource="{Binding Init.DetectedTools}" MaxHeight="160">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid ColumnDefinitions="60,140,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Status}"  Foreground="#DCDCAA" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}"    FontWeight="Bold" />
+                        <TextBlock Grid.Column="2" Text="{Binding Version}" Foreground="#888" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Content="Detect tools" Command="{Binding Init.DetectToolsCommand}" HorizontalAlignment="Left" />
+                <TextBlock Text="To install missing tools, use the Doctor tab." Foreground="#666" FontSize="11" />
+              </StackPanel>
+            </Border>
+
+            <!-- §2 Credentials -->
+            <Border BorderBrush="#444" BorderThickness="0,0,0,1" Padding="0,0,0,12">
+              <StackPanel Spacing="8">
+                <TextBlock Text="2 — Credentials" FontWeight="Bold" />
+                <TextBlock TextWrapping="Wrap" Foreground="#AAA"
+                           Text="Optional. Stored in ~/.drederick/config.json (0600 on Unix). Never logged to audit.jsonl." />
+                <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto" HorizontalAlignment="Left">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="HTB API token:" VerticalAlignment="Center" Margin="0,0,8,4" />
+                  <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Init.HtbToken, Mode=TwoWay}"
+                             PasswordChar="•" Width="300" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="HTTP proxy:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding Init.HttpProxy, Mode=TwoWay}"
+                             Watermark="http://127.0.0.1:8080" Width="300" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Button Content="Save credentials" Command="{Binding Init.SaveCredentialsCommand}" />
+                  <TextBlock Text="{Binding Init.CredentialStatus}" Foreground="#AAA" VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- §3 Scope -->
+            <Border BorderBrush="#444" BorderThickness="0,0,0,1" Padding="0,0,0,12">
+              <StackPanel Spacing="8">
+                <TextBlock Text="3 — Sample scope file" FontWeight="Bold" />
+                <TextBlock TextWrapping="Wrap" Foreground="#AAA"
+                           Text="Creates ~/scope.txt with commented example CIDRs. Skipped if the file already exists." />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Button Content="Create ~/scope.txt" Command="{Binding Init.CreateSampleScopeCommand}" />
+                  <TextBlock Text="{Binding Init.ScopeStatus}" Foreground="#AAA" VerticalAlignment="Center" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- §4 Quick start -->
+            <StackPanel Spacing="8">
+              <TextBlock Text="4 — Quick start" FontWeight="Bold" />
+              <Border BorderBrush="#333" BorderThickness="1" CornerRadius="4" Padding="12">
+                <TextBox Text="{Binding Init.QuickStart}"
+                         IsReadOnly="True" AcceptsReturn="True"
+                         FontFamily="Consolas,Menlo,monospace" FontSize="12" />
+              </Border>
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
       </TabItem>
 
     </TabControl>
