@@ -1,0 +1,177 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Drederick.UI.ViewModels"
+        mc:Ignorable="d"
+        x:Class="Drederick.UI.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="980" Height="720"
+        MinWidth="760" MinHeight="520">
+  <Design.DataContext>
+    <vm:MainWindowViewModel />
+  </Design.DataContext>
+
+  <DockPanel>
+    <!-- Status strip -->
+    <Border DockPanel.Dock="Bottom" Padding="12,6" Background="#1F1F1F" BorderBrush="#333" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding Progress.Status}" Foreground="#CCC" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Margin="16,0" VerticalAlignment="Center" Foreground="#AAA"
+                   Text="{Binding Progress.HostCount, StringFormat='hosts: {0}'}" />
+        <TextBlock Grid.Column="2" Margin="16,0" VerticalAlignment="Center" Foreground="#AAA"
+                   Text="{Binding Progress.ToolCalls, StringFormat='tool calls: {0}'}" />
+        <TextBlock Grid.Column="3" Margin="16,0" VerticalAlignment="Center" Foreground="#FF8888"
+                   Text="{Binding Run.ErrorMessage}" />
+      </Grid>
+    </Border>
+
+    <TabControl Margin="12">
+
+      <!-- SCOPE TAB ================================================ -->
+      <TabItem Header="Scope">
+        <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,8">
+          <TextBlock Grid.Row="0" TextWrapping="Wrap" Foreground="#AAA" Margin="0,0,0,8"
+                     Text="Author scope entirely in the GUI (one CIDR per line below) or point at an existing file. Scope is default-deny; wildcards (0.0.0.0/0, ::/0) are always refused." />
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4">
+            <TextBlock Grid.Column="0" Text="Scope file:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Scope.ScopePath, Mode=TwoWay}" Watermark="(none — using inline text)" />
+            <Button    Grid.Column="2" Content="Browse…"   Margin="8,0,0,0" Click="OnBrowseScope" />
+            <Button    Grid.Column="3" Content="Save inline…" Margin="8,0,0,0" Click="OnSaveScope" />
+          </Grid>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8" Spacing="16">
+            <CheckBox Content="Lab/CTF mode" IsChecked="{Binding Scope.LabMode, Mode=TwoWay}" />
+            <CheckBox Content="Allow broad scope (/16+ v4, /48+ v6)" IsChecked="{Binding Scope.AllowBroad, Mode=TwoWay}" />
+            <Button   Content="Re-parse" Command="{Binding Scope.ReparseCommand}" />
+          </StackPanel>
+
+          <Grid Grid.Row="3" ColumnDefinitions="2*,*" Margin="0,8">
+            <Border Grid.Column="0" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+              <TextBox AcceptsReturn="True" TextWrapping="NoWrap"
+                       FontFamily="Consolas,Menlo,monospace"
+                       Text="{Binding Scope.InlineText, Mode=TwoWay}"
+                       Watermark="# one CIDR per line&#x0A;10.10.10.0/24&#x0A;10.10.11.42/32" />
+            </Border>
+
+            <Border Grid.Column="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Margin="8,0,0,0">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Parsed entries" FontWeight="Bold" Margin="8,6" />
+                <ListBox ItemsSource="{Binding Scope.Entries}" />
+              </DockPanel>
+            </Border>
+          </Grid>
+
+          <Border Grid.Row="4" Padding="10" CornerRadius="4" Margin="0,8,0,0"
+                  Background="#3A1515" BorderBrush="#8B2F2F" BorderThickness="1"
+                  IsVisible="{Binding Scope.HasError}">
+            <StackPanel>
+              <TextBlock Text="Scope error" FontWeight="Bold" Foreground="#FFCCCC" />
+              <TextBlock Text="{Binding Scope.ErrorMessage}" TextWrapping="Wrap" Foreground="#FFCCCC" Margin="0,4,0,0" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- RUN TAB ================================================== -->
+      <TabItem Header="Run">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8">
+
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
+            <TextBlock Grid.Column="0" Text="Scope status:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" Text="{Binding Scope.EntriesSummary}" Foreground="#AAA" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,8">
+            <TextBlock Grid.Column="0" Text="Add target:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox   Grid.Column="1" Text="{Binding Run.PendingTarget, Mode=TwoWay}" Watermark="10.10.10.42  (must be inside the loaded scope)" />
+            <Button    Grid.Column="2" Content="Add" Margin="8,0,0,0" Command="{Binding Run.AddTargetCommand}" />
+          </Grid>
+
+          <Border Grid.Row="2" BorderBrush="#333" BorderThickness="1" CornerRadius="4" Height="140" Margin="0,4">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Text="Targets" FontWeight="Bold" Margin="8,6" />
+              <ListBox Name="TargetsList" ItemsSource="{Binding Run.Targets}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" />
+                      <Button    Grid.Column="1" Content="Remove" Padding="8,2"
+                                 Click="OnRemoveTarget" Tag="{Binding}" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </Border>
+
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8" Spacing="16">
+            <CheckBox Content="Lab/CTF mode" IsChecked="{Binding Run.LabMode, Mode=TwoWay}" />
+            <CheckBox Content="Use agent runner (requires OPENAI_API_KEY)" IsChecked="{Binding Run.UseAgent, Mode=TwoWay}" />
+            <CheckBox Content="Allow-broad" IsChecked="{Binding Run.AllowBroad, Mode=TwoWay}" />
+          </StackPanel>
+
+          <Grid Grid.Row="4" ColumnDefinitions="*,*" Margin="0,8">
+            <Grid Grid.Column="0" ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" Text="Output dir:" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <TextBox   Grid.Column="1" Text="{Binding Run.OutputDir, Mode=TwoWay}" />
+            </Grid>
+            <Grid Grid.Column="1" ColumnDefinitions="Auto,*" Margin="8,0,0,0">
+              <TextBlock Grid.Column="0" Text="Memory:" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <TextBox   Grid.Column="1" Text="{Binding Run.MemoryPath, Mode=TwoWay}" />
+            </Grid>
+          </Grid>
+
+          <Border Grid.Row="5" Padding="10" CornerRadius="4" Margin="0,8"
+                  Background="#2A1F0F" BorderBrush="#8B6F2F" BorderThickness="1"
+                  IsVisible="{Binding Run.AllowBroadConfirmationRequired}">
+            <StackPanel>
+              <TextBlock Text="⚠ Allow-broad requires explicit confirmation" FontWeight="Bold" Foreground="#FFE0A0" />
+              <TextBlock TextWrapping="Wrap" Foreground="#FFE0A0" Margin="0,4,0,0"
+                         Text="This lifts the /16 v4 / /48 v6 strict caps (or /8 / /32 in lab mode). Wildcards (0.0.0.0/0, ::/0) are still refused." />
+              <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Spacing="8">
+                <Button Content="Confirm" Click="OnConfirmAllowBroad" />
+                <Button Content="Cancel"  Click="OnCancelAllowBroad" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Cancel" Command="{Binding Run.CancelCommand}" IsEnabled="{Binding Run.IsRunning}" />
+            <Button Content="Start scan" Classes="accent" Command="{Binding Run.StartCommand}" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <!-- PROGRESS TAB ============================================= -->
+      <TabItem Header="Progress">
+        <Grid RowDefinitions="Auto,*">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16" Margin="0,0,0,8">
+            <TextBlock Text="{Binding Progress.Status}" FontWeight="Bold" VerticalAlignment="Center" />
+            <Button Content="Clear" Command="{Binding Progress.ClearCommand}" />
+          </StackPanel>
+
+          <Border Grid.Row="1" BorderBrush="#333" BorderThickness="1" CornerRadius="4">
+            <ListBox ItemsSource="{Binding Progress.Events}"
+                     FontFamily="Consolas,Menlo,monospace">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="120,140,140,110,*" Margin="0,2">
+                    <TextBlock Grid.Column="0" Text="{Binding Timestamp}" Foreground="#888" />
+                    <TextBlock Grid.Column="1" Text="{Binding Kind}"      Foreground="#9CDCFE" />
+                    <TextBlock Grid.Column="2" Text="{Binding Target}"    Foreground="#DCDCAA" />
+                    <TextBlock Grid.Column="3" Text="{Binding Tool}"      Foreground="#CE9178" />
+                    <TextBlock Grid.Column="4" Text="{Binding Message}"   TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+        </Grid>
+      </TabItem>
+
+    </TabControl>
+  </DockPanel>
+</Window>
