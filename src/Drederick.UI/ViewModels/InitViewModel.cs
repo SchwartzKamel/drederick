@@ -120,7 +120,7 @@ public sealed partial class InitViewModel : ObservableObject
                     ["has_proxy"] = !string.IsNullOrWhiteSpace(proxy),
                 });
 
-                var config = new Dictionary<string, object?> { ["version"] = 1, ["created_at"] = DateTimeOffset.UtcNow.ToString("o") };
+                var config = new Dictionary<string, object?> { ["version"] = ConfigVersion, ["created_at"] = DateTimeOffset.UtcNow.ToString("o") };
                 if (!string.IsNullOrWhiteSpace(token)) config["htb_api_token"] = token;
                 if (!string.IsNullOrWhiteSpace(proxy)) config["http_proxy"] = proxy;
 
@@ -173,8 +173,7 @@ public sealed partial class InitViewModel : ObservableObject
         {
             await Task.Run(() =>
             {
-                var home = Environment.GetEnvironmentVariable("HOME")
-                    ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var home      = GetHomeDirectory();
                 var scopePath = Path.Combine(home, "scope.txt");
 
                 Directory.CreateDirectory(OutputDir);
@@ -239,8 +238,12 @@ public sealed partial class InitViewModel : ObservableObject
 
     public static string GetConfigPath()
     {
-        var home = Environment.GetEnvironmentVariable("HOME")
-            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".drederick", "config.json");
+        return Path.Combine(GetHomeDirectory(), ".drederick", "config.json");
     }
+
+    private static string GetHomeDirectory() =>
+        Environment.GetEnvironmentVariable("HOME")
+        ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    private const int ConfigVersion = 1;
 }

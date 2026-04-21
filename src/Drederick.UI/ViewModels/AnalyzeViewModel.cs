@@ -53,6 +53,9 @@ public sealed partial class AnalyzeViewModel : ObservableObject
 
     public ObservableCollection<AnalyzeFindingRow> Findings { get; } = new();
 
+    private const string LocalAnalysisScope = "127.0.0.1/32";
+    private const string LocalAnalysisScopeSource = "<analyze-local>";
+
     private bool CanAnalyze() => !IsBusy && !string.IsNullOrWhiteSpace(BinaryPath);
 
     [RelayCommand(CanExecute = nameof(CanAnalyze))]
@@ -87,7 +90,7 @@ public sealed partial class AnalyzeViewModel : ObservableObject
                 // Minimal local scope. BinaryAnalyzer's first statement is
                 // _scope.RequireFile(filePath), which checks file existence
                 // and readability only — no CIDR matching is involved.
-                var scope    = ScopeLoader.Parse("127.0.0.1/32", "<analyze-local>", labMode: true);
+                var scope    = ScopeLoader.Parse(LocalAnalysisScope, LocalAnalysisScopeSource, labMode: true);
                 var analyzer = new BinaryAnalyzer(scope, audit);
 
                 BinaryAnalysisReport? report = null;
@@ -153,7 +156,13 @@ public sealed partial class AnalyzeViewModel : ObservableObject
             // Optionally write JSON.
             if (saveJson)
             {
-                var jsonPath = Path.Combine(outputDir, Path.GetFileName(binaryPath) + ".analysis.json");
+                // GetFileName strips the directory; the extra check
+                // defends against unusual file names that still contain
+                // path-separator characters after GetFileName.
+                var safeName = Path.GetFileName(binaryPath);
+                if (safeName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                    safeName = "binary";
+                var jsonPath = Path.Combine(outputDir, safeName + ".analysis.json");
                 await Task.Run(() => File.WriteAllText(jsonPath, JsonSerializer.Serialize(report,
                     new JsonSerializerOptions { WriteIndented = true })), ct).ConfigureAwait(true);
             }
