@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS notes (
   category TEXT DEFAULT 'note' CHECK (category IN ('flag', 'credential', 'exploit', 'screenshot', 'command', 'note')),
   
   host_id TEXT,
-  service_id INTEGER REFERENCES services(id),
+  service_id INTEGER,
   
   file_data BLOB,
   file_name TEXT,
