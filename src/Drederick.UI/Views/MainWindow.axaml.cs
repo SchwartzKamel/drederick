@@ -102,4 +102,11 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    // ---- Notes tab  ----------------------------------------------------
+    private void OnClearNoteSelection(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null) return;
+        Vm.Notes.SelectedNote = null;
+    }
 }
