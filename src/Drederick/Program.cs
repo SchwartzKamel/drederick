@@ -7,6 +7,7 @@ using Drederick.Enrichment;
 using Drederick.Memory;
 using Drederick.Ops;
 using Drederick.Recon;
+using Drederick.Recon.Binary;
 using Drederick.Reporting;
 using Drederick.Scope;
 
@@ -121,6 +122,37 @@ if (opts.ServeSubcommand)
     }
 }
 // --- end datasette-integration ---------------------------------------------
+
+// --- binary-analyzer-wiring: analyze subcommand handler -----------------------
+if (opts.AnalyzeSubcommand)
+{
+    Scope? analyzeScope = null;
+    if (!string.IsNullOrEmpty(opts.ScopePath))
+    {
+        try { analyzeScope = ScopeLoader.LoadFile(opts.ScopePath, allowBroad: opts.AllowBroad, labMode: opts.LabMode); }
+        catch (ScopeException ex)
+        {
+            Console.Error.WriteLine($"scope: {ex.Message}");
+            return 2;
+        }
+    }
+    else
+    {
+        // Create a permissive default scope that allows any file on the local system.
+        analyzeScope = new Scope(new List<ScopeEntry>(), "analyze (no scope file; local file access allowed)");
+    }
+
+    Directory.CreateDirectory(opts.OutputDir);
+    var analyzeAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var analyzeAudit = new AuditLog(analyzeAuditPath);
+
+    // ANCHOR: binary-analyzer-wiring
+    var analyzer = new BinaryAnalyzer(analyzeScope, analyzeAudit);
+    var command = new AnalyzeBinaryCommand(analyzer);
+    var exitCode = await command.ExecuteAsync(opts);
+    return exitCode;
+}
+// --- end binary-analyzer-wiring -----------------------------------------------
 
 if (string.IsNullOrEmpty(opts.ScopePath))
 {

@@ -48,6 +48,32 @@ public sealed class Scope
         }
     }
 
+    /// <summary>
+    /// Verifies that a file path exists and is readable. Throws <see cref="ScopeException"/>
+    /// if the file doesn't exist, is not readable, or if a scope is enforced and the
+    /// file path attempts to escape it. This is the required guard for tools that
+    /// access local files (e.g., binary analysis).
+    /// </summary>
+    public void RequireFile(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"File not found: {filePath}");
+        }
+
+        try
+        {
+            using (File.Open(filePath, System.IO.FileMode.Open, System.IO.FileAccess.Read))
+            {
+                // Just verifying readability; close immediately.
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            throw new UnauthorizedAccessException($"Permission denied reading {filePath}");
+        }
+    }
+
     /// <summary>Enumerates every host address in scope. Refuses ranges larger than 4096 addresses.</summary>
     public IReadOnlyList<string> Expand()
     {

@@ -1,0 +1,8 @@
+{"ts":"2026-04-21T05:41:09.5480724\u002B00:00","pid":547420,"event":"binary-analyzer.start","file_path":"/bin/bash"}
+{"ts":"2026-04-21T05:41:09.6598583\u002B00:00","pid":547420,"event":"binary-analyzer.finish","file_path":"/bin/bash","findings_count":5,"duration_ms":112}
+{"ts":"2026-04-21T05:41:15.2525486\u002B00:00","pid":547487,"event":"binary-analyzer.start","file_path":"/bin/bash"}
+{"ts":"2026-04-21T05:41:15.3664433\u002B00:00","pid":547487,"event":"binary-analyzer.finish","file_path":"/bin/bash","findings_count":5,"duration_ms":114}
+{"ts":"2026-04-21T05:41:20.6630320\u002B00:00","pid":547555,"event":"binary-analyzer.start","file_path":"/bin/bash"}
+{"ts":"2026-04-21T05:41:20.7828242\u002B00:00","pid":547555,"event":"binary-analyzer.finish","file_path":"/bin/bash","findings_count":5,"duration_ms":120}
+{"ts":"2026-04-21T05:41:55.7809466\u002B00:00","pid":548162,"event":"binary-analyzer.start","file_path":"/bin/bash"}
+{"ts":"2026-04-21T05:41:55.8970880\u002B00:00","pid":548162,"event":"binary-analyzer.finish","file_path":"/bin/bash","findings_count":5,"duration_ms":116}

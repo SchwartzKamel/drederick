@@ -80,6 +80,19 @@ public sealed class CommandLineOptions
     // --- datasette-integration: serve subcommand --------------------------------
     /// <summary>Serve subcommand selected (first positional arg "serve"). Launches datasette against out/findings.db.</summary>
     public bool ServeSubcommand { get; set; }
+
+    // --- binary-analyzer subcommand ------------------------------------------
+    /// <summary>Analyze subcommand selected (first positional arg "analyze"). Performs binary analysis on a file.</summary>
+    public bool AnalyzeSubcommand { get; set; }
+    /// <summary>Path to the binary file to analyze.</summary>
+    public string? BinaryPath { get; set; }
+    /// <summary>Output as JSON (for machine parsing).</summary>
+    public bool AnalyzeJson { get; set; }
+    /// <summary>Include extra details (all strings, all dependencies, etc.).</summary>
+    public bool AnalyzeVerbose { get; set; }
+    /// <summary>Write results to file (default: stdout).</summary>
+    public string? AnalyzeOutput { get; set; }
+    // --- end binary-analyzer subcommand ----------------------------------------
     /// <summary>Bind host for `drederick serve`. Default 127.0.0.1.</summary>
     public string ServeHost { get; set; } = "127.0.0.1";
     /// <summary>Bind port for `drederick serve`. Default 8001.</summary>
@@ -111,6 +124,18 @@ public sealed class CommandLineOptions
             start = 1;
         }
         // --- end datasette-integration -----------------------------------------
+        // --- binary-analyzer subcommand dispatch -----
+        else if (args.Length > 0 && args[0] == "analyze")
+        {
+            o.AnalyzeSubcommand = true;
+            start = 1;
+            if (start < args.Length && !args[start].StartsWith("--") && !args[start].StartsWith("-"))
+            {
+                o.BinaryPath = args[start];
+                start++;
+            }
+        }
+        // --- end binary-analyzer subcommand ---------
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -216,6 +241,23 @@ public sealed class CommandLineOptions
                     break;
                 // END ANCHOR: datasette-bootstrap-flag-parse
                 // --- end datasette-integration ---------------------------------
+                // --- binary-analyzer subcommand flags -----------
+                case "--json":
+                    if (!o.AnalyzeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.AnalyzeJson = true;
+                    break;
+                case "--verbose":
+                    if (!o.AnalyzeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.AnalyzeVerbose = true;
+                    break;
+                case "--output":
+                    if (!o.AnalyzeSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.AnalyzeOutput = RequireNext(args, ref i, a);
+                    break;
+                // --- end binary-analyzer subcommand flags -------
                 case "--service-concurrency":
                     {
                         var v = RequireNext(args, ref i, a);
@@ -256,6 +298,7 @@ public sealed class CommandLineOptions
           drederick doctor [--install | --doctor-fix] [-y|--yes]
           drederick serve [--host <ip>] [--port <n>] [--no-open] [-o <dir>]
                           [--datasette-path <path>] [--no-auto-install] [-y|--yes]
+          drederick analyze <binary-path> [--json] [--verbose] [--output <file>] [-s <scope>]
 
         SUBCOMMANDS:
           doctor               Check operator-workstation tooling (nmap, searchsploit,
@@ -269,6 +312,12 @@ public sealed class CommandLineOptions
                                Pass --datasette-path to use an explicit binary,
                                or --no-auto-install to require one already present.
                                Default bind 127.0.0.1:8001.
+          analyze              Assess binary security hardening, dependencies, and
+                               suspicious characteristics. Requires a binary path.
+                               With --scope, enforces scope on the binary path.
+                               --json: machine-readable output. --verbose: include
+                               detailed strings and dependencies. --output: write
+                               results to file (default: stdout).
 
         REQUIRED:
           -s, --scope <file>   Scope file (one CIDR/IP per line, '#' comments).
