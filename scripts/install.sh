@@ -52,8 +52,7 @@ OS_RAW="$(uname -s)"
 ARCH_RAW="$(uname -m)"
 case "$OS_RAW" in
     Linux)  OS=linux ;;
-    Darwin) OS=osx ;;
-    *)      die "unsupported OS: $OS_RAW (supported: Linux, Darwin)" 2 ;;
+    *)      die "unsupported OS: $OS_RAW (drederick is Linux-first — Kali/Parrot)" 2 ;;
 esac
 case "$ARCH_RAW" in
     x86_64|amd64) ARCH=x64 ;;
@@ -154,7 +153,8 @@ esac
 
 # ---------- next steps ----------
 printf "\n${C_BOLD}next steps${C_RESET}\n"
-printf "  %s${BIN_NAME} doctor%s             # verify your pentest toolchain\n" "$C_CYAN" "$C_RESET"
-printf "  %s${BIN_NAME} --help%s             # explore\n"                       "$C_CYAN" "$C_RESET"
-printf "  %s${BIN_NAME} serve%s              # open the Datasette dashboard (auto-bootstraps)\n" "$C_CYAN" "$C_RESET"
+printf "  %s${BIN_NAME} doctor%s             # verify your pentest toolchain\n"                     "$C_CYAN" "$C_RESET"
+printf "  %s${BIN_NAME} init%s               # interactive first-time setup (scope file + creds)\n" "$C_CYAN" "$C_RESET"
+printf "  %s${BIN_NAME} note --help%s        # CTF notes (flags, screenshots, observations)\n"      "$C_CYAN" "$C_RESET"
+printf "  %s${BIN_NAME} serve%s              # open the Datasette dashboard (auto-bootstraps)\n"    "$C_CYAN" "$C_RESET"
 printf "\nFull docs: https://github.com/${REPO}/tree/main/docs\n"

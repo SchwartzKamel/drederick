@@ -19,27 +19,30 @@ Welcome! This guide will help you get up and running with Drederick in minutes.
 curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | bash
 ```
 
-This downloads the latest release for your platform (Linux, macOS, or Windows), verifies the SHA256 checksum, and installs it to `~/.local/bin`.
+This downloads the latest release for Linux (x64 or arm64), verifies the SHA256 checksum, creates `~/.local/bin/` if missing, and installs the binary there. The installer also warns if `~/.local/bin` is not on your `PATH` and tells you what to add to your shell rc.
+
+> Drederick is Linux-first (Kali/Parrot operator workstations). macOS and Windows binaries are not published.
 
 ### Manual Download
 
 Visit the [releases page](https://github.com/SchwartzKamel/drederick/releases) and download the binary for your platform:
 - `drederick-*-linux-x64.tar.gz` — Linux x86-64
 - `drederick-*-linux-arm64.tar.gz` — Linux ARM64
-- `drederick-*-osx-x64.tar.gz` — macOS Intel
-- `drederick-*-osx-arm64.tar.gz` — macOS Apple Silicon
-- `drederick-*-win-x64.zip` — Windows x86-64
 
 Verify the checksum:
 ```bash
-sha256sum -c SHA256SUMS
+curl -fsSL https://github.com/SchwartzKamel/drederick/releases/latest/download/SHA256SUMS -o SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
 ```
 
 Extract and add to your PATH:
 ```bash
 tar -xzf drederick-*.tar.gz
-mv drederick ~/.local/bin/  # or /usr/local/bin for system-wide
-export PATH="$PATH:$HOME/.local/bin"  # Add to ~/.bashrc if needed
+mkdir -p ~/.local/bin
+install -m 755 drederick ~/.local/bin/   # or /usr/local/bin for system-wide (needs sudo)
+# Ensure ~/.local/bin is on PATH — add to ~/.bashrc or ~/.zshrc if missing:
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+drederick --help
 ```
 
 ## Prerequisites & Tooling
