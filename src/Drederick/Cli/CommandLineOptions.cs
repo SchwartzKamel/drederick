@@ -399,6 +399,14 @@ public sealed class CommandLineOptions
                 // END ANCHOR: note-subcommand-flags
                 // --- end note-subcommand flags -----------------------
                 case "--service-concurrency":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > MaxServiceConcurrency)
+                            throw new ArgumentException(
+                                $"--service-concurrency must be an integer in [1, {MaxServiceConcurrency}], got '{v}'.");
+                        o.ServiceConcurrency = n;
+                        break;
+                    }
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
             }
