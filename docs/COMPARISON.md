@@ -1,4 +1,23 @@
+---
+title: Comparison — drederick vs AutoRecon / nmapAutomator / Reconnoitre
+audience: [humans]
+primary: humans
+stability: evolving
+last_audited: 2026-04
+related:
+  - ../README.md
+  - SCOPE_AND_LEGAL.md
+  - ARCHITECTURE.md
+---
+
 # Comparison: Drederick vs AutoRecon / nmapAutomator / Reconnoitre
+
+> **TL;DR — when to pick drederick.** You want scope enforcement baked
+> into every tool (not a forgettable flag), hard-excluded
+> `exploit`/`brute`/`vuln` NSE, offline CVE annotation against an NVD
+> cache, locally cached PoC source with SHA-256 provenance, and an
+> LLM-assisted planner that can't escape the allow-list. Everything else,
+> prefer the peer tools below.
 
 A frank look at what Drederick does, what it doesn't, and when you'd reach for
 one of the other tools instead.

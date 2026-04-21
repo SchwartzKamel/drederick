@@ -1,0 +1,242 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag to release (e.g. v0.1.0). Dispatch only — tag push is normal path.'
+        required: true
+        type: string
+
+concurrency:
+  group: 'release-${{ github.ref }}'
+  cancel-in-progress: false
+
+jobs:
+  build-matrix:
+    name: build (${{ matrix.rid }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            archive: tar.gz
+          - os: ubuntu-latest
+            rid: linux-arm64
+            archive: tar.gz
+          - os: macos-latest
+            rid: osx-x64
+            archive: tar.gz
+          - os: macos-latest
+            rid: osx-arm64
+            archive: tar.gz
+          - os: windows-latest
+            rid: win-x64
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Derive version (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            raw="${{ inputs.version }}"
+          else
+            raw="${GITHUB_REF_NAME}"
+          fi
+          version="${raw#v}"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "TAG=${raw}" >> "$GITHUB_ENV"
+          echo "Derived VERSION=${version} TAG=${raw}"
+
+      - name: Derive version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $raw = '${{ inputs.version }}'
+          } else {
+            $raw = '${{ github.ref_name }}'
+          }
+          $version = $raw -replace '^v',''
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TAG=$raw"         | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Derived VERSION=$version TAG=$raw"
+
+      - name: Publish (${{ matrix.rid }})
+        shell: bash
+        run: |
+          dotnet publish src/Drederick/Drederick.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version=${{ env.VERSION }} \
+            -o publish/${{ matrix.rid }}
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          staging="staging/${{ matrix.rid }}"
+          mkdir -p "$staging/docs"
+          cp "publish/${{ matrix.rid }}/drederick" "$staging/drederick"
+          chmod +x "$staging/drederick"
+          cp LICENSE "$staging/docs/LICENSE"
+          cp README.md "$staging/docs/README.md"
+          archive="drederick-${VERSION}-${{ matrix.rid }}.tar.gz"
+          tar -czf "$archive" -C "$staging" drederick docs
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $archive = "drederick-$env:VERSION-${{ matrix.rid }}.zip"
+          Compress-Archive -Path "publish/${{ matrix.rid }}/drederick.exe","LICENSE","README.md" -DestinationPath $archive -Force
+          "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Compute SHA-256 (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
+          cat "${ARCHIVE}.sha256"
+
+      - name: Compute SHA-256 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $env:ARCHIVE).Hash.ToLower()
+          "$hash  $env:ARCHIVE" | Out-File -FilePath "$env:ARCHIVE.sha256" -Encoding ascii -NoNewline
+          Get-Content "$env:ARCHIVE.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drederick-${{ matrix.rid }}
+          path: |
+            drederick-*-${{ matrix.rid }}.tar.gz
+            drederick-*-${{ matrix.rid }}.zip
+            drederick-*-${{ matrix.rid }}.tar.gz.sha256
+            drederick-*-${{ matrix.rid }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: publish release
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive version/tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            raw="${{ inputs.version }}"
+          else
+            raw="${GITHUB_REF_NAME}"
+          fi
+          version="${raw#v}"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "TAG=${raw}" >> "$GITHUB_ENV"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Consolidate into dist/ and build SHA256SUMS
+        shell: bash
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name 'drederick-*.tar.gz' -o -name 'drederick-*.zip' \) -exec cp -v {} dist/ \;
+          find artifacts -type f -name '*.sha256' -print0 | xargs -0 cat > dist/SHA256SUMS
+          echo "---- dist/ contents ----"
+          ls -la dist
+          echo "---- SHA256SUMS ----"
+          cat dist/SHA256SUMS
+
+      - name: Write RELEASE_NOTES.md
+        shell: bash
+        run: |
+          tag="${TAG}"
+          version="${VERSION}"
+          repo="${GITHUB_REPOSITORY}"
+          cat > dist/RELEASE_NOTES.md <<EOF
+          ## drederick ${tag}
+
+          Self-contained, single-file binaries for Linux, macOS, and Windows.
+
+          ### Install (Linux / macOS)
+
+          \`\`\`sh
+          curl -fsSL https://github.com/${repo}/releases/download/${tag}/drederick-${version}-linux-x64.tar.gz | tar -xzf - drederick
+          install -m 755 drederick ~/.local/bin/
+          drederick --help
+          \`\`\`
+
+          Replace \`linux-x64\` with one of: \`linux-arm64\`, \`osx-x64\`, \`osx-arm64\`.
+
+          ### Install (Windows)
+
+          \`\`\`powershell
+          Invoke-WebRequest -Uri https://github.com/${repo}/releases/download/${tag}/drederick-${version}-win-x64.zip -OutFile drederick.zip
+          Expand-Archive -Path drederick.zip -DestinationPath .
+          .\drederick.exe --help
+          \`\`\`
+
+          ### Verify downloads (SHA-256)
+
+          \`\`\`sh
+          curl -fsSL https://github.com/${repo}/releases/download/${tag}/SHA256SUMS -o SHA256SUMS
+          sha256sum -c SHA256SUMS --ignore-missing
+          \`\`\`
+
+          ### Next steps
+
+          Verify your toolchain: \`drederick doctor\`
+
+          See [docs/MODULES.md](https://github.com/${repo}/blob/${tag}/docs/MODULES.md) for module reference.
+          EOF
+          echo "---- RELEASE_NOTES.md ----"
+          cat dist/RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          files: |
+            dist/drederick-*.tar.gz
+            dist/drederick-*.zip
+            dist/SHA256SUMS
+          body_path: dist/RELEASE_NOTES.md
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,11 @@
 # Copilot instructions for drederick
 
+> **Scope of this file.** Copilot-specific guidance. For the general-LLM
+> (vendor-neutral) version — same invariants, extension points, and safety
+> triggers, but surfaced as machine-readable tables for any agent — read
+> [`../AGENTS.md`](../AGENTS.md). This file remains the canonical source for
+> GitHub Copilot sessions; `AGENTS.md` is the mirror for other tools.
+
 Drederick is an **aggressive, scope-enforced reconnaissance harness** for
 authorized lab/CTF targets. Mission: **win CTFs fast** by maximizing
 enumeration coverage, parallelism, and adaptive planning *inside* the scope

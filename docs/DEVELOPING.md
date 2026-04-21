@@ -1,4 +1,26 @@
+---
+title: Developing
+audience: [humans]
+primary: humans
+stability: stable
+last_audited: 2026-04
+related:
+  - ARCHITECTURE.md
+  - MODULES.md
+  - SCOPE_AND_LEGAL.md
+  - ../AGENTS.md
+---
+
 # Developing
+
+> **Contributor quickstart:** `make quickstart` installs deps, builds,
+> publishes, and installs the CLI globally (userspace `~/.local/bin`). Then
+> `dotnet test` to verify. See [`../Makefile`](../Makefile) for the targets.
+>
+> **TL;DR map:** adding a scanner → [`#adding-scanner`](#adding-scanner);
+> enrichment source → [`#adding-enrichment`](#adding-enrichment); Datasette
+> canned query → [`#adding-query`](#adding-query). Agent-facing contract is
+> [`../AGENTS.md#extension-points`](../AGENTS.md#extension-points).
 
 ## Prerequisites
 
@@ -27,7 +49,7 @@ All tests are xUnit under `tests/Drederick.Tests/`. The solution file is
 `Drederick.slnx`; shared build props (`net10.0`, nullable on, implicit usings
 on, invariant globalization) live in `Directory.Build.props`.
 
-## Adding a new `IReconTool`
+## Adding a new `IReconTool` {#adding-scanner}
 
 `IReconTool` is a metadata-only interface (`Name`, `Description`). Call
 signatures stay typed per-scanner because recon surfaces are intentionally
@@ -107,7 +129,7 @@ useful per-tool parameters. `ReconToolbox` dispatches by concrete type
     - A negative test asserting no forbidden NSE category or CLI flag is
       enabled on the built argv (pattern: `SmbToolTests.AssertNoForbiddenScripts_*`).
 
-## Adding a new enrichment source
+## Adding a new enrichment source {#adding-enrichment}
 
 Enrichment sources annotate findings with third-party intel (CVEs, PoCs,
 threat reports). All live under `src/Drederick/Enrichment/`.
@@ -140,7 +162,7 @@ threat reports). All live under `src/Drederick/Enrichment/`.
 4. Wire into `CveAnnotator.AnnotateAsync` behind a feature flag /
    environment variable mirroring `DREDERICK_SKIP_CVE`.
 
-## Adding a Datasette canned query
+## Adding a Datasette canned query {#adding-query}
 
 Canned queries are declared in `datasette/metadata.json` under
 `databases.findings.queries.<name>`. Each entry needs `title`, `description`,
@@ -160,7 +182,7 @@ and `sql`. Example:
 - Mention the query in [`DATASETTE.md`](./DATASETTE.md) so it is findable.
 - No schema migration is needed; Datasette re-reads metadata on restart.
 
-## Running doctor locally
+## Running doctor locally {#doctor-local}
 
 ```bash
 # Read-only: print what's installed and what's missing.
@@ -203,7 +225,7 @@ skipped. There is no flag, no prompt, and no environment variable that
 disables this check. If you are adding a code path that reaches the network,
 it must start with `_scope.Require(target)`.
 
-## Testing conventions
+## Testing conventions {#testing}
 
 - Prefer in-memory fixtures: recorded XML for nmap, recorded response
   streams for FTP/SSH/SMTP, recorded HTTP bodies.
@@ -238,7 +260,7 @@ The host will bind to `127.0.0.1` only and print a one-time auth token.
 Until then, `drederick serve` against Datasette is the current UI — see
 [`DATASETTE.md`](./DATASETTE.md).
 
-## Project layout
+## Project layout {#project-layout}
 
 ```
 src/Drederick/          # Core engine (CLI today)

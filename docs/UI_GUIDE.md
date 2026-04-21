@@ -1,4 +1,20 @@
+---
+title: UI guide
+audience: [humans]
+primary: humans
+stability: evolving
+last_audited: 2026-04
+related:
+  - DATASETTE.md
+  - ARCHITECTURE.md
+  - SCOPE_AND_LEGAL.md
+---
+
 # UI guide
+
+> **TL;DR.** Current UI = Datasette (`drederick serve`). React dashboard is
+> **planned, not implemented**. Use the CLI + Datasette until
+> `src/Drederick.Web` lands.
 
 Drederick has two UIs on its roadmap. Datasette is the **usable-today UI**;
 the React dashboard is the **planned forward-looking UI**.

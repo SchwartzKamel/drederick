@@ -1,8 +1,30 @@
+<!--
+---
+title: drederick — scope-enforced recon harness
+audience: [humans, agents]
+primary: humans
+stability: stable
+last_audited: 2026-04
+related:
+  - AGENTS.md
+  - docs/README.md
+  - docs/SCOPE_AND_LEGAL.md
+  - docs/ARCHITECTURE.md
+---
+-->
+
 # drederick
+
+[![CI](https://github.com/SchwartzKamel/drederick/actions/workflows/ci.yml/badge.svg)](https://github.com/SchwartzKamel/drederick/actions/workflows/ci.yml)
 
 > **Drederick E. Tatum** — Heavyweight HTB/CTF champion.
 
 ![Drederick Tatum](https://comb.io/NOqy8w.gif)
+
+> **For LLM agents:** read [`AGENTS.md`](AGENTS.md) (general) or
+> [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+> (Copilot) before making changes. For the docs index, see
+> [`docs/README.md`](docs/README.md).
 
 Drederick is a scope-enforced, adaptive reconnaissance harness for **authorized
 lab and CTF environments only** (Hack The Box, TryHackMe, CTF ranges, Vulnhub,
@@ -12,6 +34,7 @@ no credential attacks, no brute force, no payload delivery, no PoC execution**.
 
 Built in C# on **.NET 10** with the **Microsoft Agent Framework**.
 
+<a id="authorized-use"></a>
 ## Authorized use only
 
 The only permitted use of this tool is against lab/CTF targets you are
@@ -23,19 +46,51 @@ third-party systems is illegal in most jurisdictions; don't do it.
 
 See [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md) for the full policy.
 
+<a id="quick-start"></a>
 ## Quick start
+
+### Fastest path — one-liner install (no build required)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | bash
+```
+
+Downloads the latest release binary for your OS+arch, SHA-256-verifies it,
+and drops it at `~/.local/bin/drederick`. Override via environment:
+
+```bash
+# Pin a version
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.1.0 bash
+
+# System-wide install (requires sudo)
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | sudo PREFIX=/usr/local/bin bash
+```
+
+Supported: `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`. Windows users:
+download the `.zip` from the [Releases page](https://github.com/SchwartzKamel/drederick/releases).
+
+Then:
+
+```bash
+drederick doctor --install   # detect/install your pentest toolchain
+drederick --help             # explore
+```
+
+### Build-from-source path (contributors)
 
 From a clean Debian/Ubuntu/Kali workstation to triaging CVEs in five steps:
 
 ```bash
-# 1. Clone + build.
+# 1. Clone + build + install globally. (Uses Makefile; see 'make help' for all targets.)
 git clone https://github.com/SchwartzKamel/drederick.git
 cd drederick
-dotnet build
+make quickstart          # deps + build + publish + install to ~/.local/bin
 
 # 2. Detect and (with your consent) install the operator toolchain.
-#    nmap, searchsploit, python2/3, go, ruby, git, curl, jq, datasette.
-./src/Drederick/bin/Debug/net10.0/drederick doctor --install
+#    nmap, searchsploit, python2/3, go, ruby, git, curl, jq, datasette,
+#    plus HTB staples: netexec, impacket, hashcat, john, ffuf, gobuster,
+#    nuclei, kerbrute, seclists, evil-winrm, …
+drederick doctor --install
 
 # 3. Write a scope file. One CIDR/IP per line; '#' is a comment.
 cat > scope.yaml <<'EOF'
@@ -44,11 +99,10 @@ cat > scope.yaml <<'EOF'
 EOF
 
 # 4. Run the recon. Lab mode + adaptive orchestration are on by default.
-./src/Drederick/bin/Debug/net10.0/drederick \
-    --scope scope.yaml --target 10.10.10.5 --out out/
+drederick --scope scope.yaml --target 10.10.10.5 --out out/
 
 # 5. Triage findings in a browser.
-./src/Drederick/bin/Debug/net10.0/drederick serve --out out/
+drederick serve --out out/
 #    → http://127.0.0.1:8001
 ```
 
@@ -58,6 +112,7 @@ cached PoC source under `out/poc_cache/`. Step 5 opens Datasette against
 `out/findings.db` — see [`docs/DATASETTE.md`](docs/DATASETTE.md) for the
 triage workflow.
 
+<a id="features"></a>
 ## Features
 
 - **14 enumeration scanners**, all scope-gated and read-only: `nmap`, `http`,
@@ -103,6 +158,7 @@ triage workflow.
   *may* choose to run themselves. Drederick never executes these, and
   never suggests exploit, brute-force, or payload-delivery commands.
 
+<a id="build-test"></a>
 ## Build & test
 
 ```bash
@@ -114,6 +170,7 @@ dotnet format
 `nmap` should be on `PATH` for end-to-end runs. Unit tests do not require it.
 Full contributor notes: [`docs/DEVELOPING.md`](docs/DEVELOPING.md).
 
+<a id="usage"></a>
 ## Usage
 
 ```bash
@@ -216,7 +273,12 @@ memory/
 └── nvd/                           # NVD 2.0 JSON feeds, last ~5 years + modified
 ```
 
+<a id="documentation"></a>
 ## Documentation
+
+Start with the index: [`docs/README.md`](docs/README.md). LLM agents should
+read [`AGENTS.md`](AGENTS.md) first.
+
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, components, the
   thread-safety story for `KnowledgeBase` / `AuditLog`.
@@ -233,6 +295,7 @@ memory/
 - [`docs/UI_GUIDE.md`](docs/UI_GUIDE.md) — current UI (Datasette) pointer +
   the planned React dashboard design.
 
+<a id="architecture-short"></a>
 ## Architecture (short version)
 
 ```
@@ -267,6 +330,7 @@ scope file causes the tool to throw a `ScopeException`, which is logged and
 skipped. There is no flag, no prompt, and no environment variable that
 disables this check.
 
+<a id="roadmap"></a>
 ## Roadmap
 
 Shipped and in the tree today:

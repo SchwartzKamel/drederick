@@ -1,5 +1,46 @@
+---
+title: Scope, lab mode, and authorized use
+audience: [humans, agents]
+primary: both
+stability: stable
+last_audited: 2026-04
+related:
+  - ../README.md
+  - ../AGENTS.md
+  - ARCHITECTURE.md
+  - MODULES.md
+---
+
 # Scope, lab mode, and authorized use
 
+> **TL;DR.** Drederick runs only against targets you list in a scope file.
+> Wildcards refused; `exploit`/`intrusive`/`brute`/`vuln`/`dos`/`malware`
+> NSE hard-excluded; no credential attacks, payload delivery, or PoC
+> execution — ever. These are hard guarantees. The verbatim legal policy
+> is unchanged below; the table summarises the stable invariant ids agents
+> should cite.
+
+<a id="invariants"></a>
+## Invariants (agent-stable ids)
+
+| id | Invariant | Depth |
+| -- | --------- | ----- |
+| `@invariant-id:scope-in-every-tool`    | `_scope.Require(target)` is the first statement of every method that touches the network. | [Every tool re-checks](#what-drederick-does-and-does-not-do) |
+| `@invariant-id:scope-default-deny`     | `Scope` is a default-deny allow-list. | [The only permitted use](#the-only-permitted-use-of-drederick) |
+| `@invariant-id:scope-wildcard-refused` | `0.0.0.0/0` / `::/0` refused even with `--allow-broad`. | [Lab vs strict](#lab-default-vs-no-lab) |
+| `@invariant-id:scope-prefix-cap`       | Lab `/8` v4 `/32` v6; strict `/16` v4 `/48` v6. | [Lab vs strict](#lab-default-vs-no-lab) |
+| `@invariant-id:nse-forbidden-categories` | `exploit`/`intrusive`/`brute`/`vuln`/`dos`/`malware` hard-coded excluded in both modes. | [Does-not](#does-not-ever) |
+| `@invariant-id:aggregate-not-execute`  | Aggregate + present, never execute. | [The aggregate-vs-execute line](#aggregate-vs-execute) |
+| `@invariant-id:no-credential-attacks`  | No brute force, spray, AS-REP roast, kerberoast, dictionary, or guessing. | [Does-not](#does-not-ever) |
+| `@invariant-id:no-payload-delivery`    | No shells, implants, webshells, persistence, or payload staging. | [Does-not](#does-not-ever) |
+| `@invariant-id:doctor-workstation-only` | Doctor modifies the operator workstation only; never re-execs as root; never contacts a target. | [Does / does-not](#what-drederick-does-and-does-not-do) |
+| `@invariant-id:llm-cannot-escape-scope` | The LLM runner cannot escape the allow-list — every tool re-checks. | [Does-not](#does-not-ever) |
+| `@invariant-id:no-scope-kill-switch`   | No flag, env var, debug build, or prompt disables the scope check. | [Does-not](#does-not-ever) |
+
+The machine-readable mirror of this table is in
+[`../AGENTS.md#invariants`](../AGENTS.md#invariants).
+
+<a id="the-only-permitted-use-of-drederick"></a>
 ## The only permitted use of Drederick
 
 **Lab and CTF targets that you are explicitly authorized to assess.** That
@@ -14,8 +55,10 @@ most jurisdictions.
 By pointing Drederick at any target you assert that you are authorized to test
 that target. If you are wrong about that, the tool will not save you.
 
+<a id="what-drederick-does-and-does-not-do"></a>
 ## What Drederick does and does not do
 
+<a id="does"></a>
 ### Does
 
 - Discovery: nmap service/version scans, HTTP/TLS/DNS probes.
@@ -34,6 +77,7 @@ that target. If you are wrong about that, the tool will not save you.
 - `drederick doctor` modifies the **operator's workstation** at their
   consent (installing `nmap`, `searchsploit`, `datasette`, etc).
 
+<a id="does-not-ever"></a>
 ### Does not, ever
 
 - Run exploits, PoCs, or exploit-category NSE scripts.
@@ -51,6 +95,7 @@ that target. If you are wrong about that, the tool will not save you.
 
 These are **hard guarantees**, not polite defaults.
 
+<a id="aggregate-vs-execute"></a>
 ## The aggregate-vs-execute line
 
 Drederick is deliberately aggressive about enumeration surface — 14
@@ -85,6 +130,7 @@ Concretely:
 If you find a way to make Drederick cross this line, treat it as a
 security-critical bug. See "Reporting a security bug" below.
 
+<a id="lab-default-vs-no-lab"></a>
 ## `--lab` (default) vs `--no-lab`
 
 Lab mode is on by default. It makes two narrow concessions for CTF/lab
@@ -111,6 +157,7 @@ not classify them as intrusive or exploit-adjacent. Drederick still excludes
 (but still refuses `/0`). Use it only when your authorized lab range is
 genuinely that large.
 
+<a id="accidental-out-of-scope-run"></a>
 ## Accidental out-of-scope run
 
 If Drederick ever runs against a target it shouldn't have:
@@ -124,6 +171,7 @@ If Drederick ever runs against a target it shouldn't have:
 The scope file is intentionally a tiny, human-readable allow-list precisely so
 this kind of mistake is easy to audit after the fact.
 
+<a id="reporting-a-security-bug"></a>
 ## Reporting a security bug
 
 If you find a way to make Drederick touch a target outside its scope file,

@@ -1,4 +1,36 @@
+---
+title: Scanner modules
+audience: [humans, agents]
+primary: both
+stability: stable
+last_audited: 2026-04
+related:
+  - ARCHITECTURE.md
+  - DEVELOPING.md
+  - SCOPE_AND_LEGAL.md
+  - ../AGENTS.md
+---
+
 # Modules
+
+> **TL;DR.** 14 `IReconTool` scanners under `src/Drederick/Recon/`. Each
+> checks `_scope.Require(target)` as its first statement, brackets work with
+> `audit.Record("<name>.start"/".finish", …)`, returns a typed result on
+> `HostFinding`, and validates any subprocess argv. Per-scanner anchors
+> below: [`{#scanner-nmap}`](#scanner-nmap), [`{#scanner-http}`](#scanner-http),
+> [`{#scanner-tls}`](#scanner-tls), [`{#scanner-dns}`](#scanner-dns),
+> [`{#scanner-smb}`](#scanner-smb), [`{#scanner-ftp}`](#scanner-ftp),
+> [`{#scanner-ssh}`](#scanner-ssh), [`{#scanner-snmp}`](#scanner-snmp),
+> [`{#scanner-ldap}`](#scanner-ldap), [`{#scanner-rpc}`](#scanner-rpc),
+> [`{#scanner-kerberos}`](#scanner-kerberos),
+> [`{#scanner-dns-axfr}`](#scanner-dns-axfr),
+> [`{#scanner-http-content-discovery}`](#scanner-http-content-discovery),
+> [`{#scanner-tls-cipher-enum}`](#scanner-tls-cipher-enum).
+>
+> **Invariants:** no credential attacks, no brute force, no payload
+> delivery, no exploit-category NSE. See
+> [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) and
+> [`../AGENTS.md#invariants`](../AGENTS.md#invariants).
 
 Every scanner lives under `src/Drederick/Recon/` and implements
 `IReconTool`. Each scanner re-checks scope at its entry point via
@@ -10,7 +42,7 @@ traceable in `audit.jsonl`.
 Per-scanner result shapes live in `Drederick.Recon.HostFinding`; CLI flags
 are defined in `Drederick.Cli.CommandLineOptions`.
 
-## 1. `NmapTool`
+## 1. `NmapTool` {#scanner-nmap}
 
 - **Purpose:** service/version scan and first-pass NSE enumeration.
 - **Subprocess:** `nmap -Pn -sV -sC -T4 --min-rate 1000 -oX - <target>`.
@@ -27,7 +59,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **CLI flags:** `--lab` / `--no-lab` controls NSE category set.
 - **Dispatch trigger:** always runs in phase 1 alongside DNS.
 
-## 2. `HttpProbeTool`
+## 2. `HttpProbeTool` {#scanner-http}
 
 - **Purpose:** status, title, server, content-type, and missing
   security-header inventory for a single HTTP(S) endpoint.
@@ -41,7 +73,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   `service ~= http` or the port is one of `80, 8080, 8000, 8008, 8888,
   3000, 5000`; HTTPS variant when `service ~= https|ssl|tls`.
 
-## 3. `TlsProbeTool`
+## 3. `TlsProbeTool` {#scanner-tls}
 
 - **Purpose:** peer certificate subject/SAN/issuer/validity and negotiated
   TLS version.
@@ -53,7 +85,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **CLI flags:** none beyond scope.
 - **Dispatch trigger:** HTTPS / TLS-bearing service detected by nmap.
 
-## 4. `DnsProbeTool`
+## 4. `DnsProbeTool` {#scanner-dns}
 
 - **Purpose:** forward + reverse DNS lookup via the host resolver.
 - **Subprocess:** none — `System.Net.Dns`.
@@ -63,7 +95,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   ForwardError, ReverseError }`.
 - **Dispatch trigger:** always runs in phase 1 alongside nmap.
 
-## 5. `SmbTool`
+## 5. `SmbTool` {#scanner-smb}
 
 - **Purpose:** SMB OS/identity/dialect/signing inventory; optional
   anonymous shares + users via `enum4linux-ng`.
@@ -79,7 +111,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **CLI flags:** none beyond scope.
 - **Dispatch trigger:** nmap service `microsoft-ds` or `netbios-ssn`.
 
-## 6. `FtpTool`
+## 6. `FtpTool` {#scanner-ftp}
 
 - **Purpose:** banner + anonymous login + bounded root listing.
 - **Subprocess:** none — raw TCP via an injectable connect factory.
@@ -90,7 +122,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   AnonymousAllowed, RootListing[], Error }`.
 - **Dispatch trigger:** nmap service `ftp`.
 
-## 7. `SshTool`
+## 7. `SshTool` {#scanner-ssh}
 
 - **Purpose:** banner + KEX/host-key/cipher/MAC algorithm lists via
   `ssh2-enum-algos`.
@@ -103,7 +135,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   MacAlgorithms[], … }`.
 - **Dispatch trigger:** nmap service `ssh`.
 
-## 8. `SnmpTool`
+## 8. `SnmpTool` {#scanner-snmp}
 
 - **Purpose:** SNMPv2c system-OID walk (`1.3.6.1.2.1.1`) with default
   communities `public` / `private`.
@@ -113,7 +145,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **Result:** `HostFinding.Snmp[]` → SNMP system OID entries.
 - **Dispatch trigger:** nmap service `snmp`, or `service ~= snmp` on UDP.
 
-## 9. `LdapTool`
+## 9. `LdapTool` {#scanner-ldap}
 
 - **Purpose:** anonymous bind + RootDSE attributes (`namingContexts`,
   `supportedControl`, `supportedLDAPVersion`, `supportedSASLMechanisms`).
@@ -124,7 +156,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   NamingContexts[], SupportedControls[], Error }`.
 - **Dispatch trigger:** nmap service `ldap` or `ldaps`.
 
-## 10. `RpcTool`
+## 10. `RpcTool` {#scanner-rpc}
 
 - **Purpose:** list RPC programs registered with the portmapper.
 - **Subprocess:** `rpcinfo -p` plus `nmap --script rpc-grind`.
@@ -134,7 +166,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   each `RpcProgram` carries `{ Program, Version, Protocol, Port, Name }`.
 - **Dispatch trigger:** nmap service `sunrpc` or `rpcbind`.
 
-## 11. `KerberosTool`
+## 11. `KerberosTool` {#scanner-kerberos}
 
 - **Purpose:** Kerberos realm + **SPN listing only**, sourced via LDAP
   anonymous bind.
@@ -147,7 +179,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **Dispatch trigger:** paired with `ldap` dispatch when nmap reports
   `ldap` / `ldaps` on a Domain Controller.
 
-## 12. `DnsZoneTransferTool`
+## 12. `DnsZoneTransferTool` {#scanner-dns-axfr}
 
 - **Purpose:** DNS AXFR against an in-scope nameserver IP for a given
   domain label.
@@ -161,7 +193,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   or by the deterministic runner when DNS service metadata suggests a
   candidate domain.
 
-## 13. `HttpContentDiscoveryTool`
+## 13. `HttpContentDiscoveryTool` {#scanner-http-content-discovery}
 
 - **Purpose:** path-only content discovery against an HTTP(S) base URL.
   GETs a bounded, sanitized wordlist and records statuses in
@@ -179,7 +211,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **Dispatch trigger:** any HTTP/HTTPS service when `--content-discovery`
   is set.
 
-## 14. `TlsCipherEnumTool`
+## 14. `TlsCipherEnumTool` {#scanner-tls-cipher-enum}
 
 - **Purpose:** TLS version + cipher-suite enumeration per port.
 - **Subprocess:** `nmap --script ssl-enum-ciphers` (safe category).
@@ -191,7 +223,7 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **Dispatch trigger:** HTTPS / TLS-bearing service detected by nmap
   (auto-paired with `tls` probe).
 
-## Reporting
+## Reporting {#reporting}
 
 ### `JsonReport`
 
@@ -221,7 +253,7 @@ Writes `out/findings.db` — seven tables (`hosts`, `services`, `findings`,
 `SqliteReport.EnsureSchema`. Browsed via Datasette
 ([`DATASETTE.md`](./DATASETTE.md)).
 
-## Enrichment (not `IReconTool` — runs after recon completes)
+## Enrichment (not `IReconTool` — runs after recon completes) {#enrichment}
 
 ### `CveAnnotator`
 
@@ -240,7 +272,7 @@ SHA-256 provenance in `poc_sources`. Default-on; opt out with
 `--no-fetch-poc`. **Drederick never executes cached PoC code and never
 initiates outbound requests from it.**
 
-## Planned enrichment sources
+## Planned enrichment sources {#enrichment-planned}
 
 - **GHSA source** — GitHub Security Advisory mappings for the CVE set
   (pointers only, no code fetch).

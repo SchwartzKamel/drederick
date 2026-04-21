@@ -1,4 +1,30 @@
+---
+title: Architecture
+audience: [humans, agents]
+primary: both
+stability: stable
+last_audited: 2026-04
+related:
+  - SCOPE_AND_LEGAL.md
+  - MODULES.md
+  - DEVELOPING.md
+  - DATASETTE.md
+  - ../AGENTS.md
+---
+
 # Architecture
+
+> **TL;DR.** Seven layers: `CLI → Scope → Doctor → ReconToolbox (14
+> `IReconTool`s) → HostWorkerPool → Runner (AdaptiveRunner or
+> MicrosoftAgentRunner) → Enrichment (NVD + PoC) → Reporting (JSON /
+> Markdown / SqliteReport) → Presentation (Datasette today; React planned) +
+> Memory (`memory/findings.json`)`. Scope is enforced *inside every tool*;
+> `AuditLog` and `KnowledgeBase` are the only thread-safe shared state. Read
+> [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) for hard guarantees before
+> editing anything in this doc's blast radius.
+
+<a id="intro"></a>
+## Overview
 
 Drederick is a scope-enforced, adaptive reconnaissance harness built on
 **.NET 10** and the **Microsoft Agent Framework**. It performs discovery,
@@ -8,7 +34,7 @@ attacks, brute force, payload delivery, or PoC execution.
 This document describes the current architecture. Items marked **(planned)**
 are still in the roadmap; everything else is in the tree today.
 
-## Layers
+## Layers {#layers}
 
 ```
                       ┌───────────────────────────┐
@@ -72,9 +98,9 @@ are still in the roadmap; everything else is in the tree today.
            └─────────────────────────────────────────┘
 ```
 
-## Components
+## Components {#components}
 
-### `Drederick.Scope`
+### `Drederick.Scope` {#layer-scope}
 
 Default-deny allow-list. A `Scope` is constructed only via `ScopeLoader`, which
 enforces:
@@ -90,7 +116,7 @@ Every tool calls `Scope.Require(target)` at its entry point. A target outside
 the scope throws `ScopeException`, which is logged and skipped. **There is no
 flag, env var, or debug build that turns this off.**
 
-### `Drederick.Doctor`
+### `Drederick.Doctor` {#layer-doctor}
 
 Operator-workstation preflight (`drederick doctor` / `drederick doctor
 --install`). Detects: `nmap`, `searchsploit`, `python3`, `python2`, `go`,
@@ -103,7 +129,7 @@ package is stale or missing. Never re-execs as root — prints the exact
 table in `findings.db`. **Doctor modifies the operator workstation
 only. It never scans, modifies, or reaches out to any target.**
 
-### `Drederick.Recon`
+### `Drederick.Recon` {#layer-recon}
 
 Fourteen scanners, all implementing `IReconTool` (a metadata-only interface
 carrying `Name` and `Description`). Call signatures remain typed per-scanner
@@ -131,7 +157,7 @@ Every scanner:
 `exploit`, `intrusive`, `brute`, `vuln`, `dos`, and `malware` are hard-coded
 excluded. Per-scanner documentation lives in [`MODULES.md`](./MODULES.md).
 
-### `Drederick.Agent` — orchestration + worker pool
+### `Drederick.Agent` — orchestration + worker pool {#layer-agent}
 
 - `AdaptiveRunner` — deterministic, rule-driven planner. Runs `dns` + `nmap`
   first; then fans out per-service dispatch actions (`tls`, `http`,
@@ -146,7 +172,7 @@ excluded. Per-scanner documentation lives in [`MODULES.md`](./MODULES.md).
   per-service probes fan out in parallel bounded by `--service-concurrency`
   (default 8, max 64).
 
-### `Drederick.Enrichment`
+### `Drederick.Enrichment` {#layer-enrichment}
 
 - `NvdCache` — downloads the NVD 2.0 JSON feed for the last ~5 years plus
   the `modified` feed to `~/.drederick/nvd/` (with an ETag-aware refresh).
@@ -168,7 +194,7 @@ Opt-outs:
 - `--no-fetch-poc` — skip PoC fetching (pointers may still be recorded from
   offline sources like `searchsploit`'s local archive).
 
-### `Drederick.Reporting`
+### `Drederick.Reporting` {#layer-reporting}
 
 - `JsonReport` — machine-readable `out/report.json`.
 - `MarkdownReport` — per-host summary `out/report.md`.
@@ -182,19 +208,19 @@ Opt-outs:
   DDL lives in `SqliteReport.EnsureSchema`. Idempotent upserts. Browsed via
   [Datasette](./DATASETTE.md).
 
-### `Drederick.Memory` — cross-run knowledge base
+### `Drederick.Memory` — cross-run knowledge base {#layer-memory}
 
 `KnowledgeBase` persists findings between runs (`memory/findings.json`). The
 next run starts with the prior map and writes back merged state, so repeat
 passes converge on deltas rather than re-discovering the whole surface.
 
-### `Drederick.Audit`
+### `Drederick.Audit` {#layer-audit}
 
 Append-only JSONL log (`out/audit.jsonl`) capturing every tool call, scope
 decision, doctor detection/install, and session event. Used by tests,
 forensics, and the planned live UI stream.
 
-## Thread-safety
+## Thread-safety {#thread-safety}
 
 `HostWorkerPool` runs scanners concurrently, so any state shared across hosts
 must be thread-safe:
@@ -214,16 +240,16 @@ New scanners inherit this contract: **no shared mutable state outside
 `KnowledgeBase` and `AuditLog`, both of which must stay thread-safe**. If you
 need per-run state, keep it inside `HostFinding` (one per target).
 
-## Presentation layer
+## Presentation layer {#layer-presentation}
 
-### Current: Datasette
+### Current: Datasette {#layer-presentation-datasette}
 
 `drederick serve` shells to `datasette serve out/findings.db --metadata
 datasette/metadata.json --host 127.0.0.1 --port 8001 --open`. Bound to
 localhost by default. See [`DATASETTE.md`](./DATASETTE.md) for the full
 schema walkthrough, facet guide, and PoC triage workflow.
 
-### Planned: React dashboard
+### Planned: React dashboard {#layer-presentation-react}
 
 - `src/Drederick.Web` — ASP.NET Core host, minimal API + SignalR stream.
   Binds `127.0.0.1` only; one-time token written to `~/.drederick/ui.token`.

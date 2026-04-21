@@ -191,6 +191,13 @@ install-symlink: publish ## Symlink the published binary into $(PREFIX) (for act
 	@ln -sf "$$(pwd)/$(PUBLISHED_BIN)" $(INSTALLED_BIN)
 	@printf "$(C_GREEN)symlinked$(C_RESET) $(INSTALLED_BIN) → $$(pwd)/$(PUBLISHED_BIN)\n"
 
+.PHONY: install-from-release
+install-from-release: ## Download + install the latest signed release binary (no build)
+	@if [ ! -x scripts/install.sh ]; then \
+	    printf "$(C_YELL)error:$(C_RESET) scripts/install.sh not found or not executable\n"; exit 1; \
+	 fi
+	@PREFIX=$(PREFIX) ./scripts/install.sh
+
 .PHONY: uninstall
 uninstall: ## Remove the installed binary from $(PREFIX)
 	@if [ -e $(INSTALLED_BIN) ] || [ -L $(INSTALLED_BIN) ]; then \

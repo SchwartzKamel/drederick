@@ -1,4 +1,26 @@
+---
+title: Datasette dashboard
+audience: [humans]
+primary: humans
+stability: stable
+last_audited: 2026-04
+related:
+  - DB_SCHEMA.md
+  - UI_GUIDE.md
+  - ARCHITECTURE.md
+  - SCOPE_AND_LEGAL.md
+---
+
 # Datasette dashboard
+
+> **TL;DR (humans).** Run `drederick serve --out out/` → open
+> <http://127.0.0.1:8001>. Start triage at `/findings/services_with_pocs`,
+> filter by CVSS facet, click through to `cves` → `poc_refs` → open
+> `local_path` in your editor. Walkthrough below.
+>
+> **For LLMs:** the machine-readable schema reference is
+> [`DB_SCHEMA.md`](DB_SCHEMA.md). Prefer that doc for table columns,
+> foreign keys, and stable query contracts.
 
 `drederick serve` launches [Datasette](https://datasette.io/) against
 `out/findings.db` — the SQLite database written by
