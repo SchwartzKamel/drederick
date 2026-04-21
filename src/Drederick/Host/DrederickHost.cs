@@ -26,10 +26,13 @@ namespace Drederick.Host;
 ///     pass-through, not a substitute.
 ///   </description></item>
 ///   <item><description>
-///     <c>@invariant-id:aggregate-not-execute</c> — this facade performs
-///     enumeration only. It does NOT invoke the CVE annotator, the PoC
-///     aggregator, or any enrichment stage that writes to <c>poc_cache</c>;
-///     those stay gated behind the CLI for now.
+///     <c>@invariant-id:aggregate-not-execute</c> — enrichment runs
+///     (<see cref="CveAnnotator"/>, <see cref="PocAggregator"/>) are
+///     opt-in via <see cref="RunOptions.AnnotateCves"/> and
+///     <see cref="RunOptions.AggregatePocRefs"/> (default on for parity
+///     with the CLI). Both stages only <em>record</em> references and
+///     optionally cache PoC source bytes; neither ever <c>chmod +x</c>'s
+///     or executes a PoC.
 ///   </description></item>
 ///   <item><description>
 ///     <c>@invariant-id:llm-cannot-escape-scope</c> — when

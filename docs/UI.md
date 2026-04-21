@@ -60,6 +60,9 @@ scope check lives inside each recon tool, not at the UI boundary
    - Flip **Lab/CTF mode**, **Use agent runner** (needs `OPENAI_API_KEY`),
      or **Allow-broad**. Allow-broad surfaces a confirmation banner that
      must be explicitly clicked through before **Start scan** will enable.
+   - Second row of checkboxes: **Annotate CVEs**, **Aggregate PoC refs**,
+     **Cache PoC source**, **VPN preflight**, **Require VPN (abort if
+     down)**. All default on (parity with CLI); toggling is per-run.
    - Set **Output dir** and **Memory** text boxes (defaults: `out`,
      `memory/findings.json`).
    - **Start scan** is disabled until the scope has validated *and* at
@@ -67,8 +70,27 @@ scope check lives inside each recon tool, not at the UI boundary
      the in-flight run.
 3. **Progress tab**
    - Live feed of `ScanEvent`s: timestamp, kind, target, tool, message.
+     Phase-2 adds `VpnPreflight`, `CveAnnotated`, `PocAggregated` kinds so
+     the operator can watch enrichment happen.
    - Status strip at the bottom shows `hosts:` / `tool calls:` counters and
      the latest error, if any.
+4. **Doctor tab** *(phase 2)*
+   - **Detect** scans PATH for all 24 tools in `DoctorRunner.Tools`
+     (nmap, searchsploit, python3/2, go, ruby, git, datasette, netexec,
+     impacket, hashcat, john, gobuster, ffuf, sqlmap, nuclei, kerbrute,
+     seclists, evil-winrm, …) and displays Found/Version/Path per row.
+   - Package-manager name (apt/dnf/pacman/zypper/brew) is displayed.
+   - **Install missing** is gated behind an explicit consent checkbox.
+     `@invariant-id:doctor-workstation-only`: drederick never re-execs as
+     root; individual install recipes may prompt for sudo themselves, and
+     the UI pipes the install transcript to `audit.jsonl`.
+5. **Findings tab** *(phase 2)*
+   - Read-only summary of `out/findings.db`: host / service / CVE / PoC-ref
+     counts, plus a per-host row with open-port-count and service sample.
+   - **Open in Datasette** launches our own `drederick serve` subcommand.
+     This is the harness itself (not a scanner binary), and Datasette is
+     read-only — triage stays with Datasette, per the plan's "don't
+     reimplement triage" posture.
 
 <a id="architecture"></a>
 ## Architecture
@@ -125,24 +147,24 @@ honours by construction:
 | `@invariant-id:scope-default-deny`  | Start button disabled unless a scope is validated (no file = no scope = no run). |
 | `@invariant-id:scope-wildcard-refused` | Inline CIDR editor shows the raw `ScopeException` text when the operator pastes `0.0.0.0/0` or `::/0`; the refusal is not dismissable from the UI. |
 | `@invariant-id:scope-prefix-cap`   | `Allow-broad` must be clicked *and* confirmed via a separate banner before Start will enable. |
-| `@invariant-id:aggregate-not-execute` | The UI has no "Run PoC", no `chmod +x`, no "Open terminal in poc_cache". A CI-enforced source scan (`UiAssemblyInvariantsTests`) fails if any `Process.Start` call lands in `src/Drederick.UI/`. |
+| `@invariant-id:aggregate-not-execute` | The UI has no "Run PoC", no `chmod +x`, no "Open terminal in poc_cache". A CI-enforced source scan (`UiAssemblyInvariantsTests`) fails if any scanner binary name (`nmap`, `hydra`, `msfconsole`, `crackmapexec`, `responder`, …) or `chmod +x` / `poc_cache` pattern appears in `src/Drederick.UI/`. The one narrowly-allowed subprocess launch is the harness's own `drederick serve` CLI (Datasette over the read-only `findings.db`), invoked by the Findings tab's **Open in Datasette** button. |
 | `@invariant-id:no-credential-attacks` | Zero credential fields. Targets are the only input. |
 | `@invariant-id:llm-cannot-escape-scope` | When the "Use agent runner" checkbox is on, the agent routes through the same scope-enforced `AIFunction`s as the CLI. |
 
 <a id="first-iteration-scope"></a>
-## What this first iteration does *not* do
+## Deferred to follow-ups
 
-Deferred to follow-ups (deliberately, to keep the first landing small):
+Explicitly not landing in this iteration, to keep the PR small:
 
-- **CVE annotation / PoC aggregation.** UI runs are enumeration-only.
-  Kick off `drederick --scope … --target …` from the CLI if you want the
-  CVE/PoC pipeline on the same `out/` directory, or re-run via CLI after
-  collecting from the UI.
-- **VPN preflight** (`--require-vpn`, `--htb-host`).
-- **Doctor** (detect/install operator tooling).
-- **Binary analyzer**, **init wizard**, **serve** subcommand.
-- **FindingsView** — Datasette remains the triage surface.
-- **Packaging** (AppImage/MSI/DMG). Run with `dotnet run --project src/Drederick.UI`.
+- **Analyze** (`drederick analyze`) and **Init** (`drederick init`) wizards
+  from the UI — low immediate UX win, heavy dialog logic.
+- **UI packaging** (AppImage/MSI/DMG). `dotnet run --project src/Drederick.UI`
+  is the supported entry point today; single-release consolidation (one
+  artifact producing CLI + GUI) is a separate packaging effort.
+
+Already landed in phase 2: **DoctorView**, **FindingsView** (with
+"Open in Datasette"), and enrichment parity (CVE annotation, PoC
+aggregation, VPN preflight) inside `DrederickHost.RunAsync`.
 
 <a id="testing"></a>
 ## Testing
@@ -160,8 +182,13 @@ The UI test project covers:
 - `ScopeViewModelTests` — empty / wildcard-refused / valid-list / save-to-file.
 - `RunViewModelTests` — Start-disabled invariants, Add/Remove, out-of-scope
   and non-IP refusals, Allow-broad confirmation gate.
-- `UiAssemblyInvariantsTests` — source-tree scan asserting no
-  `Process.Start` in `src/Drederick.UI/`.
+- `DoctorViewModelTests` — install-consent-gating (install disabled before
+  detect, without consent, or when nothing is missing; enabled only when
+  all three are true).
+- `FindingsViewModelTests` — `Reload` against missing / real `findings.db`.
+- `UiAssemblyInvariantsTests` — source-tree scan refusing forbidden scanner
+  binary names (`nmap`, `hydra`, `msfconsole`, `crackmapexec`, `responder`,
+  `impacket-GetUserSPNs`, …) and `chmod +x` / `poc_cache` patterns.
 
 <a id="dependencies"></a>
 ## Dependency posture
