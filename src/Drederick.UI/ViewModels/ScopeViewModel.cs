@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Drederick.Host;
@@ -97,16 +96,6 @@ public sealed partial class ScopeViewModel : ObservableObject
             ErrorMessage = $"Failed to load scope: {ex.Message}";
         }
     }
-
-    /// <summary>
-    /// True when the inline text or scope file contains a clearly-refused
-    /// wildcard. Pure string check used to render a "0.0.0.0/0 is refused"
-    /// banner even before re-parsing completes. Defence-in-depth only — the
-    /// actual refusal happens in <see cref="ScopeLoader"/>.
-    /// </summary>
-    public bool InputLooksWildcard =>
-        !string.IsNullOrWhiteSpace(InlineText) &&
-        Regex.IsMatch(InlineText, @"(?m)^\s*(0\.0\.0\.0/0|::/0)\s*($|#)");
 
     /// <summary>
     /// Persist the current inline CIDR text to <paramref name="path"/>. Lets
