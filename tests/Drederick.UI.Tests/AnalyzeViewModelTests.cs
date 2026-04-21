@@ -80,7 +80,7 @@ public class AnalyzeViewModelTests
             var vm = new AnalyzeViewModel
             {
                 BinaryPath = Path.Combine(tmp, "no_such_binary"),
-                OutputDir  = tmp,
+                OutputDir = tmp,
             };
             await vm.AnalyzeCommand.ExecuteAsync(null);
             // After completion the VM must not be busy and must surface an error.

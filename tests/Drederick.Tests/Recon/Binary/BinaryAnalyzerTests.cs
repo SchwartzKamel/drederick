@@ -24,7 +24,7 @@ public class BinaryAnalyzerTests : IDisposable
 
         // Create a minimal scope (binary analyzer doesn't enforce scope on paths, but we need one for the analyzer)
         _scope = ScopeLoader.Parse("10.0.0.0/8", labMode: true, allowBroad: true);
-        
+
         // Create audit log for tracing
         _audit = new AuditLog(Path.Combine(_testScratchDir, "audit.jsonl"));
     }
@@ -158,7 +158,7 @@ public class BinaryAnalyzerTests : IDisposable
         if (!string.IsNullOrEmpty(metadata.Architecture))
         {
             Assert.True(
-                metadata.Architecture.Contains("86") || 
+                metadata.Architecture.Contains("86") ||
                 metadata.Architecture.Contains("arm") ||
                 metadata.Architecture.Contains("x64") ||
                 metadata.Architecture.Contains("x86"),

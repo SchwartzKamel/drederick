@@ -296,11 +296,11 @@ public class BinaryAnalysisIntegrationTests : IDisposable
 
         var restrictedFilePath = Path.Combine(_testScratchDir, "restricted-binary");
         File.WriteAllBytes(restrictedFilePath, new byte[] { 0x7F, 0x45, 0x4C, 0x46 }); // ELF header
-        
+
         try
         {
             // Try to make it truly unreadable on Unix
-            #pragma warning disable CA1416
+#pragma warning disable CA1416
             System.Diagnostics.ProcessStartInfo psi = new()
             {
                 FileName = "chmod",
@@ -310,7 +310,7 @@ public class BinaryAnalysisIntegrationTests : IDisposable
             };
             using var proc = System.Diagnostics.Process.Start(psi);
             proc?.WaitForExit();
-            
+
             // Verify it's actually unreadable
             try
             {
@@ -322,7 +322,7 @@ public class BinaryAnalysisIntegrationTests : IDisposable
             {
                 // Good, it's unreadable
             }
-            #pragma warning restore CA1416
+#pragma warning restore CA1416
         }
         catch
         {
@@ -352,7 +352,7 @@ public class BinaryAnalysisIntegrationTests : IDisposable
             // Restore permissions for cleanup
             try
             {
-                #pragma warning disable CA1416
+#pragma warning disable CA1416
                 System.Diagnostics.ProcessStartInfo psi = new()
                 {
                     FileName = "chmod",
@@ -362,7 +362,7 @@ public class BinaryAnalysisIntegrationTests : IDisposable
                 };
                 using var proc = System.Diagnostics.Process.Start(psi);
                 proc?.WaitForExit();
-                #pragma warning restore CA1416
+#pragma warning restore CA1416
             }
             catch { }
         }

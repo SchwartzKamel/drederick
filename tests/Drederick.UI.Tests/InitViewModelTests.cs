@@ -14,8 +14,8 @@ public class InitViewModelTests
     public void QuickStart_contains_key_commands()
     {
         Assert.Contains("drederick doctor", InitViewModel.QuickStart, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("drederick serve",  InitViewModel.QuickStart, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("scope.txt",        InitViewModel.QuickStart, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("drederick serve", InitViewModel.QuickStart, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scope.txt", InitViewModel.QuickStart, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class InitViewModelTests
             var vm = new InitViewModel
             {
                 OutputDir = tmp,
-                HtbToken  = "test-token-xyz",
+                HtbToken = "test-token-xyz",
                 HttpProxy = "http://127.0.0.1:8080",
             };
             await vm.SaveCredentialsCommand.ExecuteAsync(null);
@@ -48,7 +48,7 @@ public class InitViewModelTests
             Assert.True(File.Exists(configPath), $"Expected config at {configPath}");
             var content = File.ReadAllText(configPath);
             Assert.Contains("htb_api_token", content);
-            Assert.Contains("http_proxy",    content);
+            Assert.Contains("http_proxy", content);
             // Token value should be present (it is stored — but NEVER in audit.jsonl).
             Assert.Contains("test-token-xyz", content);
         }

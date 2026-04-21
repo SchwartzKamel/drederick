@@ -71,9 +71,9 @@ public sealed partial class AnalyzeViewModel : ObservableObject
             // Run I/O on the thread pool; capture the binary path / options
             // now so the background work doesn't race with UI edits.
             var binaryPath = BinaryPath;
-            var outputDir  = OutputDir;
-            var verbose    = Verbose;
-            var saveJson   = SaveJson;
+            var outputDir = OutputDir;
+            var verbose = Verbose;
+            var saveJson = SaveJson;
 
             var (report, error) = await Task.Run(async () =>
             {
@@ -90,7 +90,7 @@ public sealed partial class AnalyzeViewModel : ObservableObject
                 // Minimal local scope. BinaryAnalyzer's first statement is
                 // _scope.RequireFile(filePath), which checks file existence
                 // and readability only — no CIDR matching is involved.
-                var scope    = ScopeLoader.Parse(LocalAnalysisScope, LocalAnalysisScopeSource, labMode: true);
+                var scope = ScopeLoader.Parse(LocalAnalysisScope, LocalAnalysisScopeSource, labMode: true);
                 var analyzer = new BinaryAnalyzer(scope, audit);
 
                 BinaryAnalysisReport? report = null;
@@ -114,9 +114,9 @@ public sealed partial class AnalyzeViewModel : ObservableObject
                 {
                     audit.Record("ui.analyze.finish", new Dictionary<string, object?>
                     {
-                        ["findings"]  = report.Findings.Count,
+                        ["findings"] = report.Findings.Count,
                         ["file_type"] = report.Metadata.FileType,
-                        ["arch"]      = report.Metadata.Architecture,
+                        ["arch"] = report.Metadata.Architecture,
                     });
                 }
 
@@ -171,7 +171,7 @@ public sealed partial class AnalyzeViewModel : ObservableObject
                 Findings.Add(row);
 
             var critical = Findings.Count(r => r.Severity == "Critical");
-            var warnings  = Findings.Count(r => r.Severity == "Warning");
+            var warnings = Findings.Count(r => r.Severity == "Warning");
             StatusLine = $"{report.Metadata.FileType} {report.Metadata.Architecture}"
                 + $" — {critical} critical, {warnings} warning(s), {Findings.Count - critical - warnings} info.";
         }
@@ -265,9 +265,9 @@ public sealed partial class AnalyzeViewModel : ObservableObject
 
     private static string FormatBool(bool? v) => v switch
     {
-        true  => "✓ yes",
+        true => "✓ yes",
         false => "✗ no",
-        null  => "?",
+        null => "?",
     };
 }
 
@@ -276,16 +276,16 @@ public sealed class AnalyzeFindingRow
 {
     public AnalyzeFindingRow(BinaryFinding f)
     {
-        Severity    = f.Severity.ToString();
-        Category    = f.Category.ToString();
-        Title       = f.Title;
+        Severity = f.Severity.ToString();
+        Category = f.Category.ToString();
+        Title = f.Title;
         Description = f.Description;
         Remediation = f.Remediation ?? string.Empty;
     }
 
-    public string Severity    { get; }
-    public string Category    { get; }
-    public string Title       { get; }
+    public string Severity { get; }
+    public string Category { get; }
+    public string Title { get; }
     public string Description { get; }
     public string Remediation { get; }
 }

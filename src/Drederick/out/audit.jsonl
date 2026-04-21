@@ -31,54 +31,54 @@
 {"ts":"2026-04-21T06:04:46.4830999\u002B00:00","pid":551051,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
 {"ts":"2026-04-21T06:04:46.5292167\u002B00:00","pid":551051,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
 {"ts":"2026-04-21T06:04:46.5801295\u002B00:00","pid":551051,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:18.6405835\u002B00:00","pid":551234,"event":"init.start","skip_creds":true,"skip_scope":true,"assume_yes":true}
-{"ts":"2026-04-21T06:05:18.7270113\u002B00:00","pid":551234,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:18.7717217\u002B00:00","pid":551234,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:18.7871869\u002B00:00","pid":551234,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
-{"ts":"2026-04-21T06:05:18.8344514\u002B00:00","pid":551234,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:18.8853239\u002B00:00","pid":551234,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:18.9323364\u002B00:00","pid":551234,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:18.9357064\u002B00:00","pid":551234,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
-{"ts":"2026-04-21T06:05:18.9464000\u002B00:00","pid":551234,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
-{"ts":"2026-04-21T06:05:18.9493016\u002B00:00","pid":551234,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
-{"ts":"2026-04-21T06:05:19.0075009\u002B00:00","pid":551234,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.1348549\u002B00:00","pid":551234,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.2783112\u002B00:00","pid":551234,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.3181188\u002B00:00","pid":551234,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.3499011\u002B00:00","pid":551234,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.4899236\u002B00:00","pid":551234,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.5455881\u002B00:00","pid":551234,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.6040793\u002B00:00","pid":551234,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.6661206\u002B00:00","pid":551234,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.7202086\u002B00:00","pid":551234,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.7760300\u002B00:00","pid":551234,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.7768496\u002B00:00","pid":551234,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.8259222\u002B00:00","pid":551234,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.8787454\u002B00:00","pid":551234,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:05:19.9226860\u002B00:00","pid":551234,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.4394080\u002B00:00","pid":551868,"event":"init.start","skip_creds":true,"skip_scope":true,"assume_yes":false}
-{"ts":"2026-04-21T06:08:43.5254282\u002B00:00","pid":551868,"event":"doctor.detect","name":"nmap","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.5724272\u002B00:00","pid":551868,"event":"doctor.detect","name":"searchsploit","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.5831032\u002B00:00","pid":551868,"event":"doctor.detect","name":"python3","found":true,"version":"Python 3.14.3","path":"/home/linuxbrew/.linuxbrew/bin/python3"}
-{"ts":"2026-04-21T06:08:43.6575109\u002B00:00","pid":551868,"event":"doctor.detect","name":"python2","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.7348595\u002B00:00","pid":551868,"event":"doctor.detect","name":"go","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.7871764\u002B00:00","pid":551868,"event":"doctor.detect","name":"ruby","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.7897577\u002B00:00","pid":551868,"event":"doctor.detect","name":"git","found":true,"version":"git version 2.43.0","path":"/usr/bin/git"}
-{"ts":"2026-04-21T06:08:43.7959160\u002B00:00","pid":551868,"event":"doctor.detect","name":"curl","found":true,"version":"curl 8.5.0 (x86_64-pc-linux-gnu) libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (\u002Blibidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10","path":"/usr/bin/curl"}
-{"ts":"2026-04-21T06:08:43.7973136\u002B00:00","pid":551868,"event":"doctor.detect","name":"jq","found":true,"version":"jq-1.8.1","path":"/home/linuxbrew/.linuxbrew/bin/jq"}
-{"ts":"2026-04-21T06:08:43.8526853\u002B00:00","pid":551868,"event":"doctor.detect","name":"datasette","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:43.9675213\u002B00:00","pid":551868,"event":"doctor.detect","name":"netexec","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.1064018\u002B00:00","pid":551868,"event":"doctor.detect","name":"impacket","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.1538290\u002B00:00","pid":551868,"event":"doctor.detect","name":"hashcat","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.1871907\u002B00:00","pid":551868,"event":"doctor.detect","name":"john","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.3028022\u002B00:00","pid":551868,"event":"doctor.detect","name":"responder","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.3502682\u002B00:00","pid":551868,"event":"doctor.detect","name":"gobuster","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.3925505\u002B00:00","pid":551868,"event":"doctor.detect","name":"ffuf","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.4337918\u002B00:00","pid":551868,"event":"doctor.detect","name":"sqlmap","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.4695677\u002B00:00","pid":551868,"event":"doctor.detect","name":"nuclei","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.5014629\u002B00:00","pid":551868,"event":"doctor.detect","name":"kerbrute","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.5021126\u002B00:00","pid":551868,"event":"doctor.detect","name":"seclists","found":false,"version":null,"path":null}
-{"ts":"2026-04-21T06:08:44.5368378\u002B00:00","pid":551868,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:14:46.6515765\u002B00:00","pid":551051,"event":"doctor.install","name":"nmap","command":"sudo apt-get install -y nmap","exit_code":-1}
+{"ts":"2026-04-21T06:24:46.6898395\u002B00:00","pid":551051,"event":"doctor.install","name":"searchsploit","command":"sudo apt-get install -y exploitdb","exit_code":-1}
+{"ts":"2026-04-21T06:34:46.7454238\u002B00:00","pid":551051,"event":"doctor.install","name":"python2","command":"sudo apt-get install -y python2","exit_code":-1}
+{"ts":"2026-04-21T06:44:46.8245210\u002B00:00","pid":551051,"event":"doctor.install","name":"go","command":"sudo apt-get install -y golang-go","exit_code":-1}
+{"ts":"2026-04-21T06:54:46.8585945\u002B00:00","pid":551051,"event":"doctor.install","name":"ruby","command":"sudo apt-get install -y ruby","exit_code":-1}
+{"ts":"2026-04-21T06:54:46.9340324\u002B00:00","pid":551051,"event":"bundling.datasette.install","method":"uv"}
+{"ts":"2026-04-21T06:54:48.6385652\u002B00:00","pid":551051,"event":"bundling.datasette.install","method":"uv","command":"uv tool install datasette","exit":0}
+{"ts":"2026-04-21T06:54:48.6395030\u002B00:00","pid":551051,"event":"bundling.datasette.resolved","source":"installed","method":"uv","path":"/home/tweber/.local/bin/datasette"}
+{"ts":"2026-04-21T06:54:48.6396802\u002B00:00","pid":551051,"event":"doctor.install","name":"datasette","command":"drederick.bundling.datasette","exit_code":0}
+{"ts":"2026-04-21T06:54:49.8874702\u002B00:00","pid":551051,"event":"doctor.install","name":"netexec","command":"pipx install netexec","exit_code":1}
+{"ts":"2026-04-21T06:55:03.4038380\u002B00:00","pid":551051,"event":"doctor.install","name":"impacket","command":"pipx install impacket","exit_code":0}
+{"ts":"2026-04-21T07:05:03.4358209\u002B00:00","pid":551051,"event":"doctor.install","name":"hashcat","command":"sudo apt-get install -y hashcat","exit_code":-1}
+{"ts":"2026-04-21T07:15:03.4535685\u002B00:00","pid":551051,"event":"doctor.install","name":"john","command":"sudo apt-get install -y john","exit_code":-1}
+{"ts":"2026-04-21T07:25:03.4932458\u002B00:00","pid":551051,"event":"doctor.install","name":"responder","command":"sudo apt-get install -y responder","exit_code":-1}
+{"ts":"2026-04-21T07:35:03.5359293\u002B00:00","pid":551051,"event":"doctor.install","name":"gobuster","command":"sudo apt-get install -y gobuster","exit_code":-1}
+{"ts":"2026-04-21T07:45:03.5641472\u002B00:00","pid":551051,"event":"doctor.install","name":"ffuf","command":"sudo apt-get install -y ffuf","exit_code":-1}
+{"ts":"2026-04-21T07:55:03.5924386\u002B00:00","pid":551051,"event":"doctor.install","name":"sqlmap","command":"sudo apt-get install -y sqlmap","exit_code":-1}
+{"ts":"2026-04-21T08:05:03.6256713\u002B00:00","pid":551051,"event":"doctor.install","name":"nuclei","command":"sudo apt-get install -y nuclei","exit_code":-1}
+{"ts":"2026-04-21T08:05:03.6859290\u002B00:00","pid":551051,"event":"doctor.install","name":"kerbrute","command":"go install github.com/ropnop/kerbrute@latest","exit_code":127}
+{"ts":"2026-04-21T08:15:03.7181953\u002B00:00","pid":551051,"event":"doctor.install","name":"seclists","command":"sudo apt-get install -y seclists","exit_code":-1}
+{"ts":"2026-04-21T08:25:03.7527171\u002B00:00","pid":551051,"event":"doctor.install","name":"evil-winrm","command":"sudo apt-get install -y evil-winrm","exit_code":-1}
+{"ts":"2026-04-21T08:25:05.1242816\u002B00:00","pid":551051,"event":"doctor.install","name":"enum4linux-ng","command":"pipx install enum4linux-ng","exit_code":1}
+{"ts":"2026-04-21T08:25:08.1318233\u002B00:00","pid":551051,"event":"doctor.install","name":"wfuzz","command":"pipx install wfuzz","exit_code":1}
+{"ts":"2026-04-21T08:25:08.1990461\u002B00:00","pid":551051,"event":"init.finish","status":"success"}
+6-04-21T06:05:19.9226860\u002B00:00","pid":551234,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
+{"ts":"2026-04-21T06:15:19.9705180\u002B00:00","pid":551234,"event":"doctor.install","name":"nmap","command":"sudo apt-get install -y nmap","exit_code":-1}
+{"ts":"2026-04-21T06:25:20.0112804\u002B00:00","pid":551234,"event":"doctor.install","name":"searchsploit","command":"sudo apt-get install -y exploitdb","exit_code":-1}
+{"ts":"2026-04-21T06:35:20.0591399\u002B00:00","pid":551234,"event":"doctor.install","name":"python2","command":"sudo apt-get install -y python2","exit_code":-1}
+{"ts":"2026-04-21T06:45:20.1017141\u002B00:00","pid":551234,"event":"doctor.install","name":"go","command":"sudo apt-get install -y golang-go","exit_code":-1}
+{"ts":"2026-04-21T06:55:20.1350913\u002B00:00","pid":551234,"event":"doctor.install","name":"ruby","command":"sudo apt-get install -y ruby","exit_code":-1}
+{"ts":"2026-04-21T06:55:20.1385494\u002B00:00","pid":551234,"event":"bundling.datasette.resolved","source":"path","path":"/home/tweber/.local/bin/datasette"}
+{"ts":"2026-04-21T06:55:20.1388945\u002B00:00","pid":551234,"event":"doctor.install","name":"datasette","command":"drederick.bundling.datasette","exit_code":0}
+{"ts":"2026-04-21T06:55:21.0182020\u002B00:00","pid":551234,"event":"doctor.install","name":"netexec","command":"pipx install netexec","exit_code":1}
+{"ts":"2026-04-21T06:55:21.2278475\u002B00:00","pid":551234,"event":"doctor.install","name":"impacket","command":"pipx install impacket","exit_code":0}
+{"ts":"2026-04-21T07:05:21.2568001\u002B00:00","pid":551234,"event":"doctor.install","name":"hashcat","command":"sudo apt-get install -y hashcat","exit_code":-1}
+{"ts":"2026-04-21T07:15:21.2759677\u002B00:00","pid":551234,"event":"doctor.install","name":"john","command":"sudo apt-get install -y john","exit_code":-1}
+{"ts":"2026-04-21T07:25:21.3093187\u002B00:00","pid":551234,"event":"doctor.install","name":"responder","command":"sudo apt-get install -y responder","exit_code":-1}
+{"ts":"2026-04-21T07:35:21.3466447\u002B00:00","pid":551234,"event":"doctor.install","name":"gobuster","command":"sudo apt-get install -y gobuster","exit_code":-1}
+{"ts":"2026-04-21T07:45:21.3789873\u002B00:00","pid":551234,"event":"doctor.install","name":"ffuf","command":"sudo apt-get install -y ffuf","exit_code":-1}
+{"ts":"2026-04-21T07:55:21.4037674\u002B00:00","pid":551234,"event":"doctor.install","name":"sqlmap","command":"sudo apt-get install -y sqlmap","exit_code":-1}
+{"ts":"2026-04-21T08:05:21.4675368\u002B00:00","pid":551234,"event":"doctor.install","name":"nuclei","command":"sudo apt-get install -y nuclei","exit_code":-1}
+{"ts":"2026-04-21T08:05:21.5381087\u002B00:00","pid":551234,"event":"doctor.install","name":"kerbrute","command":"go install github.com/ropnop/kerbrute@latest","exit_code":127}
+{"ts":"2026-04-21T08:15:21.5708541\u002B00:00","pid":551234,"event":"doctor.install","name":"seclists","command":"sudo apt-get install -y seclists","exit_code":-1}
+{"ts":"2026-04-21T08:25:21.6004203\u002B00:00","pid":551234,"event":"doctor.install","name":"evil-winrm","command":"sudo apt-get install -y evil-winrm","exit_code":-1}
+{"ts":"2026-04-21T08:25:22.3854875\u002B00:00","pid":551234,"event":"doctor.install","name":"enum4linux-ng","command":"pipx install enum4linux-ng","exit_code":1}
+{"ts":"2026-04-21T08:25:24.3691045\u002B00:00","pid":551234,"event":"doctor.install","name":"wfuzz","command":"pipx install wfuzz","exit_code":1}
+{"ts":"2026-04-21T08:25:24.4131356\u002B00:00","pid":551234,"event":"init.finish","status":"success"}
+-21T06:08:44.5368378\u002B00:00","pid":551868,"event":"doctor.detect","name":"evil-winrm","found":false,"version":null,"path":null}
 {"ts":"2026-04-21T06:08:44.5684681\u002B00:00","pid":551868,"event":"doctor.detect","name":"enum4linux-ng","found":false,"version":null,"path":null}
 {"ts":"2026-04-21T06:08:44.6024939\u002B00:00","pid":551868,"event":"doctor.detect","name":"wfuzz","found":false,"version":null,"path":null}
 {"ts":"2026-04-21T06:08:44.6504332\u002B00:00","pid":551868,"event":"init.finish","status":"success"}

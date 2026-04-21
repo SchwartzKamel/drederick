@@ -173,7 +173,7 @@ public sealed partial class InitViewModel : ObservableObject
         {
             await Task.Run(() =>
             {
-                var home      = GetHomeDirectory();
+                var home = GetHomeDirectory();
                 var scopePath = Path.Combine(home, "scope.txt");
 
                 Directory.CreateDirectory(OutputDir);
