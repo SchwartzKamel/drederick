@@ -317,6 +317,13 @@ var toolbox = new ReconToolbox(
     },
     audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);
+if (!opts.Quiet)
+{
+    // Live progress: one-liner per tool invocation on stderr so stdout stays
+    // clean for the final "done." summary. Use --quiet / -q to suppress.
+    toolbox.Progress = Console.Error;
+    Console.Error.WriteLine($"scan start: {targets.Count} target(s), {toolbox.Tools.Count} scanner(s) registered. Live progress on stderr; --quiet to hide.");
+}
 
 IReconAgentRunner runner;
 if (opts.UseAgent)

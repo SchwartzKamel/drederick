@@ -102,6 +102,14 @@ public sealed class ReconToolbox
 
     public int ToolCallsTotal => _toolCallsTotal;
 
+    /// <summary>
+    /// Optional progress sink. When set, every tool invocation emits a single
+    /// line like <c>[+] nmap 10.10.10.5</c> or <c>[+] http 10.10.10.5:80</c>.
+    /// Wire it to <see cref="Console.Error"/> from the CLI (unless --quiet)
+    /// so operators see live activity during long scans.
+    /// </summary>
+    public TextWriter? Progress { get; set; }
+
     private HostFinding GetOrCreate(string target) =>
         _findings.GetOrAdd(target, t => new HostFinding
         {
@@ -123,6 +131,20 @@ public sealed class ReconToolbox
             throw new InvalidOperationException(
                 $"Total tool-call budget exceeded: {_toolCallsTotal} > {Budget.MaxTotalCalls}.");
         }
+        EmitProgress(target, tool, port: null);
+    }
+
+    private void EmitProgress(string target, string tool, int? port)
+    {
+        var writer = Progress;
+        if (writer is null) return;
+        try
+        {
+            var where = port is > 0 ? $"{target}:{port}" : target;
+            writer.WriteLine($"[+] {tool,-22} {where}");
+            writer.Flush();
+        }
+        catch { /* progress is best-effort; never fail a scan on stderr hiccup */ }
     }
 
     // --- Public tool surface (string in / string out for LLM ergonomics) ---

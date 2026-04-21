@@ -117,6 +117,13 @@ public sealed class CommandLineOptions
     // END ANCHOR: datasette-bootstrap-options
     // --- end datasette-integration ----------------------------------------------
 
+    /// <summary>
+    /// When true, suppress per-tool progress lines on stderr during a scan.
+    /// The adaptive runner otherwise prints one line per tool invocation
+    /// (`[+] &lt;tool&gt; &lt;target[:port]&gt;`) so operators can see live activity.
+    /// </summary>
+    public bool Quiet { get; set; }
+
     // ANCHOR: note-subcommand-options
     /// <summary>Note subcommand: add, list, view, archive, delete, flags, search</summary>
     public string? NoteSubcommand { get; set; }
@@ -257,6 +264,9 @@ public sealed class CommandLineOptions
                     o.RequireVpn = true; break;
                 case "--skip-vpn-check":
                     o.SkipVpnCheck = true; break;
+                case "--quiet":
+                case "-q":
+                    o.Quiet = true; break;
                 case "--htb-host":
                     o.HtbHosts.Add(RequireNext(args, ref i, a)); break;
                 // END ANCHOR: vpn-preflight-flag-parse
@@ -487,6 +497,9 @@ public sealed class CommandLineOptions
         OUTPUT:
           -o, --out <dir>      Output directory (default: out/).
           --memory <path>      Cross-run knowledge base (default: memory/findings.json).
+          -q, --quiet          Suppress per-tool progress lines on stderr during scans.
+                               (Progress output is on stderr by default so stdout stays
+                                clean for piping the final 'done.' summary.)
 
         TUNING:
           -j, --parallel <n>   Legacy knob; sets --host-concurrency if that flag is
