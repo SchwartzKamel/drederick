@@ -250,8 +250,8 @@ a generic `nmap --script safe,default,discovery,version` suggestion.
 
 Writes `out/findings.db` — seven tables (`hosts`, `services`, `findings`,
 `cves`, `poc_refs`, `poc_sources`, `tooling`). Authoritative DDL in
-`SqliteReport.EnsureSchema`. Browsed via Datasette
-([`DATASETTE.md`](./DATASETTE.md)).
+`SqliteReport.EnsureSchema`; doc mirror in [`DB_SCHEMA.md`](./DB_SCHEMA.md).
+Browsed via Datasette ([`DATASETTE.md`](./DATASETTE.md)).
 
 ## Enrichment (not `IReconTool` — runs after recon completes) {#enrichment}
 

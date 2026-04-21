@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SchwartzKamel/drederick/security/advisories/new
+    about: >-
+      Do not open public issues for security bugs. Use GitHub Security
+      Advisories so the report stays private until a fix ships. See
+      SECURITY.md for scope and what to include.

@@ -205,7 +205,7 @@ Result of `drederick doctor`. Unique on `name`.
 
 ### How the tables join
 
-```
+```text
 hosts 1─┬─< services 1─< findings >─1 cves 1─< poc_refs >─1 poc_sources
         │                              (via json_extract(data_json,'$.cve_id'))
         └─< findings (host-level kinds like 'dns')

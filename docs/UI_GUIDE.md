@@ -52,7 +52,7 @@ the current UI.
 
 ### Planned architecture
 
-```
+```text
   Browser (React/TS/Tailwind)
         │  fetch + SignalR
         ▼

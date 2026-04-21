@@ -37,7 +37,7 @@ one of the other tools instead.
 | CVE annotation (offline NVD feed)           | **yes**                | no                     | no                | no                  |
 | PoC aggregation (Exploit-DB / GHSA / MSF / nuclei) | **yes (cached locally)** | partial (searchsploit pointers only) | no | no    |
 | Executes PoCs                               | **never**              | never                  | never             | never               |
-| SQLite findings DB                          | **yes (`findings.db`)** | no                    | no                | no                  |
+| SQLite findings DB                          | **yes (`findings.db`; see [`DB_SCHEMA.md`](./DB_SCHEMA.md))** | no                    | no                | no                  |
 | Point-and-click dashboard                   | **yes (Datasette today, React planned)** | no     | no                | no                  |
 | Operator-workstation preflight / installer  | **yes (`drederick doctor`)** | partial (pip)    | no                | partial (`setup.py`) |
 | Distribution                                | `dotnet publish` binary (self-contained planned) | `pip install` | shell script | `pip install` |

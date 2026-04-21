@@ -1,0 +1,58 @@
+name: Scanner request
+description: Request a new or extended service scanner.
+title: "scanner: "
+labels: ["enhancement", "scanner", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scanners aggregate and present — they never exploit, brute, or deliver
+        payloads. The NSE categories `exploit`, `intrusive`, `brute`, `vuln`,
+        `dos`, and `malware` are **permanently excluded** regardless of what
+        is requested here. See `@invariant-id:nse-forbidden-categories`.
+  - type: input
+    id: service
+    attributes:
+      label: Service name
+      placeholder: "e.g., RDP, MSSQL, Redis"
+    validations:
+      required: true
+  - type: input
+    id: ports
+    attributes:
+      label: Default ports
+      placeholder: "e.g., 3389/tcp or 1433/tcp,1434/udp"
+    validations:
+      required: true
+  - type: dropdown
+    id: nse-categories
+    attributes:
+      label: Nmap NSE categories you'd use
+      description: >-
+        Pick from the allowed set. `exploit`, `intrusive`, `brute`, `vuln`,
+        `dos`, and `malware` are permanently excluded and are not listed.
+      multiple: true
+      options:
+        - safe
+        - default
+        - discovery
+        - version
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Public reference
+      description: Link to the protocol docs, RFC, or vendor reference.
+    validations:
+      required: false
+  - type: textarea
+    id: compliance
+    attributes:
+      label: Scope and NSE compliance statement
+      description: >-
+        Confirm the proposed scanner contains no exploitation, brute-force,
+        or payload-delivery logic, and re-checks scope in every
+        network-touching method.
+    validations:
+      required: true

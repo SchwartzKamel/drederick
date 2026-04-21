@@ -27,10 +27,11 @@ related:
 > [`docs/README.md`](docs/README.md).
 
 Drederick is a scope-enforced, adaptive reconnaissance harness for **authorized
-lab and CTF environments only** (Hack The Box, TryHackMe, CTF ranges, Vulnhub,
-vulhub, or infrastructure you are explicitly authorized to assess). It performs
-discovery, fingerprinting, and CVE/PoC *aggregation* only — **no exploitation,
-no credential attacks, no brute force, no payload delivery, no PoC execution**.
+lab and CTF environments only** (Hack The Box (HTB), TryHackMe, CTF ranges,
+Vulnhub, vulhub, or infrastructure you are explicitly authorized to assess).
+It performs discovery, fingerprinting, and CVE/PoC *aggregation* only — **no
+exploitation, no credential attacks, no brute force, no payload delivery, no
+PoC execution**.
 
 Built in C# on **.NET 10** with the **Microsoft Agent Framework**.
 
@@ -151,7 +152,9 @@ triage workflow.
   operator tools and, with `--install`, picks `apt`/`dnf`/`pacman`/
   `zypper`/`brew` and falls back to `pipx`/`uv`/`go install`/`gem install
   --user-install`. Never re-execs as root. Records to `tooling` in
-  `findings.db` and to `audit.jsonl`.
+  `findings.db` (see [`docs/DB_SCHEMA.md`](docs/DB_SCHEMA.md)) and to
+  `audit.jsonl`. Troubleshooting:
+  [`docs/TROUBLESHOOTING.md#doctor-detection`](docs/TROUBLESHOOTING.md#doctor-detection).
 - **Per-host working directory** (AutoRecon-style): `out/<host>/scans/`,
   `out/<host>/loot/`, `out/<host>/notes.md`, and (lab mode)
   `out/<host>/manual_commands.txt` — enumeration commands the operator
@@ -172,6 +175,11 @@ Full contributor notes: [`docs/DEVELOPING.md`](docs/DEVELOPING.md).
 
 <a id="usage"></a>
 ## Usage
+
+> For the full command reference, see [`AGENTS.md` § Commands](AGENTS.md#commands).
+> This section shows representative examples; flags that affect Datasette
+> serve live in [`docs/DATASETTE.md`](docs/DATASETTE.md), and scope/NSE
+> semantics in [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md).
 
 ```bash
 DRED=./src/Drederick/bin/Debug/net10.0/drederick
@@ -232,7 +240,7 @@ Those exclusions are not configurable. See
 
 One CIDR, IP, or comment per line. `#` starts a comment.
 
-```
+```text
 # A single HTB box
 10.10.10.5
 
@@ -249,7 +257,7 @@ strict mode) require `--allow-broad`. The wildcard entries `0.0.0.0/0` and
 
 ### Output tree
 
-```
+```text
 out/
 ├── report.json                    # machine-readable consolidated findings
 ├── report.md                      # per-host markdown summary
@@ -292,13 +300,17 @@ read [`AGENTS.md`](AGENTS.md) first.
   nmapAutomator / Reconnoitre.
 - [`docs/DATASETTE.md`](docs/DATASETTE.md) — **the current web UI.** Launch,
   schema, facets, canned queries, PoC triage workflow, SQL recipes.
+- [`docs/DB_SCHEMA.md`](docs/DB_SCHEMA.md) — machine-readable `findings.db`
+  schema reference (tables, FKs, stable invariants).
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — doctor / detection /
+  scope / Datasette symptom-to-fix playbook.
 - [`docs/UI_GUIDE.md`](docs/UI_GUIDE.md) — current UI (Datasette) pointer +
   the planned React dashboard design.
 
 <a id="architecture-short"></a>
 ## Architecture (short version)
 
-```
+```text
 CLI ──► Scope (default-deny allow-list; lab/strict prefix caps)
          │
          ▼

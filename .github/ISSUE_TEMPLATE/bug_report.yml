@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a defect in drederick itself (not in a target system).
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do **not** file security bugs here —
+        use [GitHub Security Advisories](https://github.com/SchwartzKamel/drederick/security/advisories/new)
+        instead. Vulnerabilities in *target* systems you discovered while
+        running drederick are out of scope for this tracker.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Observed behavior, error messages, and stack traces if any.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: scope-and-command
+    attributes:
+      label: Scope file + command used
+      description: >-
+        Paste the relevant scope YAML and the exact drederick command line.
+        Redact targets if the engagement is under NDA.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: "Paste the output of `drederick --version` and `dotnet --version`."
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and kernel
+      placeholder: "e.g., Ubuntu 24.04, kernel 6.8.0-40-generic"
+    validations:
+      required: true
+  - type: textarea
+    id: audit-log
+    attributes:
+      label: Relevant slice of out/audit.jsonl
+      description: Optional. Trim to the few lines around the failure.
+      render: json
+    validations:
+      required: false
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: Reproducibility
+      options:
+        - Always
+        - Sometimes
+        - Once
+    validations:
+      required: true

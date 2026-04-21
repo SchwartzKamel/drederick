@@ -33,6 +33,8 @@ related:
 - **Open the dashboard:** `drederick serve --out out/` → <http://127.0.0.1:8001>
 - **Read the invariants:** [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) ·
   summary below at [Invariants cheatsheet](#invariants-cheatsheet).
+- **Something broken?** [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) —
+  doctor / scope / Datasette symptom-to-fix playbook.
 
 <a id="documentation-map"></a>
 ## Documentation map
@@ -50,6 +52,11 @@ related:
 | [`DB_SCHEMA.md`](DB_SCHEMA.md) | agents | Machine-readable schema, JOIN patterns, stable invariants. | agent |
 | [`UI_GUIDE.md`](UI_GUIDE.md) | humans | Current vs planned UI; React dashboard design. | human |
 | [`COMPARISON.md`](COMPARISON.md) | humans | Choosing between drederick / AutoRecon / nmapAutomator / Reconnoitre. | human |
+| [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) | humans + agents | Symptom-to-fix: doctor detection, scope refusals, Datasette launch, NVD cache, PoC cache. | both |
+| [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | humans | Contributor workflow: branch, test, PR etiquette. | human |
+| [`../SECURITY.md`](../SECURITY.md) | humans | Private security-bug reporting channel + disclosure posture. | human |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | humans | Release notes, breaking-change log. | human |
+| [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | humans | Community expectations for issues, PRs, discussions. | human |
 
 <a id="by-role"></a>
 ## By role

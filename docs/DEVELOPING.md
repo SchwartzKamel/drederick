@@ -262,7 +262,7 @@ Until then, `drederick serve` against Datasette is the current UI — see
 
 ## Project layout {#project-layout}
 
-```
+```text
 src/Drederick/          # Core engine (CLI today)
   Agent/                # AdaptiveRunner, MicrosoftAgentRunner, HostWorkerPool
   Audit/                # JSONL audit log (thread-safe)

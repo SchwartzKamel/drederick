@@ -23,6 +23,8 @@ related:
 <a id="invariants"></a>
 ## Invariants (agent-stable ids)
 
+> **Source of truth.** [AGENTS.md](../AGENTS.md#invariants) mirrors this list.
+
 | id | Invariant | Depth |
 | -- | --------- | ----- |
 | `@invariant-id:scope-in-every-tool`    | `_scope.Require(target)` is the first statement of every method that touches the network. | [Every tool re-checks](#what-drederick-does-and-does-not-do) |
@@ -35,6 +37,8 @@ related:
 | `@invariant-id:no-payload-delivery`    | No shells, implants, webshells, persistence, or payload staging. | [Does-not](#does-not-ever) |
 | `@invariant-id:doctor-workstation-only` | Doctor modifies the operator workstation only; never re-execs as root; never contacts a target. | [Does / does-not](#what-drederick-does-and-does-not-do) |
 | `@invariant-id:llm-cannot-escape-scope` | The LLM runner cannot escape the allow-list — every tool re-checks. | [Does-not](#does-not-ever) |
+| `@invariant-id:subprocess-args-validated` | Any LLM-chosen or caller-chosen subprocess argument is validated before exec (see `NmapTool.RejectUnsafePortSpec`, `SmbTool.AssertNoForbiddenScripts`). | [Does-not](#does-not-ever) |
+| `@invariant-id:thread-safety`          | `AuditLog` and `KnowledgeBase` are thread-safe; everything else is stateless after construction. No shared mutable state outside those two. | [Does](#does) |
 | `@invariant-id:no-scope-kill-switch`   | No flag, env var, debug build, or prompt disables the scope check. | [Does-not](#does-not-ever) |
 
 The machine-readable mirror of this table is in
@@ -44,7 +48,7 @@ The machine-readable mirror of this table is in
 ## The only permitted use of Drederick
 
 **Lab and CTF targets that you are explicitly authorized to assess.** That
-covers Hack The Box, TryHackMe, PortSwigger Web Security Academy, OffSec
+covers Hack The Box (HTB), TryHackMe, PortSwigger Web Security Academy, OffSec
 exam/practice labs, Vulnhub VMs, vulhub Docker containers, CTF competition
 ranges, and infrastructure you own or have written authorization to test.
 

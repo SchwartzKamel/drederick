@@ -1,0 +1,58 @@
+name: Feature request
+description: Propose a new flag, behavior, or UX change for drederick.
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please skim [docs/SCOPE_AND_LEGAL.md](../blob/main/docs/SCOPE_AND_LEGAL.md)
+        and [AGENTS.md](../blob/main/AGENTS.md). Proposals that would weaken
+        an `@invariant-id:*` will be closed; open a discussion first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem you're trying to solve
+      description: What are you unable to do today, or doing awkwardly?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should drederick do? Include CLI surface if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: invariants
+    attributes:
+      label: Invariants impacted
+      description: >-
+        Which stable invariant (from AGENTS.md / SCOPE_AND_LEGAL.md) does
+        this touch, if any?
+      multiple: true
+      options:
+        - "none"
+        - "no-exploit"
+        - "scope-required"
+        - "no-brute"
+        - "aggregate-not-execute"
+        - "no-root-exec"
+    validations:
+      required: true
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Willing to submit a PR?
+      options:
+        - "Yes"
+        - "Maybe"
+        - "No"
+    validations:
+      required: true

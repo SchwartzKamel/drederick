@@ -36,7 +36,7 @@ are still in the roadmap; everything else is in the tree today.
 
 ## Layers {#layers}
 
-```
+```text
                       ┌───────────────────────────┐
                       │   CLI  (Drederick.Cli)    │
                       │   Options, help, flags    │
@@ -205,7 +205,8 @@ Opt-outs:
   omits exploit, brute-force, password-spray, and payload-delivery commands.
 - `SqliteReport` — `out/findings.db` with seven tables: `hosts`, `services`,
   `findings`, `cves`, `poc_refs`, `poc_sources`, `tooling`. Authoritative
-  DDL lives in `SqliteReport.EnsureSchema`. Idempotent upserts. Browsed via
+  DDL lives in `SqliteReport.EnsureSchema`; doc mirror in
+  [`DB_SCHEMA.md`](./DB_SCHEMA.md). Idempotent upserts. Browsed via
   [Datasette](./DATASETTE.md).
 
 ### `Drederick.Memory` — cross-run knowledge base {#layer-memory}

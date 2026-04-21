@@ -35,6 +35,8 @@ force, credential attacks, or payload delivery**.
 <a id="invariants"></a>
 ## Invariants
 
+> **Mirror.** Source of truth: [docs/SCOPE_AND_LEGAL.md#invariants](docs/SCOPE_AND_LEGAL.md#invariants). If these diverge, SCOPE_AND_LEGAL.md wins.
+
 Each invariant carries a stable `@invariant-id:` anchor. These are hard
 guarantees — do not weaken, remove, or route around them. See
 [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md) for the verbatim policy.
@@ -57,6 +59,8 @@ guarantees — do not weaken, remove, or route around them. See
 
 <a id="commands"></a>
 ## Commands
+
+> **Canonical reference.** README.md links here for the full list; prose in README.md carries examples only.
 
 Build, test, and run commands you can rely on.
 
