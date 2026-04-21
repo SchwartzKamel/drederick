@@ -78,6 +78,7 @@ Build, test, and run commands you can rely on.
 | `drederick --scope … --target … --agent` | LLM-driven planner (requires `OPENAI_API_KEY`). | `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
 | `DREDERICK_SKIP_CVE=1 drederick …` | Skip CVE enrichment. | `src/Drederick/Enrichment/CveAnnotator.cs` | `CveAnnotatorTests` |
 | `drederick --no-fetch-poc` | Skip PoC source caching. | `src/Drederick/Enrichment/PocAggregator.cs` | `PocAggregatorTests` |
+| `dotnet run --project src/Drederick.UI` | Launch the Avalonia point-and-click operator console (Scope / Run / Progress). | `src/Drederick.UI/**`, `src/Drederick/Host/**` | `tests/Drederick.UI.Tests/**` |
 
 Continuous integration is wired in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
 release artifacts via [`.github/workflows/release.yml`](.github/workflows/release.yml).
@@ -110,6 +111,9 @@ edits, identify the owning concept first.
 | `src/Drederick/Reporting/MarkdownReport.cs` | `out/report.md`. | reporting |
 | `src/Drederick/Reporting/ManualCommandsCheatsheet.cs` | `out/<host>/manual_commands.txt` (lab mode). | reporting |
 | `src/Drederick/Reporting/SqliteReport.cs` | **Authoritative schema DDL** for `findings.db`. | reporting-db |
+| `src/Drederick/Host/` | `DrederickHost` façade + `ScanEvent` / `RunOptions` shared by CLI and UI. | ui-shell |
+| `src/Drederick.UI/` | Avalonia point-and-click operator console (Scope / Run / Progress). | ui-shell |
+| `tests/Drederick.UI.Tests/` | ViewModel + invariant tests for the UI shell. | ui-shell |
 | `datasette/metadata.json` | Datasette labels, facets, canned queries. | datasette |
 | `tests/Drederick.Tests/` | xUnit tests. | tests |
 | `tests/fixtures/` | Recorded scanner fixtures (nmap XML, HTTP bodies, …). | fixtures |
@@ -214,6 +218,7 @@ other's zones. Current canonical zones:
 | `recon-*`           | `src/Drederick/Recon/**` |
 | `enrichment-*`      | `src/Drederick/Enrichment/**` |
 | `scope-policy`      | `src/Drederick/Scope/**` |
+| `ui-shell`          | `src/Drederick.UI/**`, `tests/Drederick.UI.Tests/**`, `src/Drederick/Host/**` |
 
 Before editing, check this table and the working agent list. If two scopes
 overlap, coordinate via issue comments — do not racewrite.
