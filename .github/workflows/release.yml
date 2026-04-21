@@ -41,10 +41,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup .NET 10 SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@df991aeaf2a76aae144b0b70ce23e455c66f061e # v4.3.1
         with:
           dotnet-version: '10.0.x'
           dotnet-quality: 'preview'
@@ -131,7 +131,7 @@ jobs:
           Get-Content "$env:ARCHIVE.sha256"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: drederick-${{ matrix.rid }}
           path: |
@@ -150,7 +150,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Derive version/tag
         shell: bash
