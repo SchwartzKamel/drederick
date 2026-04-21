@@ -117,6 +117,33 @@ public sealed class CommandLineOptions
     // END ANCHOR: datasette-bootstrap-options
     // --- end datasette-integration ----------------------------------------------
 
+    // ANCHOR: note-subcommand-options
+    /// <summary>Note subcommand: add, list, view, archive, delete, flags, search</summary>
+    public string? NoteSubcommand { get; set; }
+    /// <summary>Note ID for view/archive/delete operations</summary>
+    public string? NoteId { get; set; }
+    /// <summary>Title for new note</summary>
+    public string? NoteTitle { get; set; }
+    /// <summary>Content for new note</summary>
+    public string? NoteContent { get; set; }
+    /// <summary>Flag format (HTB, CTF, etc)</summary>
+    public string? NoteFlag { get; set; }
+    /// <summary>Comma-separated tags</summary>
+    public string? NoteTags { get; set; }
+    /// <summary>Note category</summary>
+    public string? NoteCategory { get; set; }
+    /// <summary>Associated host IP</summary>
+    public string? NoteHost { get; set; }
+    /// <summary>File attachment path</summary>
+    public string? NoteFile { get; set; }
+    /// <summary>Search term for search subcommand</summary>
+    public string? NoteSearch { get; set; }
+    /// <summary>Include archived notes in list/search</summary>
+    public bool NoteIncludeArchived { get; set; }
+    /// <summary>Output as JSON</summary>
+    public bool NoteJson { get; set; }
+    // END ANCHOR: note-subcommand-options
+
     public static CommandLineOptions Parse(string[] args)
     {
         var o = new CommandLineOptions();
@@ -152,6 +179,35 @@ public sealed class CommandLineOptions
             }
         }
         // --- end binary-analyzer subcommand ---------
+        // ANCHOR: note-subcommand-dispatch
+        else if (args.Length > 0 && args[0] == "note")
+        {
+            start = 1;
+            if (start < args.Length && !args[start].StartsWith("--") && !args[start].StartsWith("-"))
+            {
+                o.NoteSubcommand = args[start];
+                start++;
+                // For view/archive/delete, capture the note ID as first positional arg
+                if ((o.NoteSubcommand == "view" || o.NoteSubcommand == "archive" || o.NoteSubcommand == "delete")
+                    && start < args.Length && !args[start].StartsWith("--"))
+                {
+                    o.NoteId = args[start];
+                    start++;
+                }
+                // For search, capture search term
+                if (o.NoteSubcommand == "search" && start < args.Length && !args[start].StartsWith("--"))
+                {
+                    o.NoteSearch = args[start];
+                    start++;
+                }
+            }
+            else
+            {
+                o.NoteSubcommand = "help";
+            }
+        }
+        // END ANCHOR: note-subcommand-dispatch
+        // --- end note-subcommand ---
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -225,9 +281,18 @@ public sealed class CommandLineOptions
                     }
                 // --- datasette-integration: serve flags ------------------------
                 case "--host":
-                    if (!o.ServeSubcommand)
+                    if (o.ServeSubcommand)
+                    {
+                        o.ServeHost = RequireNext(args, ref i, a);
+                    }
+                    else if (o.NoteSubcommand == "add" || o.NoteSubcommand == "list")
+                    {
+                        o.NoteHost = RequireNext(args, ref i, a);
+                    }
+                    else
+                    {
                         throw new ArgumentException($"Unknown argument: {a}");
-                    o.ServeHost = RequireNext(args, ref i, a);
+                    }
                     break;
                 case "--port":
                     if (!o.ServeSubcommand)
@@ -271,9 +336,18 @@ public sealed class CommandLineOptions
                 // --- end init subcommand flags ----------------------------
                 // --- binary-analyzer subcommand flags -----------
                 case "--json":
-                    if (!o.AnalyzeSubcommand)
+                    if (o.AnalyzeSubcommand)
+                    {
+                        o.AnalyzeJson = true;
+                    }
+                    else if (o.NoteSubcommand != null)
+                    {
+                        o.NoteJson = true;
+                    }
+                    else
+                    {
                         throw new ArgumentException($"Unknown argument: {a}");
-                    o.AnalyzeJson = true;
+                    }
                     break;
                 case "--verbose":
                     if (!o.AnalyzeSubcommand)
@@ -286,15 +360,45 @@ public sealed class CommandLineOptions
                     o.AnalyzeOutput = RequireNext(args, ref i, a);
                     break;
                 // --- end binary-analyzer subcommand flags -------
+                // ANCHOR: note-subcommand-flags
+                case "--title":
+                    if (o.NoteSubcommand != "add")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteTitle = RequireNext(args, ref i, a);
+                    break;
+                case "--content":
+                    if (o.NoteSubcommand != "add")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteContent = RequireNext(args, ref i, a);
+                    break;
+                case "--flag":
+                    if (o.NoteSubcommand != "add")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteFlag = RequireNext(args, ref i, a);
+                    break;
+                case "--tags":
+                    if (o.NoteSubcommand != "add")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteTags = RequireNext(args, ref i, a);
+                    break;
+                case "--category":
+                    if (o.NoteSubcommand != "add" && o.NoteSubcommand != "list")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteCategory = RequireNext(args, ref i, a);
+                    break;
+                case "--file":
+                    if (o.NoteSubcommand != "add")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteFile = RequireNext(args, ref i, a);
+                    break;
+                case "--archived":
+                    if (o.NoteSubcommand != "list" && o.NoteSubcommand != "flags" && o.NoteSubcommand != "search")
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.NoteIncludeArchived = true;
+                    break;
+                // END ANCHOR: note-subcommand-flags
+                // --- end note-subcommand flags -----------------------
                 case "--service-concurrency":
-                    {
-                        var v = RequireNext(args, ref i, a);
-                        if (!int.TryParse(v, out var n) || n < 1 || n > MaxServiceConcurrency)
-                            throw new ArgumentException(
-                                $"--service-concurrency must be an integer in [1, {MaxServiceConcurrency}], got '{v}'.");
-                        o.ServiceConcurrency = n;
-                        break;
-                    }
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
             }
