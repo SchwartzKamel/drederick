@@ -119,7 +119,7 @@ public sealed class DoctorEndpointsTests
     }
 
     [Fact]
-    public void Doctor_NeverInstalls_FromWeb()
+    public async Task Doctor_NeverInstalls_FromWeb()
     {
         // Static assertion: the endpoint type exposes no install surface.
         // Anything HTTP-verby other than GET should not exist for /api/doctor/.
@@ -140,7 +140,7 @@ public sealed class DoctorEndpointsTests
         using var factory = new CustomFactory(throwingRegistry);
         using var client = factory.CreateClient();
 
-        var resp = client.GetAsync("/api/doctor/checks").GetAwaiter().GetResult();
+        var resp = await client.GetAsync("/api/doctor/checks");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
 
