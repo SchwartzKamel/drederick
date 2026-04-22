@@ -134,6 +134,12 @@ public sealed class CommandLineOptions
     public bool DoctorInstall { get; set; }
     /// <summary>Skip the interactive [y/N] confirmation before running installs.</summary>
     public bool AssumeYes { get; set; }
+    // --- jeopardy-doctor-options ---
+    /// <summary>Doctor category filter (e.g. <c>jeopardy</c>). Null = run the default tool-detection pass.</summary>
+    public string? DoctorCategory { get; set; }
+    /// <summary>Permit api.githubcopilot.com for LLM reachability check without adding it to the scope file.</summary>
+    public bool AllowCopilotHost { get; set; } = true;
+    // --- end jeopardy-doctor-options ---
 
     // --- init subcommand: first-time setup wizard ---------------------------------
     /// <summary>Init subcommand selected (first positional arg "init"). Interactive setup wizard.</summary>
@@ -276,6 +282,13 @@ public sealed class CommandLineOptions
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
+            // --- jeopardy-doctor: accept --category=<name> shorthand ---
+            if (a.StartsWith("--category=", StringComparison.Ordinal))
+            {
+                o.DoctorCategory = a.Substring("--category=".Length);
+                continue;
+            }
+            // --- end jeopardy-doctor ---
             switch (a)
             {
                 case "--install":
@@ -284,6 +297,13 @@ public sealed class CommandLineOptions
                 case "-y":
                 case "--yes":
                     o.AssumeYes = true; break;
+                // --- jeopardy-doctor-flag-parse ---
+                case "--allow-copilot-host":
+                    o.AllowCopilotHost = true; break;
+                case "--no-allow-copilot-host":
+                    o.AllowCopilotHost = false; break;
+                // --category is handled by the unified case below (doctor + note subcommands)
+                // --- end jeopardy-doctor-flag-parse ---
                 case "-h":
                 case "--help":
                     o.Help = true; break;
@@ -486,9 +506,18 @@ public sealed class CommandLineOptions
                     o.NoteTags = RequireNext(args, ref i, a);
                     break;
                 case "--category":
-                    if (o.NoteSubcommand != "add" && o.NoteSubcommand != "list")
+                    if (o.DoctorSubcommand)
+                    {
+                        o.DoctorCategory = RequireNext(args, ref i, a);
+                    }
+                    else if (o.NoteSubcommand == "add" || o.NoteSubcommand == "list")
+                    {
+                        o.NoteCategory = RequireNext(args, ref i, a);
+                    }
+                    else
+                    {
                         throw new ArgumentException($"Unknown argument: {a}");
-                    o.NoteCategory = RequireNext(args, ref i, a);
+                    }
                     break;
                 case "--file":
                     if (o.NoteSubcommand != "add")

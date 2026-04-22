@@ -34,6 +34,41 @@ if (opts.DoctorSubcommand)
     Directory.CreateDirectory(opts.OutputDir);
     var docAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
     using var docAudit = new AuditLog(docAuditPath);
+
+    // --- jeopardy-doctor-wiring ---
+    // When --category=jeopardy is passed, run the Jeopardy-specific check
+    // suite instead of the legacy tool-detection pass. Each check is an
+    // independent IDoctorCheck; none short-circuit their siblings.
+    if (string.Equals(opts.DoctorCategory, Drederick.Doctor.JeopardyDoctorChecks.CategoryName, StringComparison.OrdinalIgnoreCase))
+    {
+        Scope? jeoScope = null;
+        try
+        {
+            if (!string.IsNullOrEmpty(opts.ScopePath) && File.Exists(opts.ScopePath))
+            {
+                jeoScope = ScopeLoader.LoadFile(opts.ScopePath, allowBroad: opts.AllowBroad, labMode: opts.LabMode);
+            }
+        }
+        catch (ScopeException ex)
+        {
+            Console.Error.WriteLine($"doctor --category=jeopardy: scope load failed: {ex.Message}");
+            // Continue with null scope — scope-dependent checks will warn/fail gracefully.
+        }
+        var deps = new Drederick.Doctor.JeopardyDoctorDeps(
+            Audit: docAudit,
+            Runner: new Drederick.Doctor.DefaultProcessRunner(),
+            Env: new Drederick.Doctor.ProcessEnvReader(),
+            Http: new Drederick.Doctor.DefaultHttpStatusProbe(),
+            DiskFree: new Drederick.Doctor.DefaultDiskFreeReader(),
+            Scope: jeoScope,
+            AllowCopilotHost: opts.AllowCopilotHost);
+        var jeoResults = await Drederick.Doctor.JeopardyDoctorChecks.RunAllAsync(
+            deps, install: opts.DoctorInstall, assumeYes: opts.AssumeYes,
+            Console.In, Console.Out, CancellationToken.None);
+        return jeoResults.Any(r => r.Status == Drederick.Doctor.DoctorCheckStatus.Fail) ? 1 : 0;
+    }
+    // --- end jeopardy-doctor-wiring ---
+
     var doctor = new DoctorRunner(docAudit);
     var tools = doctor.Detect();
     var pm = PackageManagerDetection.Detect(new PathToolLocator());
