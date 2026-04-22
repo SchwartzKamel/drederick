@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Pwn Me",
+      "category": "pwn",
+      "value": 200,
+      "solved_by_me": false,
+      "tags": [{"value": "beginner"}, {"value": "bof"}]
+    },
+    {
+      "id": 2,
+      "name": "RSA Fun",
+      "category": "crypto",
+      "value": 350,
+      "solved_by_me": true,
+      "tags": ["rsa", "ctf"]
+    }
+  ]
+}

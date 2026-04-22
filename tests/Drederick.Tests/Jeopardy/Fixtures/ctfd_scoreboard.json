@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "data": [
+    {"pos": 1, "account_id": 10, "name": "team-alpha", "score": 4200},
+    {"pos": 2, "account_id": 11, "name": "team-bravo", "score": 3950},
+    {"pos": 3, "account_id": 12, "name": "team-charlie", "score": 3800},
+    {"pos": 4, "account_id": 13, "name": "team-delta", "score": 3100},
+    {"pos": 5, "account_id": 14, "name": "team-echo", "score": 2700}
+  ]
+}

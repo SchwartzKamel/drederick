@@ -1,0 +1,7 @@
+{
+  "success": true,
+  "data": {
+    "status": "already_solved",
+    "message": "You already solved this"
+  }
+}

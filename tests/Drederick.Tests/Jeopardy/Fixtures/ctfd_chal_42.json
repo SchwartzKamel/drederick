@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "data": {
+    "id": 42,
+    "name": "Format String Fiesta",
+    "category": "pwn",
+    "value": 500,
+    "description": "<p>Connect to the service and <b>find the flag</b>.</p><pre>printf(user_input);</pre>",
+    "connection_info": "nc ctf.example.com 1337",
+    "solved_by_me": false,
+    "files": [
+      "/files/abc123/chall.bin?token=xyz",
+      {"name": "libc.so.6", "url": "/files/def456/libc.so.6", "size": 2048}
+    ],
+    "tags": [{"value": "format-string"}, {"value": "pwn"}]
+  }
+}
