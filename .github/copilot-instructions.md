@@ -12,7 +12,9 @@ fast** by maximizing enumeration coverage, exploitation automation,
 parallelism, and adaptive planning *inside* the scope allow-list. Built
 in C# on **.NET 10** and the **Microsoft Agent Framework**. Before making
 non-trivial changes, read `docs/ARCHITECTURE.md`, `docs/DEVELOPING.md`,
-and `docs/SCOPE_AND_LEGAL.md`.
+and `docs/SCOPE_AND_LEGAL.md`. For the post-exploitation subsystem
+(session dispatch, `PostExLinux`/`PostExWindows`, pivot discovery, flag
+extraction, multi-stage chain), see `docs/POST_EXPLOITATION.md`.
 
 **Design stance: sharpen the fangs, then use them.** Prefer wider NSE
 coverage over narrower, more concurrent scans over sequential, deeper

@@ -325,3 +325,6 @@ scopes overlap, coordinate via issue comments — do not racewrite.
 6. [`docs/DATASETTE.md`](docs/DATASETTE.md) — current UI + triage workflow.
 7. [`.github/copilot-instructions.md`](.github/copilot-instructions.md) —
    Copilot-specific version of this file (for Copilot sessions).
+8. [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md) — after the
+   bell: session dispatch, Linux/Windows enumeration, pivot discovery,
+   flag extraction.

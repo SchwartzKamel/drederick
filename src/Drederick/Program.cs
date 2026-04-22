@@ -458,6 +458,45 @@ else
     runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency, opts.ContentDiscovery);
 }
 
+// --- adaptive-exploit-wiring ---
+// Fallback parity: when the user asked for --agent + --autopilot but the
+// OpenAI key was missing (so we fell back to AdaptiveRunner above), wrap
+// the AdaptiveRunner in an AdaptiveExploitRunner so the same RunAsync
+// delivers recon + deterministic exploitation — the same shape a hybrid
+// (LLM + autopilot) run would produce. The normal `--autopilot` path
+// (without --agent) remains handled by the post-recon autopilot-wiring
+// block below; this branch only activates in the fallback scenario to
+// avoid double-execution.
+if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
+{
+    var adaptiveCreds = new CredentialStore(audit);
+    if (opts.AutopilotDefaultCreds) adaptiveCreds.SeedDefaultLab();
+    foreach (var spec in opts.AutopilotCreds)
+    {
+        var colon = spec.IndexOf(':');
+        if (colon <= 0) continue;
+        var left = spec[..colon];
+        var pwd = spec[(colon + 1)..];
+        string? realm = null;
+        var user = left;
+        var bs = left.IndexOf('\\');
+        if (bs > 0) { realm = left[..bs]; user = left[(bs + 1)..]; }
+        adaptiveCreds.Add(user, pwd, realm, source: "cli");
+    }
+    var adaptivePlanner = new ExploitationPlanner(audit, opts.OutputDir);
+    var adaptiveFlags = new FlagExtractor(audit);
+    runner = new AdaptiveExploitRunner(
+        adaptive, audit, scope, permissions,
+        adaptivePlanner, adaptiveCreds, adaptiveFlags,
+        opts.OutputDir,
+        nuclei: nuclei,
+        spray: spray,
+        multiStage: multiStage,
+        maxIterations: opts.AutopilotMaxIterations,
+        maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
+}
+// --- end adaptive-exploit-wiring ---
+
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 

@@ -17,6 +17,7 @@ related:
   - UI_GUIDE.md
   - COMPARISON.md
   - LLM_SETUP.md
+  - POST_EXPLOITATION.md
 ---
 
 # drederick documentation index
@@ -57,6 +58,7 @@ related:
 | [`UI.md`](UI.md) | humans | Avalonia point-and-click operator console (`Drederick.UI`): quickstart, invariants, tests. | human |
 | [`COMPARISON.md`](COMPARISON.md) | humans | Choosing between drederick / AutoRecon / nmapAutomator / Reconnoitre. | human |
 | [`LLM_SETUP.md`](LLM_SETUP.md) | humans | Wiring OpenAI for `--agent`; combining with `--autopilot`; provider recipes; safety. | human |
+| [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) | humans | After the session opens: `SessionManager`, `PostExLinux` / `PostExWindows`, pivot probes, flag extraction, multi-stage chain. | human |
 | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) | humans + agents | Symptom-to-fix: doctor detection, scope refusals, Datasette launch, NVD cache, PoC cache. | both |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | humans | Contributor workflow: branch, test, PR etiquette. | human |
 | [`../SECURITY.md`](../SECURITY.md) | humans | Private security-bug reporting channel + disclosure posture. | human |
@@ -83,7 +85,8 @@ related:
 3. [`DATASETTE.md`](DATASETTE.md) — dashboard + PoC triage workflow.
 4. [`UI_GUIDE.md`](UI_GUIDE.md) — what exists today (Datasette) vs planned.
 5. [`LLM_SETUP.md`](LLM_SETUP.md) — turn on the cornerman; combine `--agent` with `--autopilot`.
-6. [`COMPARISON.md`](COMPARISON.md) — when to pick drederick vs peers.
+6. [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) — after the bell: session dispatch, Linux/Windows enumeration, pivot discovery, flag extraction.
+7. [`COMPARISON.md`](COMPARISON.md) — when to pick drederick vs peers.
 
 ### Reviewer
 

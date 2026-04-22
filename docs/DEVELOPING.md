@@ -129,6 +129,92 @@ useful per-tool parameters. `ReconToolbox` dispatches by concrete type
     - A negative test asserting no forbidden NSE category or CLI flag is
       enabled on the built argv (pattern: `SmbToolTests.AssertNoForbiddenScripts_*`).
 
+<a id="adding-post-ex"></a>
+## Adding a post-ex command
+
+Post-exploitation commands are the structured enumeration step that
+runs *after* a session has been opened. The contract is similar to
+[`#adding-scanner`](#adding-scanner) and the `IExploitTool` shape used
+elsewhere in `src/Drederick/Exploit/`, with two post-ex-specific
+twists: (1) the command is dispatched through an established session,
+so `target` is the session's target (not ambient), and (2) captured
+stdout is SHA-256'd and truncated at
+`PostExCommandRun.MaxCaptureBytes` — plaintext content never rides
+along in the audit record or the report. Narrative, worked example,
+and data flow are in
+[`POST_EXPLOITATION.md#extending-post-ex`](POST_EXPLOITATION.md#extending-post-ex).
+
+1. **Pick the platform.** Linux commands go on
+   [`PostExLinux`](../src/Drederick/Exploit/PostExLinux.cs); Windows
+   commands go on
+   [`PostExWindows`](../src/Drederick/Exploit/PostExWindows.cs). Cross-
+   platform operations (e.g. `FlagExtractor`-adjacent sweeps) live on
+   `SessionManager` or a new helper; do not fork a third `PostEx*`
+   class for them.
+2. **Add a typed result** to
+   [`PostExResult.cs`](../src/Drederick/Exploit/PostExResult.cs). The
+   result carries a `PostExCommandRun Run` (or `Capture` for Windows —
+   follow the existing casing) envelope plus parsed fields. Never add
+   a raw-string field for captured content; use SHA-256 + byte length.
+3. **Public async method** on the platform class with the signature
+   `Task<TResult> <Cmd>Async(string target, string? session, CancellationToken ct)`
+   for Linux (session is optional at the class level because the probe
+   may be local-first); `Task<TResult> <Cmd>Async(string target, string session, CancellationToken ct)`
+   for Windows (session is required — Windows enumeration does not
+   have a local fallback). **First statement must be
+   `_scope.Require(target)`.** No exceptions, no shortcuts.
+4. **Argv construction** — assemble a constrained `/bin/sh -c "…"`
+   (Linux) or `cmd.exe /c` / `powershell -NoProfile -NonInteractive
+   -Command` (Windows) string. The command body is a **fixed literal**
+   — no interpolation of LLM-supplied or operator-supplied text. If
+   you need a parameter, add it to the method signature and whitelist
+   its shape (digits only, identifier only, path-under-root only)
+   before interpolating.
+5. **Audit** — wrap execution with
+   `audit.Record("postex.<platform>.<cmd>.start" / ".finish", …)`
+   events. Include `target`, `session_id`, `argv_digest` (SHA-256 of
+   the argv), `exit_code`, and — on finish — `stdout_sha256` +
+   `stdout_bytes`. Never copy `stdout_truncated` into the audit event.
+6. **RunPermissions.** Post-ex enumeration itself does not require an
+   additional opt-in beyond the `--allow-exec-pocs` that got you the
+   session — enumeration on a box you already own is low-blast-radius.
+   If a new command is state-mutating (writes a file on the target,
+   reboots, kills a process), it must additionally call
+   `_permissions.Require(ExploitCategory.Destructive, Name)`.
+7. **Compose into `RunAllAsync`** — add the new command's call into
+   `PostExLinux.RunAllAsync` / `PostExWindows.RunAllAsync` and a
+   nullable field on `PostExLinuxResult` / `PostExWindowsResult` so
+   the default sweep picks it up.
+8. **LLM surface** (optional but preferred) — add a wrapper in
+   [`LlmExploitTools`](../src/Drederick/Agent/LlmExploitTools.cs) with
+   a `[Description]` attribute and the standard error envelope
+   (`{error: "permission_denied"|"scope_refused"|"budget_exceeded"|…}`).
+   The wrapper re-checks scope, consults `RunPermissions`, consumes a
+   budget slot, and audits `llm.tool.<name>.start` / `.finish`.
+9. **Register** in `Program.cs` if a new dependency is introduced
+   (usually not needed — `PostExLinux` / `PostExWindows` are already
+   wired). Follow the unique-anchor convention from
+   [`../AGENTS.md#agent-coordination`](../AGENTS.md#agent-coordination).
+10. **Tests (all required):**
+    - `ScopeException` on out-of-scope target (`Assert.Throws<ScopeException>`).
+    - Parser test against a recorded stdout fixture under
+      `tests/fixtures/`. Use the fake subprocess binaries in
+      `tests/fixtures/bin/` to replay canned output.
+    - Argv-stability test: the built argv for identical inputs is
+      byte-for-byte identical across runs (so `argv_digest` is a
+      stable identifier in the audit log).
+    - An audit-content test: no plaintext secret or raw file content
+      appears in the audit record — only SHA-256 + byte length. Use
+      a canary string (`DREDERICK_TEST_CANARY_…`) in the fixture
+      stdout and assert it is absent from the serialised audit event.
+    - For LLM wrappers: a `permission_denied` envelope test when the
+      corresponding `RunPermissions` flag is off, and a
+      `budget_exceeded` envelope test when the budget is exhausted.
+
+Cross-reference: [`POST_EXPLOITATION.md#extending-post-ex`](POST_EXPLOITATION.md#extending-post-ex)
+for narrative guidance on new session protocols, pivot probes, and
+flag patterns. Invariants: [`../AGENTS.md#invariants`](../AGENTS.md#invariants).
+
 ## Adding a new enrichment source {#adding-enrichment}
 
 Enrichment sources annotate findings with third-party intel (CVEs, PoCs,
