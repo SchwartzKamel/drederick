@@ -19,15 +19,42 @@ import { ConnectionDot } from "@/components/ConnectionDot";
 
 const BACKEND_BIND = "127.0.0.1:7070";
 
+// --- jeopardy-routes ---
+// Route paths owned by the Jeopardy views. The actual TanStack route
+// objects are created in `main.tsx`; this block is the coordination
+// marker + single source of truth for the set of paths the Jeopardy
+// Division occupies, so other agents can see what's in play without
+// grepping the router.
+export const JEOPARDY_ROUTE_PATHS = {
+  landing: "/jeopardy",
+  sessionDetail: "/jeopardy/sessions/$session_id",
+  sessionSwarm: "/jeopardy/sessions/$session_id/swarm",
+} as const;
+// --- end jeopardy-routes ---
+
 const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; icon: typeof Activity }> = [
   { to: "/runs", label: "Runs", icon: Activity },
   { to: "/findings", label: "Findings", icon: AlertTriangle },
   { to: "/jeopardy", label: "Jeopardy", icon: Flag },
   { to: "/offensive", label: "Offensive", icon: Flame },
+  // --- audit-routes ---
   { to: "/audit", label: "Audit", icon: ScrollText },
+  // --- end audit-routes ---
+  // --- scope-routes ---
+  // Route: /scope → <ScopePage /> (registered in src/main.tsx, component
+  // lives in src/pages/Scope/ScopePage.tsx). READ-ONLY viewer —
+  // @invariant-id:scope-file-read-only. No edit UI on this path.
   { to: "/scope", label: "Scope", icon: Target },
+  // --- end scope-routes ---
+  // --- doctor-routes ---
+  // Route: /doctor → <DoctorPage /> (registered in src/main.tsx, component
+  // lives in src/pages/Doctor/DoctorPage.tsx). Detect-only —
+  // @invariant-id:doctor-workstation-only. No install button on this path.
   { to: "/doctor", label: "Doctor", icon: HeartPulse },
+  // --- end doctor-routes ---
+  // --- notes-routes ---
   { to: "/notes", label: "Notes", icon: Notebook },
+  // --- end notes-routes ---
 ];
 
 export function App({ children }: { children: ReactNode }) {

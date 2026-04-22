@@ -1,10 +1,3 @@
-import { PlaceholderPage } from "@/components/PlaceholderPage";
-
-export function ScopePage() {
-  return (
-    <PlaceholderPage
-      title="Scope"
-      tagline="Scope view — scaffold placeholder."
-    />
-  );
-}
+// Phase 3b bridge — main.tsx imports `@/pages/ScopePage`; real component
+// lives in ./Scope/ per the phase-3b zone map.
+export { ScopePage } from "./Scope/ScopePage";
