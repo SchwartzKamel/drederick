@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-copilot-simple-1",
+  "object": "chat.completion",
+  "created": 1761000000,
+  "model": "gpt-5.4",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The flag is FLAG{jeopardy_pwned}."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 42,
+    "completion_tokens": 11,
+    "total_tokens": 53
+  }
+}

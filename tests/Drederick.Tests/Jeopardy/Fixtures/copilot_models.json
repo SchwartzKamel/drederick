@@ -1,0 +1,53 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-5.4",
+      "object": "model",
+      "vendor": "openai",
+      "capabilities": { "family": "openai-gpt", "limits": { "max_context_window_tokens": 400000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "object": "model",
+      "vendor": "openai",
+      "capabilities": { "family": "openai-gpt", "limits": { "max_context_window_tokens": 200000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "claude-opus-4.7",
+      "object": "model",
+      "vendor": "anthropic",
+      "capabilities": { "family": "anthropic-claude", "limits": { "max_context_window_tokens": 200000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "claude-sonnet-4.6",
+      "object": "model",
+      "vendor": "anthropic",
+      "capabilities": { "family": "anthropic-claude", "limits": { "max_context_window_tokens": 200000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "claude-haiku-4.5",
+      "object": "model",
+      "vendor": "anthropic",
+      "capabilities": { "family": "anthropic-claude", "limits": { "max_context_window_tokens": 200000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "object": "model",
+      "vendor": "google",
+      "capabilities": { "family": "google-gemini", "limits": { "max_context_window_tokens": 1000000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "grok-code-fast-1",
+      "object": "model",
+      "vendor": "xai",
+      "capabilities": { "family": "xai-grok", "limits": { "max_context_window_tokens": 256000 }, "supports": { "tool_calls": true } }
+    },
+    {
+      "id": "goldeneye",
+      "object": "model",
+      "vendor": "github",
+      "capabilities": { "family": "copilot-native", "limits": { "max_context_window_tokens": 128000 }, "supports": { "tool_calls": false } }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "chatcmpl-copilot-tool-1",
+  "object": "chat.completion",
+  "created": 1761000001,
+  "model": "claude-sonnet-4.6",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_abc123",
+            "type": "function",
+            "function": {
+              "name": "nmap_scan",
+              "arguments": "{\"target\":\"10.10.10.5\",\"ports\":\"1-1024\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 128,
+    "completion_tokens": 24,
+    "total_tokens": 152
+  }
+}
