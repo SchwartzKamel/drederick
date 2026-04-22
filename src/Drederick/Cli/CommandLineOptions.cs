@@ -97,6 +97,37 @@ public sealed class CommandLineOptions
     public bool AcknowledgeLockoutRisk { get; set; }
     // --- end exploit opt-ins ------------------------------------------------
 
+    // --- autopilot options --------------------------------------------------
+    /// <summary>
+    /// Run the post-recon autopilot: <see cref="Drederick.Autopilot.ExploitationPlanner"/>
+    /// builds a prioritised action list from the completed recon and
+    /// <see cref="Drederick.Autopilot.AutopilotRunner"/> dispatches each
+    /// action through the existing exploit tools. All scope + permission
+    /// gates still fire on the underlying tool — <c>--autopilot</c> is not a
+    /// way around any invariant, it is a way to batch invocations.
+    /// </summary>
+    public bool Autopilot { get; set; }
+
+    /// <summary>Seed <see cref="Drederick.Autopilot.CredentialStore"/> with a
+    /// small built-in lab-grade wordlist (admin/admin, root/root, etc.) so
+    /// cred spray has something to work with when the operator has not
+    /// captured creds yet. Off by default.</summary>
+    public bool AutopilotDefaultCreds { get; set; }
+
+    /// <summary>Hard cap on autopilot plan/execute iterations. Default 3.</summary>
+    public int AutopilotMaxIterations { get; set; } = 3;
+
+    /// <summary>Hard cap on actions dispatched per autopilot iteration.
+    /// Default 64 — enough for a realistic lab run while still bounding
+    /// blast radius and ToolBudget pressure.</summary>
+    public int AutopilotMaxActionsPerIteration { get; set; } = 64;
+
+    /// <summary>User:password (optionally realm\\user:password) pairs supplied
+    /// on the command line and merged into the credential store before
+    /// planning. Repeatable via <c>--cred user:password</c>.</summary>
+    public List<string> AutopilotCreds { get; } = new();
+    // --- end autopilot options ----------------------------------------------
+
     /// <summary>Doctor subcommand selected (first positional arg "doctor").</summary>
     public bool DoctorSubcommand { get; set; }
     /// <summary>With --install / --doctor-fix: attempt to install missing tools.</summary>
@@ -300,6 +331,28 @@ public sealed class CommandLineOptions
                 case "--acknowledge-lockout-risk":
                     o.AcknowledgeLockoutRisk = true; break;
                 // --- end exploit opt-in flag parse ---
+                // --- autopilot flag parse ---
+                case "--autopilot":
+                    o.Autopilot = true; break;
+                case "--autopilot-default-creds":
+                    o.AutopilotDefaultCreds = true; break;
+                case "--autopilot-max-iterations":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 100)
+                            throw new ArgumentException($"--autopilot-max-iterations must be in [1,100], got '{v}'.");
+                        o.AutopilotMaxIterations = n; break;
+                    }
+                case "--autopilot-max-actions":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 1000)
+                            throw new ArgumentException($"--autopilot-max-actions must be in [1,1000], got '{v}'.");
+                        o.AutopilotMaxActionsPerIteration = n; break;
+                    }
+                case "--cred":
+                    o.AutopilotCreds.Add(RequireNext(args, ref i, a)); break;
+                // --- end autopilot flag parse ---
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;
@@ -605,6 +658,31 @@ public sealed class CommandLineOptions
                                mutation, reboot, wipe).
           --allow-dos          Permit NSE dos/malware categories and intentional
                                denial-of-service. OFF by default even in lab mode.
+
+        Autopilot (post-recon heavyweight loop — "step into the ring"):
+          --autopilot          Ladies and gentlemen… after recon closes,
+                               Drederick builds a fight card (prioritised
+                               exploit plan) from the findings and works the
+                               opponent round by round through the existing
+                               exploit tools. Does NOT bypass any gate:
+                               every punch is re-validated through scope +
+                               per-category permission at the underlying
+                               tool. (I must dissent from any bypass.)
+          --autopilot-default-creds
+                               Seed the credential store with a small
+                               built-in lab wordlist (admin/admin etc).
+                               Think of it as your cornerman slipping you
+                               the obvious combinations.
+          --cred USER:PASSWORD (Repeatable.) Add a credential to the store.
+                               Use REALM\\USER:PASSWORD for AD-style
+                               accounts. Known faces ringside.
+          --autopilot-max-iterations N
+                               Cap rounds in the autopilot loop (default
+                               3, max 100). Tatum goes the distance when
+                               the plan keeps finding work to do.
+          --autopilot-max-actions N
+                               Cap punches thrown per round (default 64,
+                               max 1000).
 
           -h, --help           Show this help.
 

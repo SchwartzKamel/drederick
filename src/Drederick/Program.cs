@@ -1,5 +1,6 @@
 using Drederick.Agent;
 using Drederick.Audit;
+using Drederick.Autopilot;
 using Drederick.Bundling;
 using Drederick.Cli;
 using Drederick.Doctor;
@@ -470,6 +471,61 @@ catch (Exception ex) when (ex is not OperationCanceledException)
     audit.Record("poc.aggregate.error", new Dictionary<string, object?> { ["error"] = ex.Message });
 }
 // END ANCHOR: poc-aggregator-wiring
+
+// --- autopilot-wiring (owned by autopilot task) ---
+// Post-recon full-auto exploitation loop. Pure orchestrator over existing
+// exploit tools: every action is re-validated through scope + permissions on
+// the underlying tool, so --autopilot is not a bypass. Only runs when
+// explicitly opted in.
+if (opts.Autopilot)
+{
+    try
+    {
+        var credStore = new CredentialStore(audit);
+        if (opts.AutopilotDefaultCreds) credStore.SeedDefaultLab();
+        foreach (var spec in opts.AutopilotCreds)
+        {
+            // Accept  user:password  or  realm\user:password
+            var colon = spec.IndexOf(':');
+            if (colon <= 0) continue;
+            var left = spec[..colon];
+            var pwd = spec[(colon + 1)..];
+            string? realm = null;
+            var user = left;
+            var bs = left.IndexOf('\\');
+            if (bs > 0) { realm = left[..bs]; user = left[(bs + 1)..]; }
+            credStore.Add(user, pwd, realm, source: "cli");
+        }
+
+        var planner = new ExploitationPlanner(audit, opts.OutputDir);
+        var flagExtractor = new FlagExtractor(audit);
+        var autopilot = new AutopilotRunner(
+            scope, audit, permissions, planner, credStore, flagExtractor,
+            opts.OutputDir,
+            nuclei: nuclei,
+            spray: spray,
+            maxIterations: opts.AutopilotMaxIterations,
+            maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
+
+        var apReport = await autopilot.RunAsync(allFindings, cts.Token);
+        AutopilotReporter.Write(opts.OutputDir, apReport);
+        if (!opts.Quiet)
+        {
+            Console.Error.WriteLine(
+                $"autopilot — final bell: rounds={apReport.Iterations} " +
+                $"punches={apReport.Actions.Count} " +
+                $"connects={apReport.Actions.Count(a => a.Succeeded)} " +
+                $"knockouts={apReport.Flags.Count}");
+        }
+    }
+    catch (OperationCanceledException) { Console.Error.WriteLine("autopilot cancelled."); }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"autopilot: {ex.Message}");
+        audit.Record("autopilot.error", new Dictionary<string, object?> { ["error"] = ex.Message });
+    }
+}
+// --- end autopilot-wiring ---
 
 kb.Merge(allFindings);
 kb.Save(opts.MemoryPath);
