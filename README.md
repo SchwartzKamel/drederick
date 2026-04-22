@@ -320,6 +320,8 @@ read [`AGENTS.md`](AGENTS.md) first.
   scope / Datasette symptom-to-fix playbook.
 - [`docs/UI_GUIDE.md`](docs/UI_GUIDE.md) — current UI (Datasette) pointer +
   the planned React dashboard design.
+- [`docs/JEOPARDY.md`](docs/JEOPARDY.md) — Jeopardy CTF mode: `ctf-solve`
+  swarm, mid-run `ctf-msg` hints, sandbox image, budget/scope rails.
 
 <a id="architecture-short"></a>
 ## Architecture (short version)
