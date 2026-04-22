@@ -398,6 +398,19 @@ public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
         string modelId,
         IReadOnlyList<CopilotChatMessage> messages,
         IReadOnlyList<AITool>? tools)
+        => BuildChatRequestBody(modelId, messages, tools, includeModel: true);
+
+    /// <summary>
+    /// Build the OpenAI-wire-compatible chat-completions request body. When
+    /// <paramref name="includeModel"/> is <c>false</c>, the <c>model</c> key
+    /// is omitted — use this for Azure OpenAI, which takes the deployment
+    /// from the URL path rather than the body.
+    /// </summary>
+    internal static string BuildChatRequestBody(
+        string modelId,
+        IReadOnlyList<CopilotChatMessage> messages,
+        IReadOnlyList<AITool>? tools,
+        bool includeModel)
     {
         var msgArr = new JsonArray();
         foreach (var m in messages)
@@ -411,9 +424,9 @@ public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
 
         var obj = new JsonObject
         {
-            ["model"] = modelId,
             ["messages"] = msgArr,
         };
+        if (includeModel) obj["model"] = modelId;
 
         if (tools is { Count: > 0 })
         {
