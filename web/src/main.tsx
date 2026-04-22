@@ -8,9 +8,9 @@ import {
   createRoute,
   Outlet,
 } from "@tanstack/react-router";
-import { Toaster } from "sonner";
 import { App } from "@/App";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Toaster } from "@/components/Toast";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { RunsPage } from "@/pages/RunsPage";
 import { FindingsPage } from "@/pages/FindingsPage";
@@ -60,7 +60,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster richColors position="bottom-right" theme="dark" />
+        <Toaster />
       </QueryClientProvider>
     </ErrorBoundary>
   </React.StrictMode>,

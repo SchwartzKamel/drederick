@@ -2,7 +2,7 @@ import { useSignalREvents } from "@/api/signalr";
 import { cn } from "@/lib/utils";
 
 export function ConnectionDot() {
-  const { state } = useSignalREvents();
+  const { state } = useSignalREvents("recon");
   const dot = {
     connected: "bg-emerald-500",
     connecting: "bg-amber-500",
