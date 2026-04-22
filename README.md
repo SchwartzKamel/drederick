@@ -208,7 +208,8 @@ $DRED --scope scope.yaml --target 10.10.10.5 --content-discovery --out out/
 # Strictest posture (no cheatsheet, tighter scope cap, safe+default NSE only).
 $DRED --scope scope.yaml --target 10.10.10.5 --no-lab --out out/
 
-# LLM-driven planner (needs an OpenAI-compatible key).
+# LLM-driven planner (needs an OpenAI-compatible key). Full setup,
+# provider recipes, and combining with --autopilot: docs/LLM_SETUP.md.
 export OPENAI_API_KEY=sk-...
 export DREDERICK_MODEL=gpt-4o-mini          # optional, default gpt-4o-mini
 $DRED --scope scope.yaml --target 10.10.10.5 --agent --out out/
