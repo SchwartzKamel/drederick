@@ -266,13 +266,15 @@ public static class JeopardyDoctorChecks
     /// </summary>
     internal static string? ScopeGate(Scope.Scope? scope, string host, bool allowCopilotHost, string copilotHost)
     {
-        if (scope is null)
-        {
-            return "scope file not loaded — cannot verify host is authorized";
-        }
+        // Allow-list the Copilot first-party endpoint before any scope checks
+        // so `--allow-copilot-host` works even when no scope file is loaded.
         if (allowCopilotHost && string.Equals(host, copilotHost, StringComparison.OrdinalIgnoreCase))
         {
             return null;
+        }
+        if (scope is null)
+        {
+            return "scope file not loaded — cannot verify host is authorized";
         }
         try
         {
