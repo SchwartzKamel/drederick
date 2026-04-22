@@ -4,6 +4,7 @@ using Drederick.Bundling;
 using Drederick.Cli;
 using Drederick.Doctor;
 using Drederick.Enrichment;
+using Drederick.Exploit;
 using Drederick.Memory;
 using Drederick.Ops;
 using Drederick.Recon;
@@ -317,6 +318,40 @@ var toolbox = new ReconToolbox(
     },
     audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);
+
+// --- exploit tools ---
+// Offensive weapons are registered here. Every tool re-checks scope AND the
+// per-run opt-in category on its own entry point — the toolbox is a registry,
+// not the authorization boundary. Default posture is OFF for every category
+// even inside lab mode; the operator must positively opt in with
+// --allow-exec-pocs / --allow-cred-attacks / --allow-payloads /
+// --allow-destructive / --allow-dos (and --acknowledge-lockout-risk for
+// credential attacks).
+var permissions = new RunPermissions(
+    allowExecPocs: opts.AllowExecPocs,
+    allowCredAttacks: opts.AllowCredAttacks,
+    allowPayloads: opts.AllowPayloads,
+    allowDestructive: opts.AllowDestructive,
+    allowDos: opts.AllowDos,
+    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk);
+var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
+var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
+var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);
+var spray = new PasswordSprayTool(scope, audit, permissions, exploitRunner);
+var exploitToolbox = new ExploitToolbox(
+    new IExploitTool[] { nuclei, msf, spray },
+    audit);
+audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
+{
+    ["tools"] = exploitToolbox.Tools.Select(t => t.Name).ToList(),
+    ["allow_exec_pocs"] = permissions.AllowExecPocs,
+    ["allow_cred_attacks"] = permissions.AllowCredAttacks,
+    ["allow_payloads"] = permissions.AllowPayloads,
+    ["allow_destructive"] = permissions.AllowDestructive,
+    ["allow_dos"] = permissions.AllowDos,
+    ["acknowledge_lockout_risk"] = permissions.AcknowledgeLockoutRisk,
+});
+// --- end exploit tools ---
 if (!opts.Quiet)
 {
     // Live progress: one-liner per tool invocation on stderr so stdout stays

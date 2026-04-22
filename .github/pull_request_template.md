@@ -10,13 +10,15 @@ Cross-check against the `@invariant-id:*` table in
 [docs/SCOPE_AND_LEGAL.md](../blob/main/docs/SCOPE_AND_LEGAL.md) and
 [AGENTS.md](../blob/main/AGENTS.md).
 
-- [ ] `scope-in-every-tool` — every network-touching method still calls `_scope.Require` first.
+- [ ] `scope-in-every-tool` — every network-touching method (recon, exploit, cred, payload) still calls `_scope.Require` first.
 - [ ] `scope-default-deny` / `scope-wildcard-refused` / `scope-prefix-cap` — scope parsing untouched or tightened.
-- [ ] `nse-forbidden-categories` — no new path runs `exploit`/`intrusive`/`brute`/`vuln`/`dos`/`malware`.
-- [ ] `aggregate-not-execute` — no new code executes fetched PoCs or payloads.
-- [ ] `no-credential-attacks` / `no-payload-delivery` — no brute-force, spray, shells, implants.
-- [ ] `doctor-workstation-only` — doctor still never scans targets and never re-execs as root.
-- [ ] `no-scope-kill-switch` — no new flag/env var bypasses scope.
+- [ ] `scope-is-authorization` — exploitation / cred / payload tools act only against scope-resolved targets; multi-host argv re-validated via `ExploitRunner.AssertTargetsInScope`.
+- [ ] `subprocess-args-validated` — every host/IP/URL in argv is re-checked; no shell-metachar / path-traversal bypass.
+- [ ] `audit-everything` — new PoC spawns, cred attempts, payload drops, session events write to `audit.jsonl` with argv digest; no plaintext passwords logged.
+- [ ] `no-exfiltration` — no new outbound sink for loot / creds / captured secrets.
+- [ ] `scope-file-read-only` — no code path writes to the scope file.
+- [ ] `doctor-workstation-only` — doctor still never scans or exploits targets and never re-execs as root.
+- [ ] `no-scope-kill-switch` — no new flag/env var/prompt bypasses scope or silences the audit log.
 
 If a box cannot be checked, explain below.
 

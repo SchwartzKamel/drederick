@@ -1,6 +1,6 @@
 <!--
 ---
-title: drederick — scope-enforced recon harness
+title: drederick — scope-enforced full-auto pentest harness
 audience: [humans, agents]
 primary: humans
 stability: stable
@@ -26,24 +26,30 @@ related:
 > (Copilot) before making changes. For the docs index, see
 > [`docs/README.md`](docs/README.md).
 
-Drederick is a scope-enforced, adaptive reconnaissance harness for **authorized
-lab and CTF environments only** (Hack The Box (HTB), TryHackMe, CTF ranges,
-Vulnhub, vulhub, or infrastructure you are explicitly authorized to assess).
-It performs discovery, fingerprinting, and CVE/PoC *aggregation* only — **no
-exploitation, no credential attacks, no brute force, no payload delivery, no
-PoC execution**.
+Drederick is a scope-enforced, adaptive **full-auto offensive security
+harness** for **authorized targets only** (Hack The Box (HTB), TryHackMe,
+CTF ranges, Vulnhub, vulhub, OffSec labs, red-team engagements with
+written ROE, bug bounty programs with in-scope assets, or infrastructure
+you own). Inside scope it performs discovery, fingerprinting, CVE/PoC
+aggregation, **exploit execution, credential attacks, payload delivery,
+and post-exploitation**. Outside scope it does nothing — every
+network-touching tool re-checks the scope allow-list on entry and no
+flag, env var, or prompt disables that check.
 
 Built in C# on **.NET 10** with the **Microsoft Agent Framework**.
 
 <a id="authorized-use"></a>
 ## Authorized use only
 
-The only permitted use of this tool is against lab/CTF targets you are
-explicitly authorized to assess. Drederick runs exclusively against targets
-listed in a scope file. There is no default scope, no implicit allow-list, and
-the tool refuses wildcard or over-broad entries. By pointing it at any target
-you assert that you are authorized to test that target. Unauthorized testing of
-third-party systems is illegal in most jurisdictions; don't do it.
+The only permitted use of this tool is against targets you are
+explicitly authorized to attack. Drederick runs exclusively against
+targets listed in a scope file. There is no default scope, no implicit
+allow-list, no wildcard, and no kill switch. By entering a target in
+the scope file, you assert that you are authorized to attack it — the
+scope file is the record of that assertion. Unauthorized exploitation
+of third-party systems is a serious crime in most jurisdictions (CFAA
+in the US, Computer Misuse Act in the UK, analogous statutes
+elsewhere). Don't do it.
 
 See [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md) for the full policy.
 
@@ -156,10 +162,12 @@ triage workflow.
   `audit.jsonl`. Troubleshooting:
   [`docs/TROUBLESHOOTING.md#doctor-detection`](docs/TROUBLESHOOTING.md#doctor-detection).
 - **Per-host working directory** (AutoRecon-style): `out/<host>/scans/`,
-  `out/<host>/loot/`, `out/<host>/notes.md`, and (lab mode)
-  `out/<host>/manual_commands.txt` — enumeration commands the operator
-  *may* choose to run themselves. Drederick never executes these, and
-  never suggests exploit, brute-force, or payload-delivery commands.
+  `out/<host>/loot/`, `out/<host>/sessions/`, `out/<host>/notes.md`,
+  and `out/<host>/manual_commands.txt` — enumeration and exploitation
+  commands keyed to fingerprinted services and matched CVEs. In lab
+  mode, Drederick may also **run** these commands automatically via
+  `ExploitRunner` / `CredRunner` / `PayloadStager`; in strict mode
+  (`--no-lab`), automatic execution is opt-in per category flag.
 
 <a id="build-test"></a>
 ## Build & test
@@ -296,7 +304,7 @@ read [`AGENTS.md`](AGENTS.md) first.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — layers, components, the
   thread-safety story for `KnowledgeBase` / `AuditLog`.
 - [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md) — authorized use,
-  precise `--lab` semantics, the aggregate-vs-execute line, incident response.
+  precise `--lab` semantics, the authorization model, incident response.
 - [`docs/MODULES.md`](docs/MODULES.md) — per-scanner contracts for all 14
   scanners, auto-dispatch triggers, CLI flags that affect each one.
 - [`docs/DEVELOPING.md`](docs/DEVELOPING.md) — adding an `IReconTool`, adding
@@ -320,10 +328,10 @@ flowchart TD
     CLI["CLI"] --> Scope["Scope<br/>(default-deny allow-list;<br/>lab/strict prefix caps)"]
     Scope --> Toolbox["ReconToolbox"]
     Audit["AuditLog<br/>(JSONL, thread-safe)"] --> Toolbox
-    Toolbox --> Tools["14 IReconTool scanners<br/>each re-checks scope on entry<br/>and excludes forbidden NSE cats"]
+    Toolbox --> Tools["IReconTool + IExploitTool set<br/>each re-checks scope on entry<br/>(recon, exploit, cred, payload)"]
     Tools --> Pool["HostWorkerPool<br/>(bounded Channel&lt;ScanJob&gt;)"]
     Pool --> Runner["AdaptiveRunner<br/>or MicrosoftAgentRunner"]
-    Runner --> Enrich["Enrichment:<br/>CveAnnotator → PocAggregator<br/>(never executes PoCs)"]
+    Runner --> Enrich["Enrichment:<br/>CveAnnotator → PocAggregator<br/>→ ExploitRunner (in-scope only)"]
     Enrich --> Report["Reporting:<br/>JSON / Markdown /<br/>SqliteReport (findings.db)"]
     Report --> Present["Datasette (drederick serve)<br/>+ KnowledgeBase<br/>(memory/findings.json)"]
 ```

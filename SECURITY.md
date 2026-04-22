@@ -13,9 +13,10 @@ related:
 
 # Security policy
 
-Drederick is a scope-enforced reconnaissance harness used on authorized
-engagements. A vulnerability in the tool itself (especially one that weakens
-the scope guarantees) is treated as high severity.
+Drederick is a scope-enforced, full-auto offensive security harness used
+on authorized engagements. A vulnerability in the tool itself —
+especially one that weakens the **authorization boundary** (scope) or
+the **audit trail** — is treated as high severity.
 
 ## Reporting a vulnerability
 
@@ -33,34 +34,53 @@ affected versions in the public issue.
 
 In priority order:
 
-1. **Scope-enforcement bugs** — any path that lets a network call reach a
-   target not in the scope file. Path-traversal in scope parsing, scope
-   bypass, wildcard leakage (`0.0.0.0/0` / `::/0`), prefix-cap bypass,
-   or a missing `_scope.Require` call on a network-touching method.
-2. **Forbidden-NSE-category leakage** — any code path that lets
-   `exploit`, `intrusive`, `brute`, `vuln`, `dos`, or `malware` NSE
-   scripts run.
-3. **PoC execution / arbitrary code execution regressions** — drederick
-   aggregates and presents PoC metadata; it must never execute, chmod,
-   or spawn fetched code.
-4. **Cache poisoning** — PoC source bytes, CVE data, or NSE scripts
-   bypassing the SHA-256 integrity check.
-5. **Credential-file disclosure** — secrets written to `out/`, `memory/`,
-   or anywhere else on disk in cleartext.
-6. **Doctor re-exec as root** — `drederick doctor` escalating outside the
-   explicit consent flow, or touching anything other than the operator
-   workstation.
+1. **Scope-enforcement bugs** — any path that lets a network call
+   (recon, exploit, credential, payload, or pivot) reach a target not
+   in the scope file. Path-traversal in scope parsing, scope bypass,
+   wildcard leakage (`0.0.0.0/0` / `::/0`), prefix-cap bypass, missing
+   `_scope.Require` call on a network-touching method, or
+   `ExploitRunner.AssertTargetsInScope` not being called before a
+   multi-host subprocess spawn.
+2. **Scope kill switches** — any flag, env var, debug build, CLI
+   prompt, or LLM instruction that disables the scope check, even
+   partially. No kill switch must exist.
+3. **Audit-log tampering** — any code path that silences, rewrites,
+   deletes, or truncates entries in `audit.jsonl` (one-way append is
+   the only supported shape), or that logs plaintext credentials
+   where only a SHA-256 digest is approved.
+4. **Subprocess argv injection** — shell-metachar / path-traversal /
+   URL-host-spoofing that lets argv reach an out-of-scope target
+   without triggering `_scope.Require`.
+5. **Scope-file write from code** — any code path that modifies the
+   user-authored scope file.
+6. **Loot exfiltration** — any outbound sink that sends captured
+   credentials, hashes, tickets, or secrets to a third-party
+   endpoint. Drederick is local-only by design.
+7. **Cache poisoning** — PoC source bytes, CVE data, or NSE scripts
+   bypassing the SHA-256 integrity check (matters more now that
+   cached PoCs are executed, not just presented).
+8. **Credential-file disclosure in cleartext** — captured secrets
+   written to `out/`, `memory/`, or anywhere else in plaintext
+   instead of as SHA-256 digests.
+9. **Doctor re-exec as root** — `drederick doctor` escalating outside
+   the explicit consent flow, or touching anything other than the
+   operator workstation.
 
 ## Out of scope
 
-Vulnerabilities in **target systems** discovered while running drederick
-are expected. Report those to the target owner per your engagement rules;
-they are not drederick bugs.
+Vulnerabilities in **target systems** discovered while running
+drederick are expected — the tool exists to find and exploit them.
+Report those to the target owner per your engagement rules; they are
+not drederick bugs.
+
+Bugs in third-party exploits, Metasploit modules, nuclei templates,
+or cached PoCs are out of scope for drederick's tracker. Report them
+upstream.
 
 ## Response SLA
 
-Best-effort acknowledgement within **7 days**. We will keep the advisory
-thread updated with a rough fix timeline once reproduced.
+Best-effort acknowledgement within **7 days**. We will keep the
+advisory thread updated with a rough fix timeline once reproduced.
 
 ## Supported versions
 
@@ -72,8 +92,8 @@ thread updated with a rough fix timeline once reproduced.
 
 ## Credit
 
-Unless you request anonymity, we will credit you in the release notes for
-the fixing tag and in the advisory.
+Unless you request anonymity, we will credit you in the release notes
+for the fixing tag and in the advisory.
 
 ## Please include in your report
 

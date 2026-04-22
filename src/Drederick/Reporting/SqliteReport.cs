@@ -96,6 +96,48 @@ CREATE TABLE IF NOT EXISTS tooling (
   detected_at TEXT NOT NULL,
   UNIQUE(name)
 );
+CREATE TABLE IF NOT EXISTS exploit_runs (
+  id INTEGER PRIMARY KEY,
+  tool TEXT NOT NULL,
+  target TEXT NOT NULL,
+  category TEXT NOT NULL,
+  invocation_id TEXT NOT NULL UNIQUE,
+  artifact TEXT,
+  artifact_sha256 TEXT,
+  argv_digest TEXT NOT NULL,
+  exit_code INTEGER,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  stdout_bytes INTEGER,
+  stdout_sha256 TEXT,
+  stderr_bytes INTEGER,
+  stderr_sha256 TEXT,
+  work_dir TEXT,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exploit_runs_target ON exploit_runs(target);
+CREATE INDEX IF NOT EXISTS idx_exploit_runs_tool ON exploit_runs(tool);
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY,
+  session_id TEXT NOT NULL UNIQUE,
+  target TEXT NOT NULL,
+  protocol TEXT NOT NULL,
+  via_tool TEXT NOT NULL,
+  opened_at TEXT NOT NULL,
+  closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_target ON sessions(target);
+CREATE TABLE IF NOT EXISTS loot (
+  id INTEGER PRIMARY KEY,
+  target TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  value_sha256 TEXT NOT NULL,
+  source_tool TEXT NOT NULL,
+  captured_at TEXT NOT NULL,
+  metadata TEXT,
+  UNIQUE(target, kind, value_sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_loot_target ON loot(target);
 " + NotesSchema.GetCreateTableDdl() + @"
 ";
         cmd.ExecuteNonQuery();
@@ -288,6 +330,96 @@ ON CONFLICT(source, external_id) DO UPDATE SET
         cmd.Parameters.AddWithValue("$p", path);
         cmd.Parameters.AddWithValue("$fa", fetchedAt ?? DateTimeOffset.UtcNow.ToString("o"));
         cmd.Parameters.AddWithValue("$url", (object?)sourceUrl ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Persist an <see cref="Drederick.Exploit.ExploitRunRecord"/> into the
+    /// <c>exploit_runs</c> table. Invocation id is the unique key; upsert
+    /// semantics keep the final (finished) version.
+    /// </summary>
+    public void UpsertExploitRun(Drederick.Exploit.ExploitRunRecord r)
+    {
+        ArgumentNullException.ThrowIfNull(r);
+        if (string.IsNullOrEmpty(r.InvocationId))
+            throw new ArgumentException("ExploitRunRecord.InvocationId is required.", nameof(r));
+        using var conn = OpenAndEnsureSchema();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO exploit_runs(tool, target, category, invocation_id, artifact, artifact_sha256,
+                          argv_digest, exit_code, started_at, finished_at,
+                          stdout_bytes, stdout_sha256, stderr_bytes, stderr_sha256, work_dir, error)
+VALUES($tool, $target, $cat, $inv, $art, $artsha, $digest, $exit, $start, $finish,
+       $sob, $sos, $seb, $ses, $wd, $err)
+ON CONFLICT(invocation_id) DO UPDATE SET
+  exit_code = excluded.exit_code,
+  finished_at = excluded.finished_at,
+  stdout_bytes = excluded.stdout_bytes,
+  stdout_sha256 = excluded.stdout_sha256,
+  stderr_bytes = excluded.stderr_bytes,
+  stderr_sha256 = excluded.stderr_sha256,
+  error = excluded.error;";
+        cmd.Parameters.AddWithValue("$tool", r.Tool);
+        cmd.Parameters.AddWithValue("$target", r.Target);
+        cmd.Parameters.AddWithValue("$cat", r.Category);
+        cmd.Parameters.AddWithValue("$inv", r.InvocationId);
+        cmd.Parameters.AddWithValue("$art", (object?)r.Artifact ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$artsha", (object?)r.ArtifactSha256 ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$digest", r.ArgvDigest);
+        cmd.Parameters.AddWithValue("$exit", r.ExitCode);
+        cmd.Parameters.AddWithValue("$start", r.StartedAt);
+        cmd.Parameters.AddWithValue("$finish", r.FinishedAt);
+        cmd.Parameters.AddWithValue("$sob", r.StdoutBytes);
+        cmd.Parameters.AddWithValue("$sos", r.StdoutSha256);
+        cmd.Parameters.AddWithValue("$seb", r.StderrBytes);
+        cmd.Parameters.AddWithValue("$ses", r.StderrSha256);
+        cmd.Parameters.AddWithValue("$wd", r.WorkDir);
+        cmd.Parameters.AddWithValue("$err", (object?)r.Error ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Persist an opened / closed interactive session.</summary>
+    public void UpsertSession(Drederick.Exploit.SessionRecord s)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        if (string.IsNullOrEmpty(s.SessionId))
+            throw new ArgumentException("SessionRecord.SessionId is required.", nameof(s));
+        using var conn = OpenAndEnsureSchema();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO sessions(session_id, target, protocol, via_tool, opened_at, closed_at)
+VALUES($sid, $target, $proto, $via, $opened, $closed)
+ON CONFLICT(session_id) DO UPDATE SET
+  closed_at = COALESCE(excluded.closed_at, sessions.closed_at);";
+        cmd.Parameters.AddWithValue("$sid", s.SessionId);
+        cmd.Parameters.AddWithValue("$target", s.Target);
+        cmd.Parameters.AddWithValue("$proto", s.Protocol);
+        cmd.Parameters.AddWithValue("$via", s.ViaTool);
+        cmd.Parameters.AddWithValue("$opened", s.OpenedAt);
+        cmd.Parameters.AddWithValue("$closed", (object?)s.ClosedAt ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Persist a captured credential/hash/ticket/secret. Only the
+    /// SHA-256 of the value is stored centrally; plaintext stays in per-host
+    /// loot files. <c>@invariant-id:no-exfiltration</c>.</summary>
+    public void UpsertLoot(Drederick.Exploit.LootRecord l)
+    {
+        ArgumentNullException.ThrowIfNull(l);
+        using var conn = OpenAndEnsureSchema();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO loot(target, kind, value_sha256, source_tool, captured_at, metadata)
+VALUES($t, $k, $sha, $src, $ts, $meta)
+ON CONFLICT(target, kind, value_sha256) DO UPDATE SET
+  metadata = COALESCE(excluded.metadata, loot.metadata),
+  captured_at = excluded.captured_at;";
+        cmd.Parameters.AddWithValue("$t", l.Target);
+        cmd.Parameters.AddWithValue("$k", l.Kind);
+        cmd.Parameters.AddWithValue("$sha", l.ValueSha256);
+        cmd.Parameters.AddWithValue("$src", l.SourceTool);
+        cmd.Parameters.AddWithValue("$ts", l.CapturedAt);
+        cmd.Parameters.AddWithValue("$meta", (object?)l.Metadata ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 

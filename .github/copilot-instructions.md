@@ -6,19 +6,21 @@
 > [`../AGENTS.md`](../AGENTS.md). This file remains the canonical source for
 > GitHub Copilot sessions; `AGENTS.md` is the mirror for other tools.
 
-Drederick is an **aggressive, scope-enforced reconnaissance harness** for
-authorized lab/CTF targets. Mission: **win CTFs fast** by maximizing
-enumeration coverage, parallelism, and adaptive planning *inside* the scope
-allow-list. It is built in C# on **.NET 10** and the **Microsoft Agent
-Framework**. Before making non-trivial changes, read `docs/ARCHITECTURE.md`,
-`docs/DEVELOPING.md`, and `docs/SCOPE_AND_LEGAL.md`.
+Drederick is a **full-auto offensive security harness** for authorized
+lab / CTF / red-team targets. Mission: **compromise in-scope targets
+fast** by maximizing enumeration coverage, exploitation automation,
+parallelism, and adaptive planning *inside* the scope allow-list. Built
+in C# on **.NET 10** and the **Microsoft Agent Framework**. Before making
+non-trivial changes, read `docs/ARCHITECTURE.md`, `docs/DEVELOPING.md`,
+and `docs/SCOPE_AND_LEGAL.md`.
 
-**Design stance: sharpen the fangs, don't file them down.** Prefer wider NSE
+**Design stance: sharpen the fangs, then use them.** Prefer wider NSE
 coverage over narrower, more concurrent scans over sequential, deeper
-cheatsheets over thinner, and more adaptive LLM planning over fixed loops —
-bounded only by the hard invariants below. Scope is the user's declaration of
-authorized targets; they accept responsibility for what they put in it. Our
-job is to exhaustively enumerate *everything inside that scope* as fast as
+exploit corpora over thinner, and more adaptive LLM planning over fixed
+loops — bounded only by the hard invariants below. Scope is the
+operator's declaration of authorized targets; they accept responsibility
+for what they put in it. Our job is to exhaustively enumerate **and
+exploit** everything inside that scope as fast and as reliably as
 possible.
 
 ## Build, test, format
@@ -37,158 +39,287 @@ dotnet test --filter "FullyQualifiedName~NmapToolTests.ParsesServiceVersion"
 ```
 
 Tests are xUnit under `tests/Drederick.Tests/`. Unit tests do **not** require
-`nmap`; end-to-end runs do. The solution file is `Drederick.slnx`; shared
-build props (`net10.0`, nullable on, implicit usings on, invariant
-globalization) live in `Directory.Build.props`.
+`nmap`, `msfconsole`, or other offensive tooling; end-to-end runs do. The
+solution file is `Drederick.slnx`; shared build props (`net10.0`, nullable
+on, implicit usings on, invariant globalization) live in
+`Directory.Build.props`.
 
 ## Architecture in one paragraph
 
-`CLI → Scope (default-deny allow-list) → ReconToolbox (Nmap/Http/Tls/Dns tools,
+`CLI → Scope (default-deny allow-list) → ReconToolbox + ExploitToolbox
+(Nmap/Http/Tls/Dns/SMB/… plus ExploitRunner/MsfDriver/CredRunner/PayloadStager,
 each recording to AuditLog JSONL and metered by ToolBudget) → Runner
-(AdaptiveRunner deterministic, or MicrosoftAgentRunner LLM-driven) → Reporting
-(JSON + Markdown + per-host workdir + `manual_commands.txt` in lab mode) +
-Memory/KnowledgeBase (`memory/findings.json`, loaded on next run)`. Sources
-live under `src/Drederick/{Agent,Audit,Cli,Host,Memory,Recon,Reporting,Scope}/`.
-The Avalonia operator console (`src/Drederick.UI/`) is a point-and-click
-front-end that calls the same scope-enforced tools via
-`DrederickHost` — see [`docs/UI.md`](../docs/UI.md).
+(AdaptiveRunner deterministic, or MicrosoftAgentRunner LLM-driven) →
+Reporting (JSON + Markdown + SQLite + per-host workdir + loot/ + sessions/)
++ Memory/KnowledgeBase (`memory/findings.json`, loaded on next run)`.
+Sources live under `src/Drederick/{Agent,Audit,Cli,Exploit,Host,Memory,
+Recon,Reporting,Scope}/`. The Avalonia operator console
+(`src/Drederick.UI/`) is a point-and-click front-end that calls the same
+scope-enforced tools via `DrederickHost` — see
+[`docs/UI.md`](../docs/UI.md).
 
 ## Non-negotiable invariants
 
-Scope is the user's responsibility; *what we do inside scope* has these
-hard-coded limits (they are the project's legal posture — do not weaken):
+Scope is the operator's responsibility. *Inside scope* Drederick is a
+full-auto offensive tool — it may execute exploits, run credential
+attacks, and deliver payloads. *Outside scope* it does nothing. These
+are the hard-coded limits (they are the project's legal posture — do
+not weaken):
 
-- **Scope is enforced inside every tool**, not at the CLI boundary. The first
-  line of any method that touches the network must be `_scope.Require(target)`,
-  which throws `ScopeException` on out-of-scope input. The LLM runner cannot
-  escape it. No flag/env/prompt disables this.
-- **Forbidden nmap NSE categories stay hard-coded excluded**: `exploit`,
-  `intrusive`, `brute`, `vuln`, `dos`, `malware`. Lab uses
-  `safe,default,discovery,version`; strict (`--no-lab`) uses `safe,default`.
+- **Scope is enforced inside every tool**, not at the CLI boundary. The
+  first line of any method that touches the network — recon, exploit,
+  credential, or payload — must be `_scope.Require(target)`, which
+  throws `ScopeException` on out-of-scope input. The LLM runner cannot
+  escape it. No flag/env/prompt/jailbreak disables this.
 - **Wildcards (`0.0.0.0/0`, `::/0`) always refused**, even with
   `--allow-broad`. Caps: lab `/8` v4 `/32` v6; strict `/16` v4 `/48` v6.
-- **No exploitation, credential attacks, brute force, or payload delivery
-  inside the tool's own execution.** Drederick may *collect and present*
-  exploit/PoC information (CVE mappings, Exploit-DB entries, cached PoC
-  source, Metasploit/nuclei references) into `manual_commands.txt` and
-  `out/findings.db` for the practitioner to review — but it does not execute
-  PoC code, does not auto-weaponize, and does not make outbound calls from
-  fetched PoCs. The line is: **aggregate + present, never run.**
-- Validate any LLM-chosen subprocess arguments — see
-  `NmapTool.RejectUnsafePortSpec`.
+- **Subprocess argv is validated.** Any host/IP/URL in argv that could
+  cause the subprocess to reach a target is resolved through
+  `_scope.Require` before exec. This applies equally to nmap,
+  `msfconsole -r`, `hydra`, `netexec`, `evil-winrm`, and any PoC
+  spawned from `out/poc_cache/`. See `NmapTool.RejectUnsafePortSpec`
+  and `ExploitRunner.AssertTargetsInScope`.
+- **Audit everything.** Every PoC fetch, PoC spawn, credential attempt,
+  payload delivery, and session open/close writes to `audit.jsonl` with
+  target, tool, argv digest (SHA-256), and timestamp. Plaintext
+  passwords are never logged; a SHA-256 of the attempted secret is
+  recorded instead so the operator can correlate without leaking
+  wordlists.
+- **No kill switch.** There is no flag, env var, debug build, or prompt
+  phrasing that disables the scope check or the audit log. Reviewers
+  should reject any PR that proposes one.
+- **No outbound exfiltration of loot.** Credentials, hashes, tickets,
+  and captured secrets stay local to `out/` and `audit.jsonl`. No
+  telemetry, no cloud sync, no "phone home" from the harness itself.
+- **Scope file is read-only from code.** Scope authoring is a human
+  act; code never writes to the scope file.
+- **Destructive actions are opt-in per run.** `dos`/`malware` NSE,
+  Metasploit modules flagged unstable, payload delivery in strict mode,
+  and credential attacks without lockout-aware throttling require
+  explicit `--allow-destructive` / `--allow-dos` / `--allow-payloads` /
+  `--acknowledge-lockout-risk` flags. Default off even inside scope.
 
-Everything not on that list is fair game. Bias toward maximum enumeration.
+Everything not on that list is fair game inside scope. Bias toward
+maximum capability.
 
 ## Where to be aggressive
 
-When adding or tuning code, prefer the option that surfaces more data faster:
+When adding or tuning code, prefer the option that produces more
+impact faster:
 
-- **Parallelism first.** The roadmap's bounded `Channel<ScanJob>` worker pool
-  with `--host-concurrency` / `--service-concurrency` is high-priority — any
-  new scanner should assume it will run concurrently per-host and
-  per-service. No shared mutable state outside `KnowledgeBase` / `AuditLog`,
-  both of which must stay thread-safe.
-- **Wider enumeration surface.** Roadmap scanners to implement aggressively:
-  SMB (shares, sessions, OS), FTP (anon + banner), SSH (algos, host keys),
-  SNMP (public community walk), LDAP (anonymous bind, naming contexts), RPC
-  (endpoint mapper), Kerberos (**SPN listing only** — no AS-REP roast, no
-  kerberoast), HTTP content-discovery (wordlist-driven, read-only), TLS
+- **Parallelism first.** The bounded `Channel<ScanJob>` worker pool
+  with `--host-concurrency` / `--service-concurrency` is the backbone
+  for both recon and exploitation. Any new scanner or exploit module
+  should assume it will run concurrently per-host and per-service. No
+  shared mutable state outside `KnowledgeBase` / `AuditLog`, both of
+  which must stay thread-safe.
+- **Wider enumeration surface.** Roadmap scanners to implement
+  aggressively: SMB (shares, sessions, OS), FTP (anon + banner), SSH
+  (algos, host keys, user enum), SNMP (community brute + walk), LDAP
+  (anon bind, naming contexts, user/group enum), RPC (endpoint mapper
+  + null session), Kerberos (SPN listing, AS-REP roast, kerberoast
+  where in scope), HTTP content-discovery (wordlist-driven), TLS
   cipher enumeration, DNS AXFR. Each re-checks scope inside the tool.
-- **Deeper nmap within allowed NSE.** `safe,default,discovery,version` is a
-  lot of surface — use it fully (service/version intensity, OS detection,
-  script args where useful). Never reach for an excluded category to "just
-  get one script."
-- **Sharper LLM planning.** `MicrosoftAgentRunner` should plan the next probe
-  from `KnowledgeBase` deltas, not re-scan known surface. Every new tool gets
-  a precise `[Description(...)]` so the model picks it correctly. Keep
-  `ToolBudget` tight enough that the agent is forced to prioritize.
-- **Richer `manual_commands.txt`.** Lab-mode cheatsheet should give the
-  operator everything they need to pivot fast: service-specific enum commands,
-  common wordlist paths, credential-testing commands *the operator runs
-  themselves*. Still: no exploit/brute/payload entries written by us.
-- **Cross-run convergence.** `memory/findings.json` is the weapon that makes
-  repeat runs fast — every scanner should write structured findings (not just
-  raw text) so the next run diffs cleanly (new services, expired certs, drift).
-- **Environment doctor / auto-provisioner (planned).** Ship a `drederick
-  doctor` subcommand (and an implicit preflight before `run`) that detects
-  required and recommended tooling on the host and offers to install what's
-  missing. Target toolchain, roughly: `nmap`, `searchsploit` (Exploit-DB
-  archive), `python3` + `python2` (many older PoCs need 2.7), `go` (many
-  modern PoCs / `nuclei` / `httpx`), `ruby` (Metasploit-era PoCs), `git`,
-  `curl`, `jq`, and Datasette (`pipx install datasette` or `uv tool install
-  datasette`). Design points for future sessions:
+- **Full NSE surface inside scope.** `safe,default,discovery,version,
+  auth,exploit,intrusive,vuln` are all available in lab mode. `dos`
+  and `malware` are opt-in per run. In strict mode the defaults are
+  conservative (`safe,default,discovery,version`) and categories are
+  added via `--nse-categories=…`.
+- **Automated exploitation.** `ExploitRunner` selects a cached PoC or
+  Metasploit module based on fingerprinted services + CVE matches,
+  validates target-in-scope, sets argv, spawns in an isolated working
+  dir, and captures stdout/stderr/exit code. The LLM planner may
+  choose the module; the scope check is still load-bearing.
+- **Credential attack chain.** `CredRunner` supports password spray,
+  targeted brute, AS-REP roast, kerberoast, PtH, and pivot-reuse of
+  captured material. Lockout-aware throttling is default-on.
+- **Payload delivery.** `PayloadStager` generates or accepts payloads
+  (msfvenom-backed or operator-supplied), stages via authenticated
+  admin interfaces, and records the drop in `audit.jsonl`.
+- **Session handling.** Meterpreter / SSH / WinRM sessions are tracked
+  in `out/sessions/`; post-ex actions (enum, loot, privesc) run under
+  the session and re-check scope on any host they touch (pivoting).
+- **Sharper LLM planning.** `MicrosoftAgentRunner` should plan the
+  next probe **or** exploit step from `KnowledgeBase` deltas, not
+  re-scan known surface. Every new tool gets a precise
+  `[Description(...)]` so the model picks it correctly. Keep
+  `ToolBudget` tight enough that the agent is forced to prioritize
+  high-signal actions.
+- **Richer `manual_commands.txt`.** Lab-mode cheatsheet gives the
+  operator everything they need to pivot fast: service-specific enum
+  commands, exploit one-liners keyed to matched CVEs, credential-
+  testing commands, wordlist paths. These are suggestions for the
+  operator to run manually; Drederick itself may also run them via
+  `ExploitRunner` when the LLM or `AdaptiveRunner` selects them.
+- **Cross-run convergence.** `memory/findings.json` is the weapon
+  that makes repeat runs fast — every scanner and exploit module
+  should write structured findings (services, CVEs, credentials
+  captured, sessions opened) so the next run diffs cleanly.
+- **Environment doctor / auto-provisioner.** Ship `drederick doctor`
+  (and an implicit preflight before `run`) that detects required and
+  recommended tooling on the host and offers to install what's
+  missing. Target toolchain: `nmap`, `searchsploit`, `metasploit-
+  framework`, `impacket`, `nuclei`, `hashcat`, `john`, `hydra`,
+  `netexec`, `evil-winrm`, `responder`, `python2`/`python3`, `go`,
+  `ruby`, `git`, `curl`, `jq`, and Datasette (`pipx install
+  datasette`). Design points:
 
-  - **Detect first, install on consent.** Default behavior of the implicit
-    preflight is *report + summarize* what's missing; actual install requires
-    `--doctor-fix` or running `drederick doctor --install` explicitly. One
-    confirmation per run is fine; silent `sudo` is not.
-  - **Package-manager aware.** Detect `apt`/`dnf`/`pacman`/`zypper`/`brew`
-    (macOS) and pick the right install recipe. Fall back to language-native
-    installers (`pipx`, `uv tool install`, `go install`, `gem install
-    --user-install`) when the system package is stale or missing.
-  - **Never assume root.** If a step needs `sudo`, print the exact command
-    and ask; don't re-exec ourselves with elevated privileges.
-  - **Record to audit.** Every detection result and install action goes to
-    `audit.jsonl` as `doctor.detect` / `doctor.install` events, and to a
-    `tooling` table in `out/findings.db` (name, version, source, path) so
-    Datasette shows what the harness has available.
-  - **Offline-friendly.** In airgapped/CTF-VPN setups, doctor should still
-    *report* accurately and point at a bundled `scripts/bootstrap.sh` for
-    Debian/Ubuntu/Kali (the most common CTF base) rather than erroring out.
-  - **Stays inside the invariant.** The doctor modifies the *operator's
-    workstation* at their request; it never modifies, scans, or reaches out
-    to any target. Installing `searchsploit` is environment setup, not
-    recon.
-- **CVE + PoC aggregation into SQLite (planned, high-priority).** For every
-  fingerprinted service/version, annotate with CVEs (local NVD feed per the
-  roadmap) and pull PoC references from public sources (Exploit-DB /
-  `searchsploit`, GitHub security advisories, Metasploit module names,
-  nuclei template IDs). Land everything in `out/findings.db` (SQLite) with a
-  schema designed to be browsed via **Datasette** — tables roughly:
-  `hosts`, `services`, `findings`, `cves`, `poc_refs` (url, source, cve_id,
-  local_path), and `poc_sources` (cached PoC source from public archives).
+  - **Detect first, install on consent.** Default behavior is report +
+    summarize what's missing; actual install requires `--doctor-fix`
+    or `drederick doctor --install` explicitly. One confirmation per
+    run is fine; silent `sudo` is not.
+  - **Package-manager aware.** Detect `apt`/`dnf`/`pacman`/`zypper`/
+    `brew` and pick the right recipe. Fall back to `pipx`, `uv tool
+    install`, `go install`, `gem install --user-install` when the
+    system package is stale or missing.
+  - **Never assume root.** If a step needs `sudo`, print the exact
+    command and ask; don't re-exec ourselves with elevated privileges.
+  - **Record to audit.** Every detection result and install action
+    goes to `audit.jsonl` as `doctor.detect` / `doctor.install` and
+    to a `tooling` table in `out/findings.db`.
+  - **Offline-friendly.** In airgapped / CTF-VPN setups, doctor
+    reports accurately and points at `scripts/bootstrap.sh` for
+    Debian/Ubuntu/Kali rather than erroring out.
+  - **Workstation only.** Doctor modifies the operator's workstation
+    at their request; it never modifies, scans, or exploits any
+    target. Installing Metasploit is environment setup, not recon
+    and not exploitation.
 
-  **PoC source caching is default-on** (`--fetch-poc` opt-out via
-  `--no-fetch-poc`). The project's stance: a practitioner reviewing a CTF
-  box offline needs the actual exploit source in hand, not just a link.
-  Cache to `out/poc_cache/<source>/<id>` with provenance (source URL, fetch
-  timestamp, SHA-256) recorded in `poc_sources`. Still scope-bound in
-  spirit: only fetch PoCs for CVEs matching services found in the user's
-  scope. Strip/neutralize any phone-home in fetched PoCs is **not** our job —
-  we store verbatim so the practitioner sees exactly what's public.
+- **CVE + PoC aggregation into SQLite (high-priority, maximalist).**
+  For every fingerprinted service/version, annotate with CVEs (local
+  NVD feed) and pull PoC references **and source** from every public
+  source we can reach. Goal: a self-contained offline exploit corpus
+  the practitioner and the LLM planner can read, diff, adapt, **and
+  run** against in-scope targets. Land everything in
+  `out/findings.db` (SQLite) with a Datasette-browsable schema —
+  tables: `hosts`, `services`, `findings`, `cves`, `poc_refs` (url,
+  source, cve_id, local_path), `poc_sources` (cached source, language,
+  SHA-256, byte size, fetch timestamp, provenance URL), `exploit_runs`
+  (target, artifact, argv_digest, exit_code, timestamp), `sessions`
+  (target, protocol, opened_at, closed_at), `loot` (target, kind,
+  value_digest, timestamp).
 
-  Invariant still holds: **Drederick collects and presents PoC
-  references/source; Drederick does not execute them.** No auto-run, no
-  auto-weaponize, no outbound connection *initiated from* a fetched PoC by
-  Drederick itself.
+  Target sources for `IPocSource` implementations — each one is its
+  own pluggable source, and we want **all of them** eventually,
+  ranked by signal density:
 
-## Conventions for new scanners
+  - **Exploit-DB** via local `searchsploit` (authoritative, offline).
+  - **GitHub** — search for `CVE-YYYY-NNNNN` across public repos
+    (`nomi-sec/PoC-in-GitHub`, `trickest/cve`,
+    `ARPSyndicate/kenzer-templates`, ad-hoc query). Clone / raw-fetch
+    referenced files, not just URLs.
+  - **GitHub Security Advisories (GHSA)** — advisory text + referenced
+    PoC commits/gists.
+  - **Metasploit Framework** — module source at
+    `rapid7/metasploit-framework` (`modules/exploits/**`,
+    `modules/auxiliary/**`, `modules/post/**`). Cache the `.rb` and
+    drive it via `msfconsole -r` when selected.
+  - **Nuclei templates** — `projectdiscovery/nuclei-templates` (CVE
+    folder). Cache the `.yaml` and drive it via `nuclei -t` when
+    selected.
+  - **PacketStorm Security** — advisory + PoC archive.
+  - **Sploitus** aggregator.
+  - **0day.today / inj3ct0r mirrors** where reachable.
+  - **CXSecurity / WLB2** advisory archive.
+  - **vulncode-db / Snyk advisories / OSV.dev** — structured metadata
+    + any linked PoC.
+  - **Vendor advisories** linked from NVD references — download and
+    cache HTML/PDF for offline review.
+  - **Researcher writeups** reachable via NVD reference URLs
+    (HackerOne disclosed, Project Zero tracker, blog posts) — cache
+    rendered text/HTML.
+  - **Gists** referenced from any of the above.
+  - **PyPI / npm / RubyGems / crates.io** — when a CVE maps to a
+    poisoned package, cache advisory metadata and (where feasible)
+    the fix diff so the vulnerable code path is visible.
 
-Follow `docs/DEVELOPING.md` §"Adding a new `IReconTool`":
+  **Matching policy — prefer false positives over false negatives.**
+  Match PoCs to findings liberally:
 
-1. New class under `src/Drederick/Recon/<Name>Tool.cs`, constructor-inject
+  - CPE-exact match (primary).
+  - Product + version range match (`>= 1.2.0, < 1.2.7`).
+  - Product-only match (low-confidence flag in `poc_refs.match_confidence`).
+  - Banner/keyword match.
+  - Related-CVE match (one-hop transitive).
+
+  It is better to cache and be ready to run a PoC that turns out not
+  to apply than to miss the one that does. Mark confidence in
+  `match_confidence` and in the UI; do not suppress.
+
+  **PoC source caching is default-on and aggressive** (`--no-fetch-poc`
+  to disable; `--poc-sources=…` to subset). Cache every fetched
+  artifact to `out/poc_cache/<source>/<external_id>/` with provenance
+  (source URL, fetch timestamp, SHA-256, HTTP status, content-type)
+  recorded in `poc_sources`. Store **verbatim** — never rewrite, never
+  strip phone-home code, never sanitize. For repository-shaped sources
+  (Metasploit, nuclei-templates, PoC-in-GitHub), shallow sparse
+  checkout (`git clone --depth=1 --filter=blob:none`, then
+  `sparse-checkout set`) is preferred.
+
+  **PoC execution.** `ExploitRunner` may mark a cached artifact
+  executable and spawn it against scope-validated targets. Defaults:
+  lab mode executes on LLM/AdaptiveRunner selection; strict mode
+  requires `--allow-exec-pocs`. Arguments are assembled from
+  `KnowledgeBase` (target host, service port, captured credentials if
+  any) and every target in argv is re-validated through
+  `_scope.Require` immediately before spawn.
+
+  **Size and rate discipline.** Default per-artifact cap 5 MB, per-run
+  total cap 2 GB, tunable via `--poc-max-bytes-per-artifact` /
+  `--poc-max-bytes-total`. Respect upstream rate limits; back off on
+  429. Use authenticated GitHub API calls when `GITHUB_TOKEN` is set.
+  Log every fetch to `audit.jsonl` as `poc.fetch` events with URL +
+  SHA-256; every spawn as `poc.spawn` with argv digest + target +
+  exit code.
+
+## Conventions for new tools (recon or exploit)
+
+Follow `docs/DEVELOPING.md` §"Adding a new `IReconTool`" /
+"Adding a new `IExploitTool`":
+
+1. New class under `src/Drederick/Recon/<Name>Tool.cs` or
+   `src/Drederick/Exploit/<Name>Tool.cs`, constructor-inject
    `Scope.Scope` and `AuditLog`.
-2. `_scope.Require(target)` on entry; `audit.Record("<tool>.start"/".finish", …)`
-   around the call.
-3. Return a typed result on `HostFinding`; never leak raw stdout/stderr except
-   as a bounded error field.
-4. Shell-outs take the binary path via constructor so tests can stub with
-   `/bin/true`.
-5. Wire into `ReconToolbox`, add `[Description(...)]` on the public tool
-   method (this is the LLM-visible surface), and update `ToolBudget`.
-6. Tests required: a `ScopeException` test for out-of-scope input, parser
-   tests against recorded fixtures, and a negative test proving no forbidden
-   NSE category / subprocess flag is enabled.
+2. `_scope.Require(target)` on entry — for **every** host in argv,
+   including pivots and redirect targets. `audit.Record("<tool>.start"
+   / ".finish", …)` around the call; include argv digest.
+3. Return a typed result on `HostFinding` / `ExploitResult`; never
+   leak raw stdout/stderr except as a bounded field (truncate to
+   64 KB + record full size + SHA-256).
+4. Shell-outs take the binary path via constructor so tests can stub
+   with `/bin/true`. Subprocess spawn uses a working directory under
+   `out/<host>/<tool>/` so artifacts are isolated per target.
+5. Wire into `ReconToolbox` / `ExploitToolbox`, add `[Description(...)]`
+   on the public tool method (LLM-visible surface), and update
+   `ToolBudget`.
+6. Destructive / high-blast-radius tools check their per-run opt-in
+   flag (`--allow-destructive`, `--allow-exec-pocs`,
+   `--allow-cred-attacks`, `--allow-payloads`) and throw a descriptive
+   error if absent.
+7. Tests required:
+   - `ScopeException` test for out-of-scope input (covers the primary
+     target and any extra hosts in argv).
+   - Parser / result-shape tests against recorded fixtures.
+   - Argv-validation test proving shell-metachar / path-traversal /
+     scope-bypass argv is rejected.
+   - For exploit tools: a test that `ExploitRunner` refuses to spawn
+     when any argv host fails `_scope.Require`.
 
 ## Test conventions
 
-- Prefer in-memory / recorded fixtures (nmap XML, HTTP bodies).
-- On-disk fixtures go under `Path.GetTempPath()` + a GUID and are cleaned up
-  in `finally`.
-- Every scanner **must** have a test asserting it refuses out-of-scope targets.
+- Prefer in-memory / recorded fixtures (nmap XML, HTTP bodies,
+  `msfconsole` output transcripts, `searchsploit` JSON).
+- On-disk fixtures go under `Path.GetTempPath()` + a GUID and are
+  cleaned up in `finally`.
+- Every tool **must** have a test asserting it refuses out-of-scope
+  targets. Exploit tools additionally must have a test that refuses
+  when argv contains a mixed in-scope + out-of-scope target set.
+- Tests must not actually spawn exploits against real services.
+  Use subprocess stubs (`/bin/true`, `/bin/false`, fixture-replaying
+  fake binaries under `tests/fixtures/bin/`).
 
 ## Style
 
 `.editorconfig` governs formatting: 4-space indent for C#, 2-space for
-`csproj/props/json/yaml/md`, LF line endings, final newline, trim trailing
-whitespace. Run `dotnet format` before committing.
+`csproj/props/json/yaml/md`, LF line endings, final newline, trim
+trailing whitespace. Run `dotnet format` before committing.

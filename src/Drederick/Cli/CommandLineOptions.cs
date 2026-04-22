@@ -70,6 +70,33 @@ public sealed class CommandLineOptions
     public bool FetchPoc { get; set; } = true;
     // END ANCHOR: poc-aggregator-option
 
+    // --- exploit opt-ins ----------------------------------------------------
+    // Every category is OFF by default, even inside a lab scope. These flags
+    // map 1:1 to Drederick.Exploit.ExploitCategory values and build the
+    // per-run Drederick.Exploit.RunPermissions that every IExploitTool checks
+    // at its entry point.
+    /// <summary>Permit execution of cached PoCs / module-driven exploits
+    /// (nuclei, metasploit). CLI: <c>--allow-exec-pocs</c>.</summary>
+    public bool AllowExecPocs { get; set; }
+    /// <summary>Permit credential attacks (spray, brute, roast). CLI:
+    /// <c>--allow-cred-attacks</c>. Password spray additionally requires
+    /// <see cref="AcknowledgeLockoutRisk"/>.</summary>
+    public bool AllowCredAttacks { get; set; }
+    /// <summary>Permit payload generation, staging, and delivery. CLI:
+    /// <c>--allow-payloads</c>.</summary>
+    public bool AllowPayloads { get; set; }
+    /// <summary>Permit modules/scripts flagged destructive (filesystem
+    /// mutation, reboot, wipe). CLI: <c>--allow-destructive</c>.</summary>
+    public bool AllowDestructive { get; set; }
+    /// <summary>Permit NSE <c>dos</c>/<c>malware</c> categories and anything
+    /// intentionally denial-of-service. CLI: <c>--allow-dos</c>.</summary>
+    public bool AllowDos { get; set; }
+    /// <summary>Explicit acknowledgement that credential attacks can lock
+    /// accounts. Required in addition to <see cref="AllowCredAttacks"/>. CLI:
+    /// <c>--acknowledge-lockout-risk</c>.</summary>
+    public bool AcknowledgeLockoutRisk { get; set; }
+    // --- end exploit opt-ins ------------------------------------------------
+
     /// <summary>Doctor subcommand selected (first positional arg "doctor").</summary>
     public bool DoctorSubcommand { get; set; }
     /// <summary>With --install / --doctor-fix: attempt to install missing tools.</summary>
@@ -259,6 +286,20 @@ public sealed class CommandLineOptions
                 case "--no-fetch-poc":
                     o.FetchPoc = false; break;
                 // END ANCHOR: poc-aggregator-flag-parse
+                // --- exploit opt-in flag parse ---
+                case "--allow-exec-pocs":
+                    o.AllowExecPocs = true; break;
+                case "--allow-cred-attacks":
+                    o.AllowCredAttacks = true; break;
+                case "--allow-payloads":
+                    o.AllowPayloads = true; break;
+                case "--allow-destructive":
+                    o.AllowDestructive = true; break;
+                case "--allow-dos":
+                    o.AllowDos = true; break;
+                case "--acknowledge-lockout-risk":
+                    o.AcknowledgeLockoutRisk = true; break;
+                // --- end exploit opt-in flag parse ---
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;
@@ -536,10 +577,30 @@ public sealed class CommandLineOptions
           --no-lab             Opt out of lab mode. Strictest posture: scope cap /16 (v4) /
                                /48 (v6), NSE limited to safe+default, no cheatsheet.
 
+        EXPLOIT OPT-INS (default OFF — authorization boundary):
+          --allow-exec-pocs    Permit execution of cached PoCs / module-driven exploits
+                               (nuclei, metasploit). Every host in argv is re-validated
+                               against the scope allow-list before spawn.
+          --allow-cred-attacks Permit credential attacks (spraying, targeted brute,
+                               AS-REP roast, kerberoast). Plaintext passwords are never
+                               logged; SHA-256 only.
+          --acknowledge-lockout-risk
+                               Required in addition to --allow-cred-attacks. Attests that
+                               the operator understands account-lockout impact.
+          --allow-payloads     Permit payload generation, staging, and delivery.
+                               (Deferred to Phase 2 — flag accepted but no tool yet binds
+                                this category.)
+          --allow-destructive  Permit modules/scripts flagged destructive (filesystem
+                               mutation, reboot, wipe).
+          --allow-dos          Permit NSE dos/malware categories and intentional
+                               denial-of-service.
+
           -h, --help           Show this help.
 
-        Drederick performs discovery and fingerprinting only. It does not
-        exploit, brute force, or deliver payloads. Every target must be in
-        the scope file. Authorized lab/CTF targets only.
+        Drederick performs authorized offensive operations against scope-listed
+        targets only. Inside scope, per-category opt-in flags unlock exploit
+        execution, credential attacks, and payload delivery. Outside scope, it
+        does nothing — every network-touching tool re-checks the scope allow-list
+        on entry.
         """;
 }

@@ -25,9 +25,10 @@ hard invariants stay intact.
 Please read these first — they are the source of truth for what drederick is
 allowed to do:
 
-- [docs/SCOPE_AND_LEGAL.md](docs/SCOPE_AND_LEGAL.md) — scope rules, forbidden
-  NSE categories, the aggregate-vs-execute line, and the stable `@invariant-id:*`
-  table your change must preserve.
+- [docs/SCOPE_AND_LEGAL.md](docs/SCOPE_AND_LEGAL.md) — scope rules, the
+  authorization model, per-run opt-ins for destructive / cred / payload
+  categories, and the stable `@invariant-id:*` table your change must
+  preserve.
 - [AGENTS.md](AGENTS.md) — repo-level contributor contract (vendor-neutral).
 - [.github/copilot-instructions.md](.github/copilot-instructions.md) — the
   canonical instructions used by Copilot sessions; mirror of AGENTS.md.
@@ -91,7 +92,7 @@ Tighten NSE category filter for smb scanner
 The previous check relied on a single startswith pass which let
 "vuln-ms17" through. Normalize and split on commas first.
 
-Preserves @invariant-id:nse-forbidden-categories.
+Preserves @invariant-id:subprocess-args-validated.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
