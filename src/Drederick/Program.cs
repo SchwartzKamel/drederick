@@ -212,6 +212,21 @@ if (!string.IsNullOrEmpty(opts.NoteSubcommand))
 }
 // --- end note-subcommand-wiring -----------------------------------------------
 
+// --- jeopardy-cli-wiring ---
+if (opts.CtfSolveSubcommand)
+{
+    using var jeoCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; jeoCts.Cancel(); };
+    return await Drederick.Jeopardy.Cli.CtfSolveRunner.RunAsync(opts, jeoCts.Token);
+}
+if (opts.CtfMsgSubcommand)
+{
+    using var msgCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; msgCts.Cancel(); };
+    return await Drederick.Jeopardy.Cli.CtfMsgRunner.RunAsync(opts, msgCts.Token);
+}
+// --- end jeopardy-cli-wiring ---
+
 if (string.IsNullOrEmpty(opts.ScopePath))
 {
     Console.Error.WriteLine("--scope is required.");

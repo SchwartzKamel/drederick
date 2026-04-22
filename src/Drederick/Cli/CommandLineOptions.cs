@@ -215,6 +215,39 @@ public sealed class CommandLineOptions
     public bool NoteJson { get; set; }
     // END ANCHOR: note-subcommand-options
 
+    // --- jeopardy-cli-options ---
+    /// <summary>ctf-solve subcommand selected.</summary>
+    public bool CtfSolveSubcommand { get; set; }
+    /// <summary>ctf-msg subcommand selected.</summary>
+    public bool CtfMsgSubcommand { get; set; }
+
+    /// <summary>CTFd base URL. Falls back to $CTFD_URL if unset at parse time.</summary>
+    public string? CtfdUrl { get; set; }
+    /// <summary>CTFd API token. Falls back to $CTFD_TOKEN if unset at parse time.</summary>
+    public string? CtfdToken { get; set; }
+    /// <summary>Comma-separated model ids for the solver swarm.</summary>
+    public List<string> CtfModels { get; } = new();
+    public int CtfWallClockMinutes { get; set; } = 20;
+    public decimal? CtfRunBudgetUsd { get; set; }
+    public decimal? CtfChallengeBudgetUsd { get; set; }
+    public int CtfMaxConcurrent { get; set; } = 4;
+    public int CtfPollIntervalSec { get; set; } = 5;
+    /// <summary>Optional comma-separated category filter (e.g. "pwn,crypto").</summary>
+    public List<string>? CtfCategoryFilter { get; set; }
+    /// <summary>Optional comma-separated challenge-id filter.</summary>
+    public List<int>? CtfChallengeIds { get; set; }
+    /// <summary>Path to operator-hint JSONL inbox. Default ~/.drederick/jeopardy-inbox.jsonl.</summary>
+    public string? CtfInboxPath { get; set; }
+    /// <summary>Directory for report.json / report.md. Default ./out/ctf-report/.</summary>
+    public string CtfReportDir { get; set; } = Path.Combine("out", "ctf-report");
+
+    // ctf-msg fields
+    public string? CtfMsgKind { get; set; }
+    public string? CtfMsgChallengeId { get; set; }
+    public string? CtfMsgSolverId { get; set; }
+    public string? CtfMsgBody { get; set; }
+    // --- end jeopardy-cli-options ---
+
     public static CommandLineOptions Parse(string[] args)
     {
         var o = new CommandLineOptions();
@@ -279,6 +312,18 @@ public sealed class CommandLineOptions
         }
         // END ANCHOR: note-subcommand-dispatch
         // --- end note-subcommand ---
+        // --- jeopardy-cli-subcommand-dispatch ---
+        else if (args.Length > 0 && args[0] == "ctf-solve")
+        {
+            o.CtfSolveSubcommand = true;
+            start = 1;
+        }
+        else if (args.Length > 0 && args[0] == "ctf-msg")
+        {
+            o.CtfMsgSubcommand = true;
+            start = 1;
+        }
+        // --- end jeopardy-cli-subcommand-dispatch ---
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -540,6 +585,136 @@ public sealed class CommandLineOptions
                         o.ServiceConcurrency = n;
                         break;
                     }
+                // --- jeopardy-cli-flag-parse ---
+                case "--ctfd":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfdUrl = RequireNext(args, ref i, a);
+                    break;
+                case "--ctfd-token":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfdToken = RequireNext(args, ref i, a);
+                    break;
+                case "--models":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        o.CtfModels.Clear();
+                        foreach (var m in v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                            o.CtfModels.Add(m);
+                        break;
+                    }
+                case "--wall-clock-min":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, System.Globalization.NumberStyles.Integer,
+                                System.Globalization.CultureInfo.InvariantCulture, out var n) || n < 1 || n > 24 * 60)
+                            throw new ArgumentException($"--wall-clock-min must be in [1,1440], got '{v}'.");
+                        o.CtfWallClockMinutes = n;
+                        break;
+                    }
+                case "--run-budget-usd":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!decimal.TryParse(v, System.Globalization.NumberStyles.Number,
+                                System.Globalization.CultureInfo.InvariantCulture, out var d) || d <= 0)
+                            throw new ArgumentException($"--run-budget-usd must be a positive decimal, got '{v}'.");
+                        o.CtfRunBudgetUsd = d;
+                        break;
+                    }
+                case "--challenge-budget-usd":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!decimal.TryParse(v, System.Globalization.NumberStyles.Number,
+                                System.Globalization.CultureInfo.InvariantCulture, out var d) || d <= 0)
+                            throw new ArgumentException($"--challenge-budget-usd must be a positive decimal, got '{v}'.");
+                        o.CtfChallengeBudgetUsd = d;
+                        break;
+                    }
+                case "--max-concurrent":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 64)
+                            throw new ArgumentException($"--max-concurrent must be in [1,64], got '{v}'.");
+                        o.CtfMaxConcurrent = n;
+                        break;
+                    }
+                case "--poll-interval-sec":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 3600)
+                            throw new ArgumentException($"--poll-interval-sec must be in [1,3600], got '{v}'.");
+                        o.CtfPollIntervalSec = n;
+                        break;
+                    }
+                case "--category-filter":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        o.CtfCategoryFilter = new List<string>(
+                            v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                        break;
+                    }
+                case "--challenge-ids":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        var ids = new List<int>();
+                        foreach (var tok in v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        {
+                            if (!int.TryParse(tok, System.Globalization.NumberStyles.Integer,
+                                    System.Globalization.CultureInfo.InvariantCulture, out var id))
+                                throw new ArgumentException($"--challenge-ids: invalid id '{tok}'.");
+                            ids.Add(id);
+                        }
+                        o.CtfChallengeIds = ids;
+                        break;
+                    }
+                case "--inbox":
+                    if (!o.CtfSolveSubcommand && !o.CtfMsgSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfInboxPath = RequireNext(args, ref i, a);
+                    break;
+                case "--report-dir":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfReportDir = RequireNext(args, ref i, a);
+                    break;
+                case "--kind":
+                    if (!o.CtfMsgSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfMsgKind = RequireNext(args, ref i, a);
+                    break;
+                case "--chal":
+                    if (!o.CtfMsgSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfMsgChallengeId = RequireNext(args, ref i, a);
+                    break;
+                case "--solver":
+                    if (!o.CtfMsgSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfMsgSolverId = RequireNext(args, ref i, a);
+                    break;
+                case "--body":
+                    if (!o.CtfMsgSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.CtfMsgBody = RequireNext(args, ref i, a);
+                    break;
+                // --- end jeopardy-cli-flag-parse ---
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
             }
@@ -550,6 +725,27 @@ public sealed class CommandLineOptions
             // --host-concurrency, use the legacy knob as the host-level cap.
             o.HostConcurrency = Math.Min(MaxHostConcurrency, Math.Max(1, o.Parallelism));
         }
+        // --- jeopardy-cli-defaults ---
+        if (o.CtfSolveSubcommand)
+        {
+            if (string.IsNullOrWhiteSpace(o.CtfdUrl))
+                o.CtfdUrl = Environment.GetEnvironmentVariable("CTFD_URL");
+            if (string.IsNullOrWhiteSpace(o.CtfdToken))
+                o.CtfdToken = Environment.GetEnvironmentVariable("CTFD_TOKEN");
+            if (o.CtfModels.Count == 0)
+            {
+                o.CtfModels.Add("claude-opus-4.7");
+                o.CtfModels.Add("gpt-5.4");
+                o.CtfModels.Add("gemini-3.1-pro");
+            }
+        }
+        if ((o.CtfSolveSubcommand || o.CtfMsgSubcommand) && string.IsNullOrWhiteSpace(o.CtfInboxPath))
+        {
+            var home = Environment.GetEnvironmentVariable("HOME")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            o.CtfInboxPath = Path.Combine(home ?? ".", ".drederick", "jeopardy-inbox.jsonl");
+        }
+        // --- end jeopardy-cli-defaults ---
         return o;
     }
 
@@ -603,6 +799,23 @@ public sealed class CommandLineOptions
                                delete. Flags: --title, --content, --flag,
                                --tags, --category, --host, --file, --archived,
                                --json. See 'drederick note' (no args) for help.
+
+        Jeopardy CTF mode:
+          drederick ctf-solve --scope <file> --ctfd <url> [--models <csv>]
+                              [--wall-clock-min 20] [--run-budget-usd 100]
+                              [--challenge-budget-usd 5] [--max-concurrent 4]
+                              [--poll-interval-sec 5] [--category-filter pwn,crypto]
+                              [--challenge-ids 1,5,42] [--inbox <path>]
+                              [--report-dir <dir>] [--ctfd-token <tok>]
+          drederick ctf-msg --kind <hint|focus|skip|stop|shutdown>
+                            [--chal 42] [--solver <id>] [--body "try ret2libc"]
+                            [--inbox <path>]
+          drederick doctor --category=jeopardy
+
+          See docs/JEOPARDY.md for the full guide.
+          Env: COPILOT_TOKEN (or GH_TOKEN / GITHUB_TOKEN), CTFD_URL, CTFD_TOKEN.
+          Default models: claude-opus-4.7,gpt-5.4,gemini-3.1-pro.
+          Default inbox: ~/.drederick/jeopardy-inbox.jsonl.
 
         REQUIRED:
           -s, --scope <file>   Scope file (one CIDR/IP per line, '#' comments).
