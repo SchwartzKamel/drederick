@@ -364,6 +364,24 @@ audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
     ["acknowledge_lockout_risk"] = permissions.AcknowledgeLockoutRisk,
 });
 // --- end exploit tools ---
+
+// --- multi-stage-wiring ---
+// Multi-stage kill-chain coordinator: preflight → PoC → stager → payload →
+// handler → record. Every stage re-checks scope and the opt-in category at
+// the load-bearing tool, so the coordinator is not an authorization bypass.
+// Stubs stand in for the payload stager and callback listener until the
+// concrete implementations land.
+var multiStageStager = new StubPayloadStager();
+var multiStageHandler = new StubHandlerListener();
+var multiStage = new MultiStageExploitRunner(
+    scope, audit, exploitRunner, msf, multiStageStager, multiStageHandler, permissions);
+audit.Record("multistage.ready", new Dictionary<string, object?>
+{
+    ["stager"] = multiStageStager.GetType().Name,
+    ["handler"] = multiStageHandler.GetType().Name,
+});
+_ = multiStage;  // reserved for autopilot / UI integration
+// --- end multi-stage-wiring ---
 if (!opts.Quiet)
 {
     // Live progress: one-liner per tool invocation on stderr so stdout stays
