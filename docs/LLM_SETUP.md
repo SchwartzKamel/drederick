@@ -36,7 +36,9 @@ model.
 - [Azure OpenAI](#provider-azure)
 - [llama.cpp](#provider-llamacpp)
 - [`--agent` (recon) — OpenAI-compatible](#provider-agent-recon)
+- [Web UI provider selection](#web-ui-provider)
 - [Token precedence and auto-selection](#precedence)
+- [`drederick doctor` — LLM checks](#doctor)
 - [Cost, rate limits, budgets](#cost)
 - [Prompt hygiene and what the model sees](#prompt-hygiene)
 - [Safety — what the LLM cannot do](#safety)
@@ -70,7 +72,8 @@ provider backend.
 
 | Mode | Flag / subcommand | Backend today | How to pick |
 | ---- | ----------------- | ------------- | ----------- |
-| Jeopardy solver swarm | `drederick ctf-solve` | **Copilot SDK** (auto). Azure + llama.cpp clients exist in-tree and are being wired in — see [JEOPARDY.md](JEOPARDY.md). | Set the Copilot env vars; `CopilotLlmClient.TryCreateFromEnvironment` is called at startup. |
+| Jeopardy solver swarm (CLI) | `drederick ctf-solve` | **Copilot SDK** only today — the CLI calls `CopilotLlmClient.TryCreateFromEnvironment` directly. Azure + llama.cpp clients exist in-tree and ship via the Web UI (see below) and the `LlmClientFactory` wiring still in progress. | Set `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`. No `--llm-provider` flag yet. |
+| Jeopardy solver swarm (Web UI) | `Drederick.Web` session-start form | **Copilot / Azure / llama.cpp** — operator-selectable per session. | Pick `copilot`, `azure`, or `llamacpp` in the form; export the matching env vars on the host running `Drederick.Web` ([details](#web-ui-provider)). |
 | Recon cornerman | `drederick ... --agent` | **OpenAI** via Microsoft Agent Framework. | Set `OPENAI_API_KEY` (+ optional `DREDERICK_MODEL`). |
 | Autopilot exploitation | `--autopilot` | Deterministic — **no LLM**. | No env vars needed. Driven by CLI flags. |
 
@@ -226,6 +229,7 @@ llama-server \
 | -------- | ------- | ------- |
 | `LLAMACPP_URL` | `http://127.0.0.1:8080` | Base URL of your `llama-server` (or compatible). |
 | `LLAMACPP_BEARER_TOKEN` | *(none)* | Optional static bearer if you front the server with a reverse proxy that requires auth. |
+| `LLAMACPP_MODELS` | *(none)* | Optional comma-separated model IDs to advertise without hitting `/v1/models`. If absent, the client discovers the loaded model at first use. Handy when the server is cold-started or you want to pin a name. |
 
 Source: [`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs).
 
@@ -265,6 +269,49 @@ to `MicrosoftAgentRunner` (override the `OpenAIClient` endpoint) and a
 rebuild. Tracked alongside the hybrid-agent-runner roadmap item in
 [AGENTS.md](../AGENTS.md#extension-points).
 
+<a id="web-ui-provider"></a>
+## Web UI provider selection
+
+When you start a Jeopardy session from `Drederick.Web`, the session form
+carries an `llm_provider` field with three values — `copilot`, `azure`,
+or `llamacpp` (aliases `llama-cpp` / `llama.cpp` accepted). This is the
+**only** place today where you can switch backends without editing code;
+the CLI still hard-wires Copilot.
+
+The web host reads env vars from its own process environment — whatever
+shell launched `dotnet run --project src/Drederick.Web` or the published
+binary. Export the matching set **before** starting the server:
+
+```bash
+# Copilot — default choice
+export COPILOT_TOKEN="$(gh auth token)"
+
+# Azure OpenAI
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com"
+export AZURE_OPENAI_API_KEY="..."
+export AZURE_OPENAI_DEPLOYMENT_MAP="gpt-5.4=gpt5-prod"
+
+# llama.cpp
+export LLAMACPP_URL="http://127.0.0.1:8080"
+
+# now launch the web pane
+dotnet run --project src/Drederick.Web
+```
+
+Selection logic lives in
+[`JeopardySessionManager.cs`](../src/Drederick.Web/Jeopardy/JeopardySessionManager.cs) —
+the chosen provider's `TryCreateFromEnvironment` is called at session
+start. If it returns `null`, the session fails with:
+
+```
+no LLM client could be created from environment (set COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN
+for copilot, or the provider-specific env vars for azure / llamacpp).
+```
+
+> **Tatum note:** one shop, three corners. Pick the corner *before* the
+> bell — once the session starts, the swarm is committed to that
+> provider for its lifetime.
+
 <a id="precedence"></a>
 ## Token precedence and auto-selection
 
@@ -291,6 +338,45 @@ Inside `CopilotLlmClient.TryCreateFromEnvironment`:
 
 Tokens are **never logged in plaintext**. The audit log records a
 `SHA-256` digest (see [`TokenRedactor.cs`](../src/Drederick/Jeopardy/Llm/TokenRedactor.cs)).
+
+<a id="doctor"></a>
+## `drederick doctor` — LLM checks
+
+`drederick doctor` is the single-command preflight. For LLM wiring it
+runs two checks under the `jeopardy` category:
+
+| Check id | What it verifies |
+| -------- | ---------------- |
+| `jeopardy.llm.token` | One of `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` is exported in the current shell, in that preference order. |
+| `jeopardy.llm.reachable` | `GET https://api.githubcopilot.com/v1/models` returns 200 with the resolved token. Gated by scope: the Copilot host must be in scope **or** `--allow-copilot-host` must be passed. |
+
+Sample output when Copilot is wired correctly:
+
+```text
+$ drederick doctor
+[jeopardy.llm.token]     PASS  LLM token present via $COPILOT_TOKEN
+[jeopardy.llm.reachable] PASS  GET https://api.githubcopilot.com/v1/models → 200
+...
+```
+
+And when it's not:
+
+```text
+[jeopardy.llm.token]     FAIL  no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment
+                               fix: export COPILOT_TOKEN=<token>   # or GH_TOKEN / GITHUB_TOKEN
+[jeopardy.llm.reachable] WARN  skipped — no LLM token set (see jeopardy.llm.token)
+```
+
+> **Heads-up:** `drederick doctor` today validates **Copilot only**.
+> Azure and llama.cpp wiring is trusted to the operator — if you've
+> selected those providers in the Web UI, verify the env vars yourself
+> (a 200 from `$AZURE_OPENAI_ENDPOINT/openai/deployments?api-version=...`
+> or `curl "$LLAMACPP_URL/v1/models"` is the quick smoke test). A
+> provider-aware doctor check is on the roadmap; until then treat a
+> green `jeopardy.llm.*` as "Copilot is ready," not "all providers
+> ready."
+
+Source: [`JeopardyDoctorChecks.cs`](../src/Drederick/Doctor/JeopardyDoctorChecks.cs).
 
 <a id="cost"></a>
 ## Cost, rate limits, budgets
@@ -350,13 +436,19 @@ authorization", the tool call still fails. That's the design.
 <a id="troubleshooting"></a>
 ## Troubleshooting
 
+> *"Dear God, why are we fighting? …Because the token expired. Refresh
+> it, step back into the ring, and let's go again."*
+> — **Drederick Tatum**, between rounds
+
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
 | `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)` | None of the three vars exported in the shell running `drederick`. | Export one; `COPILOT_TOKEN` wins precedence. |
+| `no LLM client could be created from environment …` from the Web UI | Selected `azure` or `llamacpp` in the session form but the matching env vars aren't set in the web-host process. | Stop `Drederick.Web`, export the provider's env vars ([Web UI section](#web-ui-provider)), relaunch. Env vars are read at session start, not at request time. |
 | `401` from Copilot | Token expired / revoked / wrong scope. | `gh auth refresh` or regenerate; re-export. |
 | `Azure OpenAI auth failed (401)` | `AZURE_OPENAI_API_KEY` wrong, or Entra bearer expired, or endpoint tenant mismatch. | Re-fetch the token (`az account get-access-token …`) or rotate the api-key; confirm the endpoint matches the subscription. |
 | Azure `DeploymentNotFound` | `AZURE_OPENAI_DEPLOYMENT_MAP` missing an entry for one of `--models`. | Add `modelId=deploymentName` to the map. Logical model ids in `--models` must resolve to a real deployment. |
 | `LLAMACPP_URL` connection refused | `llama-server` not running, or wrong port. | `curl "$LLAMACPP_URL/v1/models"` to confirm; restart server with `--port 8080 --jinja`. |
+| llama.cpp runs but is painfully slow | Too-large quant, tiny `-c`, no GPU offload. | Drop to Q4_K_M, set `--n-gpu-layers -1` if you have VRAM, or lower `--solver-concurrency` on the swarm so one model isn't racing itself. |
 | llama.cpp model refuses tool calls / ignores `tools` field | Model doesn't support function calling; the client auto-strips tools for those. | Use a tool-calling model (Qwen2.5-Coder, Llama-3.x instruct, Hermes-3), or accept freeform reasoning without tool loops. |
 | `--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.` on stderr | Env var missing from the shell. | `export OPENAI_API_KEY=...` in the same shell. |
 | `runner.agent_error` with `429 rate_limit_exceeded` | Provider quota. | Drederick already fell back to Adaptive; raise the quota or wait. |
@@ -371,5 +463,5 @@ solver-specific symptoms.
 
 > *"You call that a scan? I've seen tighter enumeration from a rookie's
 > jab. Let the cornerman call the combinations — and pick the fighter
-> that fits the round."*
+> that fits the round. I'm heavyweight champ, Drederick Tatum."*
 > — **Drederick Tatum**, post-sparring debrief
