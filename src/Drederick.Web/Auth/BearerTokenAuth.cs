@@ -71,6 +71,24 @@ public sealed class BearerTokenAuth
         var header = context.Request.Headers.Authorization.ToString();
         var hasHeader = !string.IsNullOrEmpty(header);
 
+        // --- signalr-token-query-support ---
+        // Browsers cannot set arbitrary headers on a WebSocket handshake, so
+        // SignalR convention is to send the bearer via the `access_token`
+        // query param on the hub negotiation / socket upgrade. Accept it
+        // ONLY for hub paths to avoid broadening the auth surface for
+        // regular REST endpoints. Synthesise a Bearer header locally so the
+        // rest of this method continues to funnel through a single code
+        // path.
+        if (!hasHeader && context.Request.Path.StartsWithSegments("/hubs"))
+        {
+            var queryToken = context.Request.Query["access_token"].ToString();
+            if (!string.IsNullOrEmpty(queryToken))
+            {
+                header = "Bearer " + queryToken;
+                hasHeader = true;
+            }
+        }
+
         if (!_settings.RequireBearer && !hasHeader)
         {
             return "loopback_bypass";

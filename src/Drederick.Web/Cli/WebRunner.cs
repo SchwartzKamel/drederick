@@ -1,4 +1,5 @@
 using Drederick.Audit;
+using Drederick.Web.Auditing;
 using Drederick.Web.Auth;
 using Drederick.Web.Endpoints;
 using Microsoft.AspNetCore.Builder;
@@ -60,6 +61,28 @@ public static class WebRunner
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddOpenApi();
 
+        // --- audit-service-wiring ---
+        // Read-only tailer over `{OutputDir}/audit.jsonl`. Never writes.
+        builder.Services.AddSingleton(sp => new AuditTailer(
+            Path.Combine(
+                sp.GetRequiredService<WebAppSettings>().OutputDir,
+                "audit.jsonl")));
+        // --- end audit-service-wiring ---
+
+        // --- scope-service-wiring ---
+        // No services needed — ScopeEndpoints operate statelessly on the
+        // user-supplied path. Anchor kept so future additions land here.
+        // --- end scope-service-wiring ---
+
+        // --- doctor-service-wiring ---
+        // Empty registry by default; tests / future wiring can replace with
+        // a concrete IWebDoctorCheckRegistry that surfaces the real
+        // IDoctorCheck instances (e.g. JeopardyDoctorChecks). The Web surface
+        // is detect-only regardless (@invariant-id:doctor-workstation-only).
+        builder.Services.AddSingleton<DoctorEndpoints.IWebDoctorCheckRegistry,
+            DoctorEndpoints.EmptyRegistry>();
+        // --- end doctor-service-wiring ---
+
         var app = builder.Build();
 
         var runtimeSettings = app.Services.GetRequiredService<WebAppSettings>();
@@ -77,6 +100,19 @@ public static class WebRunner
 
         app.UseMiddleware<BearerTokenAuth>();
         app.MapHealthEndpoints();
+
+        // --- doctor-endpoint-map ---
+        app.MapDoctorEndpoints();
+        // --- end doctor-endpoint-map ---
+
+        // --- scope-endpoint-map ---
+        app.MapScopeEndpoints();
+        // --- end scope-endpoint-map ---
+
+        // --- audit-endpoint-map ---
+        app.MapAuditEndpoints();
+        // --- end audit-endpoint-map ---
+
         app.MapOpenApi();
         app.UseDefaultFiles();
         app.UseStaticFiles();

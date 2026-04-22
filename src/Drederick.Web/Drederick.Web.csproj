@@ -13,6 +13,7 @@
     <!-- .NET 10 native OpenAPI generation (Microsoft.AspNetCore.App is
          implicit via the Web SDK, so no FrameworkReference needed). -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
