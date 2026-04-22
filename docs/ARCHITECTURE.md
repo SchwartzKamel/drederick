@@ -7,29 +7,52 @@ last_audited: 2026-04
 related:
   - SCOPE_AND_LEGAL.md
   - MODULES.md
+  - POST_EXPLOITATION.md
+  - JEOPARDY.md
   - DEVELOPING.md
   - DATASETTE.md
+  - LLM_SETUP.md
+  - COMPARISON.md
   - ../AGENTS.md
 ---
 
 # Architecture
 
-> **TL;DR.** Seven layers: `CLI → Scope → Doctor → ReconToolbox (14
-> `IReconTool`s) → HostWorkerPool → Runner (AdaptiveRunner or
-> MicrosoftAgentRunner) → Enrichment (NVD + PoC) → Reporting (JSON /
-> Markdown / SqliteReport) → Presentation (Datasette today; React planned) +
-> Memory (`memory/findings.json`)`. Scope is enforced *inside every tool*;
-> `AuditLog` and `KnowledgeBase` are the only thread-safe shared state. Read
-> [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) for hard guarantees before
-> editing anything in this doc's blast radius.
+> **TL;DR.** `CLI → Scope → Doctor → ReconToolbox (14 `IReconTool`s) →
+> HostWorkerPool → Runner (AdaptiveRunner / MicrosoftAgentRunner /
+> AutopilotRunner) → Enrichment (NVD + multi-source PoC) → ExploitToolbox
+> (`ExploitRunner`, `MsfRcRunner`, `NucleiRunner`, `PasswordSprayTool`,
+> `MultiStageExploitRunner`) → Post-ex (`SessionManager`, `PostExLinux`,
+> `PostExWindows`, `SessionPivotProber`, `FlagExtractor`) → Reporting (JSON /
+> Markdown / SqliteReport) + Memory (`memory/findings.json`)`. A parallel
+> Jeopardy CTF subsystem lives under `src/Drederick/Jeopardy/`. Scope is
+> enforced *inside every tool* — recon, exploit, credential, payload, and
+> post-ex. `AuditLog` and `KnowledgeBase` are the only thread-safe shared
+> state. Read [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) for hard guarantees
+> before editing anything in this doc's blast radius.
 
 <a id="intro"></a>
 ## Overview
 
-Drederick is a scope-enforced, adaptive reconnaissance harness built on
-**.NET 10** and the **Microsoft Agent Framework**. It performs discovery,
-fingerprinting, and CVE/PoC *aggregation* only — no exploitation, credential
-attacks, brute force, payload delivery, or PoC execution.
+Drederick is a scope-enforced, adaptive **full-auto offensive security
+harness** built on **.NET 10** and the **Microsoft Agent Framework**. Inside
+scope it performs discovery, fingerprinting, CVE/PoC aggregation, and — when
+the corresponding per-category opt-ins (`--allow-exec-pocs`,
+`--allow-cred-attacks`, `--allow-payloads`, `--allow-destructive`,
+`--allow-dos`) are set — executes cached PoCs, drives Metasploit resource
+scripts, runs credential attacks, delivers payloads, opens sessions, and
+enumerates post-ex from inside those sessions. Lab mode (the default)
+enables every category except `--allow-dos`; strict mode (`--no-lab`)
+requires each category flag explicitly. Outside scope the tool does
+nothing — the `_scope.Require` call is the first statement of every
+network-touching method.
+
+A second, independent subsystem — the **Jeopardy CTF solver** under
+[`src/Drederick/Jeopardy/`](../src/Drederick/Jeopardy/) — handles
+challenge-based CTF workflows (CTFd polling, sandboxed solver execution,
+flag submission) and is described in [`JEOPARDY.md`](./JEOPARDY.md). It
+shares scope, audit, and knowledge-base primitives with the offensive
+harness but has its own coordinator, bus, and solver pipeline.
 
 This document describes the current architecture. Items marked **(planned)**
 are still in the roadmap; everything else is in the tree today.
@@ -44,12 +67,17 @@ flowchart TD
     Toolbox["ReconToolbox<br/>Audit (JSONL) · Budget · IReadOnlyList&lt;IReconTool&gt;<br/>─────<br/>NmapTool · HttpProbeTool · TlsProbeTool<br/>DnsProbeTool<br/>SmbTool · FtpTool · SshTool<br/>SnmpTool · LdapTool · RpcTool<br/>KerberosTool (SPN listing only)<br/>DnsZoneTransferTool (AXFR)<br/>HttpContentDiscoveryTool (path-only)<br/>TlsCipherEnumTool"]
     Pool["HostWorkerPool<br/>bounded Channel&lt;…&gt;<br/>--host-concurrency<br/>--service-concurrency"]
     Runner["Runner<br/>AdaptiveRunner (deterministic)<br/>MicrosoftAgentRunner (LLM)"]
-    Enrich["Enrichment<br/>CveAnnotator (NVD 2.0)<br/>PocAggregator (searchsploit / GHSA / MSF / nuclei)<br/>— aggregate + present, never execute"]
+    Enrich["Enrichment<br/>CveAnnotator (NVD 2.0)<br/>PocAggregator (Searchsploit / GHSA / Metasploit / Nuclei)<br/>cached verbatim to out/poc_cache/"]
+    Exploit["ExploitToolbox<br/>ExploitRunner · MsfRcRunner · NucleiRunner<br/>PasswordSprayTool · MultiStageExploitRunner<br/>(scope-gated, per-category opt-in)"]
+    PostEx["Post-ex<br/>SessionManager · SessionPivotProber<br/>PostExLinux · PostExWindows · FlagExtractor"]
     Report["Reporting<br/>JsonReport · MarkdownReport<br/>ManualCommandsCheatsheet<br/>SqliteReport (findings.db)"]
-    Present["Presentation / Memory<br/>drederick serve → Datasette<br/>Planned: Drederick.Web + React UI<br/>KnowledgeBase (memory/findings.json)"]
+    Present["Presentation / Memory<br/>drederick serve → Datasette<br/>Avalonia operator console (Drederick.UI)<br/>KnowledgeBase (memory/findings.json)"]
 
-    CLI --> Scope --> Doctor --> Toolbox --> Pool --> Runner --> Enrich --> Report --> Present
+    CLI --> Scope --> Doctor --> Toolbox --> Pool --> Runner --> Enrich --> Exploit --> PostEx --> Report --> Present
 ```
+
+A parallel Jeopardy CTF pipeline (`src/Drederick/Jeopardy/`) runs under the
+same scope + audit primitives; see [`JEOPARDY.md`](./JEOPARDY.md).
 
 ## Components {#components}
 
@@ -102,13 +130,16 @@ Every scanner:
 5. Validates LLM-chosen subprocess args. See `NmapTool.RejectUnsafePortSpec`
    and `SmbTool.AssertNoForbiddenScripts` for the pattern.
 
-`NmapTool` uses the enumeration-only NSE category set:
+`NmapTool` uses an opt-in-expanding NSE category set:
 
-- **Lab mode:** `safe,default,discovery,version`
-- **Strict mode:** `safe,default`
+- **Strict mode, no opt-ins:** `safe,default`
+- **Lab mode (default), no opt-ins:** `safe,default,discovery,version`
+- **`--allow-cred-attacks` or lab mode:** adds `auth`
+- **`--allow-exec-pocs`:** adds `intrusive,vuln,exploit`
+- **`--allow-dos`:** adds `dos,malware`
 
-`exploit`, `intrusive`, `brute`, `vuln`, `dos`, and `malware` are hard-coded
-excluded. Per-scanner documentation lives in [`MODULES.md`](./MODULES.md).
+Port-spec argv is regex-validated (`RejectUnsafePortSpec`). Per-scanner
+documentation lives in [`MODULES.md`](./MODULES.md).
 
 ### `Drederick.Agent` — orchestration + worker pool {#layer-agent}
 
@@ -116,10 +147,15 @@ excluded. Per-scanner documentation lives in [`MODULES.md`](./MODULES.md).
   first; then fans out per-service dispatch actions (`tls`, `http`,
   `tls-cipher-enum`, `smb`, `ftp`, `ssh`, `snmp`, `ldap`, `kerberos`, `rpc`,
   `http-content-discovery` when `--content-discovery` is set).
-- `MicrosoftAgentRunner` — LLM-driven. Every `IReconTool` method exposed by
-  `ReconToolbox` is registered as an `AIFunction` with its `[Description]`
-  attribute. The LLM chooses tool calls; scope is re-checked inside every
-  tool, so the model cannot escape the allow-list.
+- `MicrosoftAgentRunner` — LLM-driven. Every `IReconTool` and exploit-toolbox
+  method is registered as an `AIFunction` with its `[Description]`
+  attribute. The LLM chooses tool calls; scope and permission checks are
+  re-enforced inside every tool, so the model cannot escape the allow-list
+  or bypass category opt-ins.
+- `AutopilotRunner` — post-recon offensive loop (`src/Drederick/Autopilot/`):
+  walks the `ExploitationPlanner` card (`nuclei > spray-with-realm >
+  spray > msfrc > multi-stage`), hands sessions off to `SessionManager`,
+  and re-plans on each iteration up to `--autopilot-max-iterations`.
 - `HostWorkerPool` — bounded `Channel<ScanJob>` worker pool backing
   `--host-concurrency` (default 4, max 32). Inside each host worker,
   per-service probes fan out in parallel bounded by `--service-concurrency`
@@ -135,11 +171,14 @@ excluded. Per-scanner documentation lives in [`MODULES.md`](./MODULES.md).
   loaded NVD entries.
 - `CveAnnotator` — for every nmap port with `product/version`, writes CVE
   rows and `kind = "cve"` findings. Idempotent upserts.
-- `IPocSource` / `SearchsploitSource` (+ planned GHSA / Metasploit / nuclei
-  sources) — resolve PoC references per CVE, cache source under
-  `out/poc_cache/<source>/<external-id>/`, SHA-256 provenance recorded in
-  `poc_sources`. **Drederick never executes PoCs and never initiates
-  outbound requests from fetched PoC code.**
+- `IPocSource` implementations — `SearchsploitSource` (Exploit-DB local
+  archive), `GhsaSource` (GitHub Security Advisories), `MetasploitSource`
+  (module index), `NucleiSource` (template index). For each annotated
+  CVE, `PocAggregator` records a `poc_refs` row per pointer and caches
+  the source under `out/poc_cache/<source>/<external-id>/` with SHA-256
+  provenance in `poc_sources`. Artifacts are stored **verbatim** —
+  `ExploitRunner` is the component responsible for spawning them (see
+  `Drederick.Exploit` below).
 
 Opt-outs:
 
@@ -147,18 +186,81 @@ Opt-outs:
 - `--no-fetch-poc` — skip PoC fetching (pointers may still be recorded from
   offline sources like `searchsploit`'s local archive).
 
+### `Drederick.Exploit` {#layer-exploit}
+
+The offensive execution layer. Every tool here calls `_scope.Require(target)`
+as its first statement; multi-host argv (RHOSTS, LHOST callbacks, pivots) is
+re-validated via `ExploitRunner.AssertTargetsInScope` before spawn. Each
+tool additionally gates on a `RunPermissions` category flag.
+
+- `ExploitRunner` — spawns cached PoC artifacts from `out/poc_cache/` in an
+  isolated working dir; captures stdout/stderr (truncated, SHA-256'd),
+  exit code, and argv digest to `audit.jsonl`. Gate: `--allow-exec-pocs`.
+- `MsfRcRunner` — drives `msfconsole -r <script>` non-interactively against
+  scope-validated RHOSTS/LHOST values. Gate: `--allow-exec-pocs`
+  (+ `--allow-payloads` when the module delivers one).
+- `NucleiRunner` — runs cached nuclei templates from the PoC cache against
+  a target. Gate: `--allow-exec-pocs`.
+- `PasswordSprayTool` — lockout-aware password spraying across
+  SMB/WinRM/LDAP/SSH. Gates: `--allow-cred-attacks` **and**
+  `--acknowledge-lockout-risk`. Attempted secrets are SHA-256'd before
+  any audit write — never logged in plaintext.
+- `MultiStageExploitRunner` — kill-chain coordinator:
+  `preflight → poc → stager → payload → handler → record`. Each stage is
+  independent, scope-re-checks on its own, and halts the chain on
+  failure.
+- `ExploitToolbox` — DI surface wrapping the above. The LLM runner sees
+  every exploit tool as an `AIFunction` with a `[Description]` attribute;
+  scope + permission checks still fire inside each tool.
+
+### `Drederick.Exploit` — post-exploitation {#layer-post-ex}
+
+Once a session opens, post-ex takes over. Full reference in
+[`POST_EXPLOITATION.md`](./POST_EXPLOITATION.md).
+
+- `SessionManager` — registry of active shells (`ActiveSession` records:
+  id, target, protocol, platform, opened/closed timestamps); bounded
+  concurrent enumeration via a `SemaphoreSlim`.
+- `SessionPivotProber` — RFC1918 sweep **from inside** a session;
+  enforces scope at the CIDR and per-IP level; out-of-scope pivot
+  candidates are silently dropped (with a rate-limited `pivot.out_of_scope`
+  audit event).
+- `PostExLinux` — `whoami`, `sudo -n -l`, `uname`, SUID scan, `getcap`,
+  `/etc/shadow` readability (SHA-256 only, never content), interesting-file
+  sweep.
+- `PostExWindows` — `whoami /all`, host info, `net user` / `net localgroup`,
+  domain discovery, token → primitive mapping (`SeImpersonate` → Potato
+  family, etc.), UAC registry read, interesting-file sweep.
+- `FlagExtractor` — scoring judge for CTF knockouts. Scans loot + captured
+  stdout for `flag{}` / `HTB{}` / `THM{}` / `picoCTF{}` / 32-hex patterns,
+  deduped by SHA-256 of the match. Local-only — never validates remotely.
+
+### `Drederick.Jeopardy` — CTF solver subsystem {#layer-jeopardy}
+
+An independent pipeline under `src/Drederick/Jeopardy/` for Jeopardy-style
+CTF workflows (challenge polling, LLM-driven solving, sandboxed tool
+execution, flag submission). It does not share the recon/exploit toolbox
+but does share `Scope`, `AuditLog`, and `KnowledgeBase`. Components:
+`Coordinator/` (CtfCoordinator + poller), `Solver/` (challenge pipeline),
+`Sandbox/`, `Submit/`, `Ctfd/`, `Llm/`, `Prompts/`, `Budget/`, `Bus/`,
+`Ops/`, `Swarm/`, `Detection/`, `Cli/`. See [`JEOPARDY.md`](./JEOPARDY.md)
+for the operator guide.
+
 ### `Drederick.Reporting` {#layer-reporting}
 
 - `JsonReport` — machine-readable `out/report.json`.
 - `MarkdownReport` — per-host summary `out/report.md`.
 - `ManualCommandsCheatsheet` — AutoRecon-style per-host working directory
-  (`out/<host>/{scans,loot,notes.md}`) plus, in lab mode only,
-  `out/<host>/manual_commands.txt`: enumeration commands the operator
-  *may* run themselves. Drederick never executes these, and deliberately
-  omits exploit, brute-force, password-spray, and payload-delivery commands.
-- `SqliteReport` — `out/findings.db` with seven tables: `hosts`, `services`,
-  `findings`, `cves`, `poc_refs`, `poc_sources`, `tooling`. Authoritative
-  DDL lives in `SqliteReport.EnsureSchema`; doc mirror in
+  (`out/<host>/{scans,loot,notes.md}`) plus, in lab mode,
+  `out/<host>/manual_commands.txt` with service-specific enumeration
+  commands the operator *may* run themselves. The cheatsheet file is
+  advisory — Drederick itself runs exploits, credential attacks, and
+  payload delivery through the [`ExploitToolbox`](#layer-exploit), not by
+  parsing this text.
+- `SqliteReport` — `out/findings.db` with tables `hosts`, `services`,
+  `findings`, `cves`, `poc_refs`, `poc_sources`, `tooling`,
+  `exploit_runs`, `sessions`, `loot`. Authoritative DDL lives in
+  `SqliteReport.EnsureSchema`; doc mirror in
   [`DB_SCHEMA.md`](./DB_SCHEMA.md). Idempotent upserts. Browsed via
   [Datasette](./DATASETTE.md).
 
@@ -196,22 +298,18 @@ need per-run state, keep it inside `HostFinding` (one per target).
 
 ## Presentation layer {#layer-presentation}
 
-### Current: Datasette {#layer-presentation-datasette}
+### Datasette (findings browser) {#layer-presentation-datasette}
 
 `drederick serve` shells to `datasette serve out/findings.db --metadata
 datasette/metadata.json --host 127.0.0.1 --port 8001 --open`. Bound to
 localhost by default. See [`DATASETTE.md`](./DATASETTE.md) for the full
 schema walkthrough, facet guide, and PoC triage workflow.
 
-### Planned: React dashboard {#layer-presentation-react}
+### Avalonia operator console {#layer-presentation-avalonia}
 
-- `src/Drederick.Web` — ASP.NET Core host, minimal API + SignalR stream.
-  Binds `127.0.0.1` only; one-time token written to `~/.drederick/ui.token`.
-- `web/` — Vite + TypeScript + Tailwind. Five views: scope editor, run
-  launcher, live dashboard, report viewer, manual-commands viewer.
-  No remote mode, no cloud mode, no "share scan" feature.
-
-See [`UI_GUIDE.md`](./UI_GUIDE.md).
+`src/Drederick.UI/` — point-and-click operator console built on Avalonia.
+Calls the same scope-enforced tools via `DrederickHost` (see
+`src/Drederick/Host/`). See [`UI.md`](./UI.md).
 
 ## See also
 

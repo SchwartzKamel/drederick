@@ -19,6 +19,10 @@ related:
   - LLM_SETUP.md
   - POST_EXPLOITATION.md
   - JEOPARDY.md
+  - CREDENTIALS.md
+  - GETTING_STARTED.md
+  - TROUBLESHOOTING.md
+  - COMPARISON.md
 ---
 
 # drederick documentation index
@@ -57,7 +61,9 @@ related:
 | [`DB_SCHEMA.md`](DB_SCHEMA.md) | agents | Machine-readable schema, JOIN patterns, stable invariants. | agent |
 | [`UI_GUIDE.md`](UI_GUIDE.md) | humans | Current vs planned UI; React dashboard design. | human |
 | [`UI.md`](UI.md) | humans | Avalonia point-and-click operator console (`Drederick.UI`): quickstart, invariants, tests. | human |
-| [`COMPARISON.md`](COMPARISON.md) | humans | Choosing between drederick / AutoRecon / nmapAutomator / Reconnoitre. | human |
+| [`COMPARISON.md`](COMPARISON.md) | humans | Drederick vs peers across three fronts: recon (AutoRecon / nmapAutomator / Reconnoitre), full-auto offensive (PentestGPT / HackingBuddyGPT / Metasploit Pro), and Jeopardy CTF solving (ctf-agent / EnIGMA / CAI). | human |
+| [`GETTING_STARTED.md`](GETTING_STARTED.md) | humans | End-to-end first-run walkthrough. | human |
+| [`CREDENTIALS.md`](CREDENTIALS.md) | humans + agents | Credential-attack subsystem: `CredRunner`, spray/brute/AS-REP/kerberoast/PtH, lockout throttling, secret-hashing rules. | both |
 | [`LLM_SETUP.md`](LLM_SETUP.md) | humans | Wiring OpenAI for `--agent`; combining with `--autopilot`; provider recipes; safety. | human |
 | [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) | humans | After the session opens: `SessionManager`, `PostExLinux` / `PostExWindows`, pivot probes, flag extraction, multi-stage chain. | human |
 | [`JEOPARDY.md`](JEOPARDY.md) | humans | Jeopardy CTF mode: `ctf-solve` swarm, `ctf-msg` operator hints, sandbox image, budget/scope rails. | human |
@@ -117,24 +123,38 @@ Depth: [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md). Stable ids:
 [`../AGENTS.md#invariants`](../AGENTS.md#invariants).
 
 - **Scope is enforced inside every tool** — `_scope.Require(target)` is the
-  first statement of any network-touching method.
+  first statement of any network-touching method (recon, exploit, credential,
+  payload).
+- **Scope is the authorization boundary** — inside scope, Drederick
+  executes exploits, runs credential attacks, delivers payloads, and
+  handles post-exploitation. Outside scope, it does nothing.
 - **Wildcards (`0.0.0.0/0`, `::/0`) are always refused** — even with
   `--allow-broad`.
-- **NSE categories `exploit`/`intrusive`/`brute`/`vuln`/`dos`/`malware` are
-  hard-coded excluded** in lab and strict modes.
-- **Aggregate + present, never execute** — PoCs are cached verbatim with
-  SHA-256 provenance; never chmod'd, never spawned, never phoned home for.
-- **No credential attacks** — no brute force, spray, AS-REP roast,
-  kerberoast, dictionary. SPN listing is anonymous-bind read only.
-- **No payload delivery** — no shells, implants, webshells, persistence.
+- **Subprocess argv is validated** — every host/IP/URL in argv is
+  resolved through `_scope.Require` before exec (nmap, `msfconsole -r`,
+  `hydra`, `netexec`, cached PoCs, all of them).
+- **PoC cache is verbatim** — no rewriting, no phone-home stripping, no
+  sanitization. `ExploitRunner` spawns cached PoCs against scope-validated
+  targets only.
 - **LLM cannot escape scope** — `MicrosoftAgentRunner` tools re-check scope
-  internally; no prompt disables this.
+  internally; no prompt, jailbreak, or forged tool call disables this.
+- **Audit is append-only** — every PoC fetch, PoC spawn, credential
+  attempt, payload drop, and session open/close is recorded with target,
+  tool, argv digest (SHA-256), and timestamp.
+- **Plaintext secrets are never logged** — attempted passwords are
+  recorded as SHA-256 digests only.
+- **No exfiltration** — loot stays in `out/` and `audit.jsonl`. No
+  telemetry, no cloud sync, no phone-home from the harness itself.
+- **Destructive categories are opt-in per run** — `--allow-dos`,
+  `--allow-destructive`, `--allow-exec-pocs`, `--allow-cred-attacks`,
+  `--allow-payloads`, `--acknowledge-lockout-risk`. Defaults on in lab
+  mode except `--allow-dos`; required explicitly in strict mode.
 - **Doctor modifies the operator workstation only** — never scans a target,
   never re-execs as root.
 - **`AuditLog` and `KnowledgeBase` are thread-safe** — everything else is
   stateless after construction.
 - **There is no scope kill-switch** — no flag, env var, debug build, or
-  prompt disables the scope check.
+  prompt disables the scope check or the audit log.
 
 <a id="conventions"></a>
 ## Conventions used in these docs

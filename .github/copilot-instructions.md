@@ -54,11 +54,15 @@ each recording to AuditLog JSONL and metered by ToolBudget) → Runner
 (AdaptiveRunner deterministic, or MicrosoftAgentRunner LLM-driven) →
 Reporting (JSON + Markdown + SQLite + per-host workdir + loot/ + sessions/)
 + Memory/KnowledgeBase (`memory/findings.json`, loaded on next run)`.
-Sources live under `src/Drederick/{Agent,Audit,Cli,Exploit,Host,Memory,
-Recon,Reporting,Scope}/`. The Avalonia operator console
+Sources live under `src/Drederick/{Agent,Audit,Autopilot,Bundling,Cli,
+Doctor,Enrichment,Exploit,Host,Jeopardy,Memory,Ops,Recon,Reporting,Scope}/`.
+The Avalonia operator console
 (`src/Drederick.UI/`) is a point-and-click front-end that calls the same
 scope-enforced tools via `DrederickHost` — see
-[`docs/UI.md`](../docs/UI.md).
+[`docs/UI.md`](../docs/UI.md). The Jeopardy CTF mode (`ctf-solve` swarm,
+`ctf-msg` operator hints, Docker sandbox, cross-solver bus, budget /
+loop-detection rails) lives under `src/Drederick/Jeopardy/` — see
+[`docs/JEOPARDY.md`](../docs/JEOPARDY.md).
 
 ## Non-negotiable invariants
 

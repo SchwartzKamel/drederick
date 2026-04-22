@@ -8,6 +8,7 @@ related:
   - ARCHITECTURE.md
   - MODULES.md
   - SCOPE_AND_LEGAL.md
+  - DB_SCHEMA.md
   - ../AGENTS.md
 ---
 
@@ -17,9 +18,12 @@ related:
 > publishes, and installs the CLI globally (userspace `~/.local/bin`). Then
 > `dotnet test` to verify. See [`../Makefile`](../Makefile) for the targets.
 >
-> **TL;DR map:** adding a scanner → [`#adding-scanner`](#adding-scanner);
-> enrichment source → [`#adding-enrichment`](#adding-enrichment); Datasette
-> canned query → [`#adding-query`](#adding-query). Agent-facing contract is
+> **TL;DR map:** adding a recon scanner →
+> [`#adding-scanner`](#adding-scanner); adding an exploit / credential /
+> payload tool → [`#adding-exploit`](#adding-exploit); enrichment source →
+> [`#adding-enrichment`](#adding-enrichment); post-ex command →
+> [`#adding-post-ex`](#adding-post-ex); Datasette canned query →
+> [`#adding-query`](#adding-query). Agent-facing condensed contract is
 > [`../AGENTS.md#extension-points`](../AGENTS.md#extension-points).
 
 ## Prerequisites
@@ -129,10 +133,178 @@ useful per-tool parameters. `ReconToolbox` dispatches by concrete type
     - A negative test asserting no forbidden NSE category or CLI flag is
       enabled on the built argv (pattern: `SmbToolTests.AssertNoForbiddenScripts_*`).
 
+<a id="adding-exploit"></a>
+## Adding an exploit / credential / payload tool
+
+Offensive tools live under `src/Drederick/Exploit/` and implement
+[`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs). Unlike
+recon (which is read-only and scope-gated only), exploit tools are
+gated by **two** boundaries: `Scope.Scope` (authorization — what
+targets you may touch at all) and
+[`RunPermissions`](../src/Drederick/Exploit/RunPermissions.cs) (what
+category of blast radius is opted into this run, mapped to CLI flags
+`--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` /
+`--allow-destructive` / `--allow-dos`). Both checks live on the tool
+itself, not the toolbox — the UI, the LLM runner, `DrederickHost`, and
+direct test construction all go through the same enforcement.
+
+Spawning subprocesses, hashing captured output, and persisting
+`ExploitRunRecord` rows are done through
+[`ExploitRunner`](../src/Drederick/Exploit/ExploitRunner.cs) — do not
+shell out from the tool directly, because `ExploitRunner` owns the
+argv-digest, working-dir isolation, stdout/stderr truncation, and
+SHA-256 pipeline that `exploit_runs` depends on.
+
+1. **Create** `src/Drederick/Exploit/<Name>Tool.cs` (or `<Name>Runner.cs`
+   if it drives an external orchestrator like msfconsole/nuclei).
+   Implement `IExploitTool`:
+   ```csharp
+   public sealed class MyExploitTool : IExploitTool
+   {
+       public string Name => "my-exploit";
+       public string Description =>
+           "One-paragraph, LLM-readable description of what this tool does, " +
+           "which service/CVE class it targets, and which opt-in category gates it.";
+       public ExploitCategory Category => ExploitCategory.ExecPocs;
+       // … typed RunAsync below …
+   }
+   ```
+2. **Constructor** — inject `Scope.Scope`, `AuditLog`, `RunPermissions`,
+   and an `ExploitRunner`. Accept optional factory / binary-path
+   parameters so tests can substitute fakes:
+   ```csharp
+   public MyExploitTool(
+       Scope.Scope scope,
+       AuditLog audit,
+       RunPermissions permissions,
+       ExploitRunner runner,
+       string? binPath = null)
+   {
+       _scope = scope;
+       _audit = audit;
+       _permissions = permissions;
+       _runner = runner;
+       _binPath = binPath ?? "my-bin";
+   }
+   ```
+3. **Entry method** — run the gates in this exact order, and record a
+   refusal audit event *before* throwing so
+   `@invariant-id:audit-everything` holds even on denied attempts:
+   ```csharp
+   public async Task<MyExploitResult> RunAsync(string target, …, CancellationToken ct)
+   {
+       try { _scope.Require(target); }
+       catch (ScopeException) {
+           _audit.Record("my-exploit.scope_refused", new() { ["target"] = target });
+           throw;
+       }
+       try { _permissions.Require(Category, Name); }
+       catch (PermissionRefusedException) {
+           _audit.Record("my-exploit.permission_refused",
+               new() { ["target"] = target, ["category"] = Category.ToString() });
+           throw;
+       }
+       // …build argv, then:
+       _runner.AssertTargetsInScope(allHostsInArgv);   // pivots, LHOST, RHOSTS, callbacks
+       var wd = _runner.NewWorkingDir(target, Name);
+       _audit.Record("my-exploit.start", new() {
+           ["target"] = target, ["invocation_id"] = wd.InvocationId,
+       });
+       var rec = _runner.Spawn(Name, target, _binPath, argString, wd, Category, timeoutSeconds: 300);
+       _audit.Record("my-exploit.finish", new() {
+           ["target"] = target, ["invocation_id"] = rec.InvocationId,
+           ["argv_digest"] = rec.ArgvDigest, ["exit_code"] = rec.ExitCode,
+       });
+       return new MyExploitResult { Run = rec, /* parsed fields */ };
+   }
+   ```
+4. **Typed result** — add a class to
+   [`ExploitResult.cs`](../src/Drederick/Exploit/ExploitResult.cs) with
+   an `ExploitRunRecord Run` field plus any parsed data. Do not add a
+   raw-stdout field; stdout/stderr live on `Run` as truncated bodies +
+   byte count + SHA-256. The `Run` field maps 1-for-1 to a row in the
+   `exploit_runs` table (see
+   [`DB_SCHEMA.md#table-exploit-runs`](DB_SCHEMA.md#table-exploit-runs)).
+5. **Argv validation — every time.** Every host / IP / URL / payload
+   callback in argv must pass `_runner.AssertTargetsInScope(...)` before
+   `Spawn`. Shell-metachars, path traversal, and scope-bypass tokens
+   must be rejected at argv-build time, not left for the subprocess to
+   notice. See
+   [`NmapTool.RejectUnsafePortSpec`](../src/Drederick/Recon/NmapTool.cs)
+   and `ExploitRunner.AssertTargetsInScope` for the patterns.
+6. **Never log plaintext secrets.** Credentials, wordlist entries,
+   ticket bodies, and payload blobs never appear in audit records or
+   in SQLite. Record SHA-256 + a boolean result instead — see
+   `PasswordSprayResult.PasswordSha256`. `loot` rows use `value_sha256`
+   exclusively; plaintext stays in `out/<host>/loot/`.
+7. **Session + loot persistence.** If the tool opens an interactive
+   session, build a `SessionRecord` and call
+   `SqliteReport.UpsertSession` at open time (with `closed_at = null`)
+   and again at close time. If it captures a secret, build a
+   `LootRecord` with `value_sha256` only and call
+   `SqliteReport.UpsertLoot`. The `SessionManager` handles long-lived
+   sessions; prefer it over ad-hoc process tracking.
+8. **Wire into `ExploitToolbox`** — add a nullable backing field and a
+   public async method with a `[Description(...)]` on the method and
+   each parameter. The `[Description]` text *is* the LLM-visible
+   surface exposed by `MicrosoftAgentRunner`.
+9. **Register** in `Program.cs` service wiring alongside the other
+   exploit tools. Follow the unique-anchor convention from
+   [`../AGENTS.md#agent-coordination`](../AGENTS.md#agent-coordination):
+   locate `// --- exploit tools ---` and append at the end of that
+   block; don't rewrite the block.
+10. **Tests** (all required — see
+    [`tests/Drederick.Tests`](../tests/Drederick.Tests/) for patterns):
+    - **Scope refusal:** `Assert.Throws<ScopeException>` for out-of-scope
+      `target`.
+    - **Mixed-argv scope refusal:** when argv contains a mix of in-scope
+      and out-of-scope hosts (pivot leg, `RHOSTS` list, callback), the
+      tool refuses with `ScopeException` before spawning.
+    - **Permission refusal:** with `RunPermissions.None`, the tool
+      throws `PermissionRefusedException` and emits a
+      `*.permission_refused` audit event.
+    - **Audit refusal ordering:** both `*.scope_refused` and
+      `*.permission_refused` events are recorded **before** the
+      exception is raised.
+    - **Argv-injection refusal:** shell-metachar / path-traversal /
+      scope-bypass argv is rejected at build time.
+    - **Parser:** recorded fixture under
+      [`tests/fixtures/`](../tests/fixtures/) (and a fake subprocess
+      binary under [`tests/fixtures/bin/`](../tests/fixtures/bin/) for
+      replay — never spawn a real exploit against a real service in
+      tests).
+    - **No plaintext secrets leaked:** use a canary string
+      (`DREDERICK_TEST_CANARY_…`) in fixture stdout; assert it never
+      appears in serialised audit events or in written SQLite rows.
+    - **Argv-digest stability:** identical inputs → identical
+      `ArgvDigest` across runs (so `exploit_runs.argv_digest` is a
+      stable correlation key).
+
+### Credential attack tools
+
+Credential tools set `Category = ExploitCategory.CredAttacks` and
+additionally consult `RunPermissions.AcknowledgeLockoutRisk` before
+running a spray or targeted brute — an operator who mechanically
+flipped `--allow-cred-attacks` still has to positively attest
+`--acknowledge-lockout-risk`. Lockout-aware throttling is default on;
+the tool's argv-builder should derive per-target rate limits from the
+knowledge base (prior failure count, observed lockout policy) rather
+than a fixed sleep. See
+[`PasswordSprayTool`](../src/Drederick/Exploit/PasswordSprayTool.cs) for
+the canonical shape.
+
+### Payload-staging tools
+
+Payload tools set `Category = ExploitCategory.Payloads`. They should
+generate or accept a payload artefact, record its SHA-256 in
+`ExploitRunRecord.ArtifactSha256`, stage it through an authenticated
+interface (never an unauthenticated write), and record the drop in the
+audit log with the target path on the remote. The delivered payload's
+bytes are not sent anywhere else — `@invariant-id:no-exfiltration`
+applies end-to-end.
+
 <a id="adding-post-ex"></a>
 ## Adding a post-ex command
-
-Post-exploitation commands are the structured enumeration step that
 runs *after* a session has been opened. The contract is similar to
 [`#adding-scanner`](#adding-scanner) and the `IExploitTool` shape used
 elsewhere in `src/Drederick/Exploit/`, with two post-ex-specific
@@ -224,12 +396,17 @@ threat reports). All live under `src/Drederick/Enrichment/`.
 
 1. Implement `IPocSource` (see `SearchsploitSource.cs` for the canonical
    example). The source resolves PoC pointers for a given CVE id, returns
-   `(source, external_id, url, local_path?)` tuples, and optionally caches
-   raw PoC source under `out/poc_cache/<source>/<external_id>/` with a
-   SHA-256 recorded in the `poc_sources` row.
-2. **Invariant**: aggregate + present, never execute. Never `chmod +x`, never
-   spawn fetched PoC code, never make the outbound request that a PoC would
-   have made. Cache verbatim; the practitioner reads it.
+   `(source, external_id, url, local_path?)` tuples, and caches raw PoC
+   source under `out/poc_cache/<source>/<external_id>/` with a SHA-256
+   recorded in the `poc_sources` row. Execution is not the source's job
+   — `ExploitRunner` is responsible for marking executable and spawning
+   cached artefacts when an `ExecPocs`-category tool is dispatched.
+2. **Source invariant: aggregate verbatim.** Cache byte-for-byte — never
+   `chmod +x` inside the source, never rewrite / neutralise /
+   sanitise the fetched content, never make the outbound request that a
+   PoC would have made. The source stops at "bytes on disk with a
+   SHA-256 row." Spawning is gated separately by `RunPermissions`
+   (`--allow-exec-pocs`) at the `ExploitRunner` layer.
 3. Respect `--no-fetch-poc` at the orchestration layer (don't branch inside
    the source — `PocAggregator` decides whether to call you).
 4. Network dependencies go through `IHttpFetcher` so tests can inject a
@@ -308,8 +485,20 @@ Scope enforcement lives **inside every tool**, not at the CLI boundary.
 Whichever runner is driving — deterministic or LLM — a target outside the
 scope file causes the tool to throw `ScopeException`, which is logged and
 skipped. There is no flag, no prompt, and no environment variable that
-disables this check. If you are adding a code path that reaches the network,
-it must start with `_scope.Require(target)`.
+disables this check. If you are adding a code path that reaches the
+network, it must start with `_scope.Require(target)`.
+
+Scope is the **authorization** boundary — what targets you may touch.
+**Blast radius** is gated separately by
+[`RunPermissions`](../src/Drederick/Exploit/RunPermissions.cs), which
+maps CLI flags `--allow-exec-pocs` / `--allow-cred-attacks` /
+`--allow-payloads` / `--allow-destructive` / `--allow-dos` to per-
+category opt-ins. Inside scope, recon is unconditional; exploit,
+credential, payload, and DoS tools additionally require the matching
+opt-in. Lab mode enables most categories by default; strict mode
+(`--no-lab`) is default-deny and requires each flag explicitly. See
+[`SCOPE_AND_LEGAL.md`](./SCOPE_AND_LEGAL.md) for the hard invariants
+that protect both boundaries.
 
 ## Testing conventions {#testing}
 
@@ -352,16 +541,23 @@ Until then, `drederick serve` against Datasette is the current UI — see
 src/Drederick/          # Core engine (CLI today)
   Agent/                # AdaptiveRunner, MicrosoftAgentRunner, HostWorkerPool
   Audit/                # JSONL audit log (thread-safe)
-  Cli/                  # CommandLineOptions
+  Autopilot/            # Post-recon exploitation planner
+  Cli/                  # CommandLineOptions, subcommands (doctor/serve/init/note/analyze)
   Doctor/               # Operator-workstation preflight + installer
   Enrichment/           # NVD cache, CPE match, CVE annotate, PoC sources
+  Exploit/              # IExploitTool + ExploitRunner, MsfRcRunner, NucleiRunner,
+                        #   PasswordSprayTool, PayloadStager, SessionManager, PostEx*
+  Host/                 # DrederickHost facade shared by CLI and UI
   Memory/               # KnowledgeBase (cross-run state)
-  Recon/                # 14 IReconTool scanners + ReconToolbox
-  Reporting/            # JSON, Markdown, cheatsheet, SqliteReport
+  Recon/                # IReconTool scanners + ReconToolbox
+  Reporting/            # JSON, Markdown, cheatsheet, SqliteReport, NotesSchema
   Scope/                # Scope, ScopeLoader, ScopeException
+src/Drederick.UI/       # Avalonia point-and-click operator console
 datasette/              # metadata.json for Datasette UI
-tests/Drederick.Tests/  # xUnit tests
-tests/fixtures/         # Recorded scanner outputs
+tests/Drederick.Tests/  # xUnit tests for the engine
+tests/Drederick.UI.Tests/ # xUnit tests for the UI shell
+tests/fixtures/         # Recorded scanner/exploit outputs
+tests/fixtures/bin/     # Fake subprocess binaries for exploit-tool testing
 docs/                   # This directory
 ```
 
@@ -370,6 +566,9 @@ docs/                   # This directory
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — layers and data flow.
 - [`SCOPE_AND_LEGAL.md`](./SCOPE_AND_LEGAL.md) — the hard guarantees.
   Changes that weaken any of them need discussion first.
-- [`MODULES.md`](./MODULES.md) — existing scanner contracts.
+- [`DB_SCHEMA.md`](./DB_SCHEMA.md) — findings.db schema (including
+  `exploit_runs`, `sessions`, `loot`).
+- [`MODULES.md`](./MODULES.md) — existing scanner + exploit contracts.
 - [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md) —
-  the aggressive-enum stance and the aggregate-vs-execute line.
+  the aggressive-enum + full-auto-exploit stance and the scope /
+  permissions boundary.

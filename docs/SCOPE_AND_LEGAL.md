@@ -9,6 +9,8 @@ related:
   - ../AGENTS.md
   - ARCHITECTURE.md
   - MODULES.md
+  - POST_EXPLOITATION.md
+  - LLM_SETUP.md
 ---
 
 # Scope, authorized use, and exploitation posture

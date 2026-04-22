@@ -122,16 +122,18 @@ triage workflow.
 <a id="features"></a>
 ## Features
 
-- **14 enumeration scanners**, all scope-gated and read-only: `nmap`, `http`,
+- **14 enumeration scanners**, all scope-gated: `nmap`, `http`,
   `tls`, `dns`, plus `smb`, `ftp`, `ssh`, `snmp`, `ldap`, `rpc`,
-  `kerberos` (**SPN listing only** — no AS-REP roast, no kerberoast),
-  `dns-zone-transfer` (AXFR), `http-content-discovery` (path-only,
-  rate-limited), `tls-cipher-enum`. Per-scanner contracts live in
-  [`docs/MODULES.md`](docs/MODULES.md).
-- **Locked-down nmap NSE surface.** Lab mode uses
-  `safe,default,discovery,version`; strict mode (`--no-lab`) uses
-  `safe,default`. `exploit`, `intrusive`, `brute`, `vuln`, `dos`, and
-  `malware` are **always** excluded — non-configurable.
+  `kerberos` (SPN listing plus AS-REP roast / kerberoast when
+  `--allow-cred-attacks` is set), `dns-zone-transfer` (AXFR),
+  `http-content-discovery` (path-only, rate-limited), `tls-cipher-enum`.
+  Per-scanner contracts live in [`docs/MODULES.md`](docs/MODULES.md).
+- **Adaptive nmap NSE surface.** Lab mode defaults to
+  `safe,default,discovery,version,auth,exploit,intrusive,vuln`;
+  strict mode (`--no-lab`) defaults to `safe,default,discovery,version`
+  and additional categories are added via `--nse-categories=…`. `dos`
+  and `malware` are opt-in per run via `--allow-dos` /
+  `--allow-destructive`. Wildcard scopes remain non-negotiable.
 - **CVE annotation.** Fingerprinted services are matched against a local
   NVD 2.0 cache (`~/.drederick/nvd/`, last ~5 years + modified feed), and
   hits are written to `out/findings.db`. Offline falls back to stale cache.
@@ -139,9 +141,10 @@ triage workflow.
 - **PoC aggregation.** For every annotated CVE, Drederick aggregates public
   PoC pointers (Exploit-DB via `searchsploit`, GHSA, Metasploit module
   names, nuclei template IDs) and caches the actual PoC source under
-  `out/poc_cache/<source>/<id>/` with SHA-256 provenance. **Drederick never
-  executes PoCs** — it aggregates and presents; you review and decide.
-  Default-on; opt out with `--no-fetch-poc`.
+  `out/poc_cache/<source>/<id>/` with SHA-256 provenance. In lab mode
+  `ExploitRunner` may then spawn matching PoCs against scope-validated
+  targets; strict mode requires `--allow-exec-pocs`. Default-on; opt
+  out of fetching with `--no-fetch-poc`.
 - **Datasette dashboard.** `drederick serve` launches Datasette against
   `out/findings.db` with 7 labelled tables, clickable facets, and 5
   canned queries for CVE / PoC / tooling triage.
@@ -220,6 +223,15 @@ $DRED --scope scope.yaml --target 10.10.10.5 --no-fetch-poc --out out/
 # Skip CVE annotation entirely (airgapped / no NVD cache).
 DREDERICK_SKIP_CVE=1 $DRED --scope scope.yaml --target 10.10.10.5 --out out/
 
+# Jeopardy CTF mode — swarm multiple LLMs across every challenge.
+# Flags are submitted automatically; plaintext flag is never logged.
+$DRED ctf-solve --scope scope.yaml --ctfd https://ctf.example.org \
+    --models gpt-5,claude-4-opus,gemini-3 --out out/
+
+# Mid-run operator hint into a live ctf-solve session.
+$DRED ctf-msg --kind hint --challenge "web/baby-sqli" \
+    --text "try sqlmap with --os-shell against /api/login"
+
 # Launch the Avalonia point-and-click operator console. Scope and targets
 # can be composed entirely inside the GUI — no scope file on disk required.
 # Same scope/no-exec invariants as the CLI; see docs/UI.md.
@@ -242,12 +254,12 @@ $DRED serve --out out/ --no-open                     # no browser, just serve
 
 | Flag        | Default | Effect                                                                 |
 | ----------- | ------- | ---------------------------------------------------------------------- |
-| `--lab`     | **on**  | /8 v4 / /32 v6 scope cap; `safe,default,discovery,version` NSE; emits `manual_commands.txt` |
-| `--no-lab`  | off     | /16 v4 / /48 v6 scope cap; `safe,default` NSE only; no cheatsheet      |
+| `--lab`     | **on**  | /8 v4 / /32 v6 scope cap; NSE `safe,default,discovery,version,auth,exploit,intrusive,vuln`; emits `manual_commands.txt`; auto-execution categories default on (except `--allow-dos`) |
+| `--no-lab`  | off     | /16 v4 / /48 v6 scope cap; NSE `safe,default,discovery,version` (add via `--nse-categories=…`); no cheatsheet; `--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` required per category |
 
-Both modes **always** refuse wildcard scopes and **always** exclude
-`exploit`, `intrusive`, `brute`, `vuln`, `dos`, and `malware` NSE categories.
-Those exclusions are not configurable. See
+Both modes **always** refuse wildcard scopes (`0.0.0.0/0`, `::/0`).
+`dos` and `malware` NSE categories require `--allow-dos` /
+`--allow-destructive` in either mode. See
 [`docs/SCOPE_AND_LEGAL.md`](docs/SCOPE_AND_LEGAL.md).
 
 ### Scope file
@@ -322,6 +334,14 @@ read [`AGENTS.md`](AGENTS.md) first.
   the planned React dashboard design.
 - [`docs/JEOPARDY.md`](docs/JEOPARDY.md) — Jeopardy CTF mode: `ctf-solve`
   swarm, mid-run `ctf-msg` hints, sandbox image, budget/scope rails.
+- [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md) — session
+  dispatch, Linux/Windows enumeration, pivot discovery, flag extraction.
+- [`docs/CREDENTIALS.md`](docs/CREDENTIALS.md) — `CredRunner` contract:
+  spray, brute, AS-REP roast, kerberoast, PtH, lockout throttling.
+- [`docs/LLM_SETUP.md`](docs/LLM_SETUP.md) — wiring OpenAI / Azure /
+  llama.cpp for `--agent`, combining with `--autopilot`.
+- [`docs/UI.md`](docs/UI.md) — Avalonia point-and-click operator console.
+- [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — first-run walkthrough.
 
 <a id="architecture-short"></a>
 ## Architecture (short version)

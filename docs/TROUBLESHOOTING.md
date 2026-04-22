@@ -9,6 +9,8 @@ related:
   - MODULES.md
   - SCOPE_AND_LEGAL.md
   - DATASETTE.md
+  - JEOPARDY.md
+  - LLM_SETUP.md
 ---
 
 # Troubleshooting runbook
@@ -29,9 +31,13 @@ from the CLI's error messages, other docs, and issues stay valid.
 | VPN warning but VPN is up | [vpn-detection](#vpn-detection) |
 | `.htb` hostname doesn't resolve | [htb-hostname](#htb-hostname) |
 | Scope rejected | [scope-parse](#scope-parse) |
-| LLM runner errors / timeouts | [llm-runner](#llm-runner) |
+| `--agent` runner errors / timeouts | [llm-runner](#llm-runner) |
 | PoC cache empty despite CVEs | [poc-cache](#poc-cache) |
 | Scanner crashed mid-run | [scanner-fail](#scanner-fail) |
+| Jeopardy: Docker sandbox unreachable | [jeopardy-docker](#jeopardy-docker) |
+| Jeopardy: CTFd 401 / 403 | [jeopardy-ctfd-auth](#jeopardy-ctfd-auth) |
+| Jeopardy: no LLM provider picked up | [jeopardy-llm](#jeopardy-llm) |
+| Jeopardy: scope rejects CTFd host | [jeopardy-scope](#jeopardy-scope) |
 
 ---
 
@@ -366,17 +372,21 @@ Common mistakes:
    spaces are fine, but a stray character before the address is not.
    Save scope files as UTF-8 without BOM.
 
-6. **Empty file / all-comments.** Rejected with `Scope is empty`.
+5. **Empty file / all-comments.** Rejected with `Scope is empty`.
 
 ---
 
 ## llm-runner
 
-`--agent` uses the Microsoft Agent Framework runner backed by OpenAI (see
-`src/Drederick/Agent/MicrosoftAgentRunner.cs`). It needs `OPENAI_API_KEY`
-in the environment and will use `DREDERICK_MODEL` if set (default
-`gpt-4o-mini`). Errors from the OpenAI client are recorded as
-`runner.agent_error` in the audit log and then rethrown.
+`--agent` uses the Microsoft Agent Framework runner backed by OpenAI
+(see `src/Drederick/Agent/MicrosoftAgentRunner.cs`). It needs
+`OPENAI_API_KEY` in the environment and will use `DREDERICK_MODEL` if
+set (default `gpt-4o-mini`). Errors from the OpenAI client are recorded
+as `runner.agent_error` in the audit log and then rethrown.
+
+> This is the **legacy recon runner**. Azure OpenAI / Copilot / llama.cpp
+> setup for the Jeopardy solver lives in [`LLM_SETUP.md`](LLM_SETUP.md);
+> Jeopardy-specific failures are in [jeopardy-llm](#jeopardy-llm).
 
 1. Check the env vars are actually exported in the shell you're running
    `drederick` from:
@@ -484,6 +494,175 @@ whatever it collected; other scanners and targets continue.
 5. If a scanner crashes the host process (not just the scanner), that's
    a bug — capture `out/audit.jsonl` and the stack trace and file it
    against the bug template below.
+
+---
+
+## jeopardy-docker
+
+`drederick ctf-solve` requires Docker for the solver sandbox (see
+`src/Drederick/Doctor/JeopardyDoctorChecks.cs` — `DockerInstalledCheck`,
+`DockerDaemonCheck`). The preflight will not auto-install Docker —
+blast radius is too high.
+
+1. Run the category preflight:
+
+    ```bash
+    drederick doctor --category=jeopardy
+    ```
+
+2. Install Docker via your distro's recipe — the doctor prints the
+   command:
+
+    ```bash
+    # Debian/Ubuntu/Kali:
+    sudo apt install docker.io
+    # Fedora/RHEL:
+    sudo dnf install docker
+    # macOS:
+    brew install --cask docker
+    ```
+
+3. If Docker is installed but `DockerDaemonCheck` fails with
+   `Docker daemon not reachable`:
+
+    ```bash
+    sudo systemctl start docker
+    sudo usermod -aG docker "$USER"   # then re-login
+    docker info                        # confirm
+    ```
+
+4. Build the Jeopardy sandbox image once per host (the coordinator
+   won't pull it from a registry):
+
+    ```bash
+    docker build \
+      -t drederick/jeopardy-sandbox \
+      -f sandbox/Dockerfile.jeopardy-sandbox sandbox/
+    ```
+
+5. If `/var/lib/docker` is on a filesystem that can't host overlayfs
+   (some NFS / 9P mounts), move Docker's data root to a local disk
+   before running.
+
+---
+
+## jeopardy-ctfd-auth
+
+Authentication against CTFd uses the API token you pass via
+`--ctfd-token` or `$CTFD_TOKEN`. Failures surface as HTTP `401` /
+`403` from `CtfdClient` on the first poll.
+
+1. Confirm the token by hand against the CTFd host in scope:
+
+    ```bash
+    curl -fsSL \
+      -H "Authorization: Token ${CTFD_TOKEN}" \
+      "${CTFD_URL}/api/v1/challenges" | jq '.data | length'
+    ```
+
+2. `401 Unauthorized` — the token is wrong, revoked, or belongs to a
+   user that hasn't accepted the event rules. Re-mint via the CTFd UI
+   (profile → **Settings** → **Access Tokens**).
+
+3. `403 Forbidden` — token is valid but the user lacks permission
+   (team not registered, event not started, admin-only scoreboard).
+   Check the rules tab in the CTFd UI.
+
+4. The CTFd token is **never logged in plaintext**; its SHA-256 is
+   recorded in `audit.jsonl`. To correlate after the fact:
+
+    ```bash
+    jq 'select(.event=="ctfd.auth")' out/ctf-report/audit.jsonl
+    ```
+
+---
+
+## jeopardy-llm
+
+`drederick ctf-solve` currently initializes the Copilot LLM client
+(see `src/Drederick/Jeopardy/Cli/CtfSolveRunner.cs` →
+`CopilotLlmClient.TryCreateFromEnvironment`). Azure OpenAI and
+llama.cpp clients live in-tree and are being wired through the
+provider factory (see [LLM_SETUP.md](LLM_SETUP.md)). Until then,
+`ctf-solve` needs a Copilot/GitHub token.
+
+1. `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)`:
+
+    ```bash
+    # Preferred:
+    export COPILOT_TOKEN="ghu_..."
+    # Or:
+    export GH_TOKEN="$(gh auth token)"
+    # PAT fallback (routes to the GitHub Models endpoint):
+    export GITHUB_TOKEN="ghp_..."
+    ```
+
+   Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. A `GITHUB_TOKEN`
+   that looks like a PAT causes the client to use
+   `https://models.inference.ai.azure.com/v1` instead of the Copilot
+   endpoint — see [LLM_SETUP.md#precedence](LLM_SETUP.md#precedence).
+
+2. Azure OpenAI env set but requests aren't going there — the
+   Jeopardy runner does not yet auto-pick Azure. For now, Copilot is
+   the only wired backend. If you need Azure in the swarm today, track
+   the `llm-provider-factory` todo.
+
+3. `LLAMACPP_URL` connection refused — your `llama-server` isn't
+   running or isn't bound on the expected port. Confirm:
+
+    ```bash
+    curl -fsSL "$LLAMACPP_URL/v1/models"
+    llama-server -m model.gguf --port 8080 -c 8192 --jinja
+    ```
+
+4. `AZURE_OPENAI_DEPLOYMENT_MAP` unset and calls fail with
+   `DeploymentNotFound` — logical model ids in `--models` must map to
+   real deployment names in your Azure resource:
+
+    ```bash
+    export AZURE_OPENAI_DEPLOYMENT_MAP="gpt-5.4=gpt5-prod,gpt-4o=gpt4o-prod"
+    ```
+
+5. Azure `401` — api-key wrong or Entra bearer expired. Refresh:
+
+    ```bash
+    export AZURE_OPENAI_BEARER_TOKEN="$(az account get-access-token \
+      --resource https://cognitiveservices.azure.com \
+      --query accessToken -o tsv)"
+    ```
+
+---
+
+## jeopardy-scope
+
+The CTFd host and every per-challenge infra host must live in the
+scope file. `CtfdClient` / `SandboxManager` re-check scope at the tool
+boundary; the LLM cannot bypass it.
+
+1. `CTFd host '…' is not in scope` — add the CTFd host (IP or
+   hostname) to `scope.yaml` and retry. Hostnames are resolved and
+   scope-checked against the resolved IP.
+
+2. If per-challenge boxes appear mid-event (`ssh.chal.example.com`,
+   `web-svc.chal.example.com:31337`), append them to the scope file.
+   The solver will keep moving on other challenges while you edit — the
+   next challenge dispatch re-reads the relevant hosts at its own
+   boundary.
+
+3. Wildcards are still refused. A reasonable CTFd scope:
+
+    ```text
+    # CTFd platform
+    ctf.example.com
+    # per-challenge infra listed by organizers
+    chal.example.com
+    ```
+
+4. Diagnose at run time:
+
+    ```bash
+    jq 'select(.event|startswith("scope"))' out/ctf-report/audit.jsonl
+    ```
 
 ---
 

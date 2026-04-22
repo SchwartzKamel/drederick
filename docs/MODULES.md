@@ -6,6 +6,8 @@ stability: stable
 last_audited: 2026-04
 related:
   - ARCHITECTURE.md
+  - POST_EXPLOITATION.md
+  - JEOPARDY.md
   - DEVELOPING.md
   - SCOPE_AND_LEGAL.md
   - ../AGENTS.md
@@ -27,10 +29,17 @@ related:
 > [`{#scanner-http-content-discovery}`](#scanner-http-content-discovery),
 > [`{#scanner-tls-cipher-enum}`](#scanner-tls-cipher-enum).
 >
-> **Invariants:** no credential attacks, no brute force, no payload
-> delivery, no exploit-category NSE. See
-> [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) and
-> [`../AGENTS.md#invariants`](../AGENTS.md#invariants).
+> **Scope is the authorization boundary for every recon tool**; opt-in
+> category flags (`--allow-exec-pocs`, `--allow-cred-attacks`,
+> `--allow-payloads`, `--allow-destructive`, `--allow-dos`) gate the
+> exploit-side toolbox documented in [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md)
+> and [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md). See
+> [`../AGENTS.md#invariants`](../AGENTS.md#invariants) for the invariant
+> table.
+>
+> A parallel Jeopardy CTF subsystem lives under
+> [`src/Drederick/Jeopardy/`](../src/Drederick/Jeopardy/); see
+> [`JEOPARDY.md`](JEOPARDY.md).
 
 Every scanner lives under `src/Drederick/Recon/` and implements
 `IReconTool`. Each scanner re-checks scope at its entry point via
@@ -46,12 +55,15 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 
 - **Purpose:** service/version scan and first-pass NSE enumeration.
 - **Subprocess:** `nmap -Pn -sV -sC -T4 --min-rate 1000 -oX - <target>`.
-- **NSE categories:** lab `safe,default,discovery,version`; strict
-  `safe,default`. **Never enables** `exploit`, `intrusive`, `brute`, `vuln`,
-  `dos`, `malware` — hard-coded excluded in both modes.
-- **Prohibitions:** exploit/brute/vuln/dos/malware NSE; user-supplied
-  `--script` injection (port spec is regex-validated by
-  `RejectUnsafePortSpec`).
+- **NSE categories:** opt-in-expanding. Strict mode baseline
+  `safe,default`; lab mode adds `discovery,version`;
+  `--allow-cred-attacks` (or lab mode) adds `auth`; `--allow-exec-pocs`
+  adds `intrusive,vuln,exploit`; `--allow-dos` adds `dos,malware`. See
+  `NseCategoriesStrict` / `NseCategoriesLab` in `NmapTool` for the
+  authoritative list.
+- **Prohibitions:** argv injection (port spec is regex-validated by
+  `RejectUnsafePortSpec`). No user-supplied `--script` values — the
+  category set is picked by the CLI flags above.
 - **Ports:** `--top-ports 1000` by default; accepts a whitelisted port
   spec (`1-65535`, `80,443`, …).
 - **Result:** `HostFinding.Nmap` → `NmapResult { ReturnCode, Stderr,
@@ -237,9 +249,12 @@ details, errors.
 ### `ManualCommandsCheatsheet`
 
 Creates `out/<host>/scans/`, `out/<host>/loot/`, `out/<host>/notes.md`. In
-lab mode, also emits `out/<host>/manual_commands.txt` — enumeration commands
-the operator *may* run themselves. Deliberately omits exploit, brute-force,
-password-spray, and payload-delivery commands.
+lab mode, also emits `out/<host>/manual_commands.txt` — service-specific
+enumeration commands the operator *may* run themselves. The cheatsheet
+file is advisory and does not drive Drederick's execution path;
+exploits, credential attacks, and payload delivery run through the
+[`ExploitToolbox`](ARCHITECTURE.md#layer-exploit) and
+[post-ex layer](POST_EXPLOITATION.md), not by parsing this text.
 
 The cheatsheet recognizes: `http`/`https`, `ssh`, `ftp`, `smtp`, `dns`,
 `smb` (`microsoft-ds`, `netbios-ssn`), `ldap`, `snmp`, `rpcbind`,
@@ -248,10 +263,11 @@ a generic `nmap --script safe,default,discovery,version` suggestion.
 
 ### `SqliteReport`
 
-Writes `out/findings.db` — seven tables (`hosts`, `services`, `findings`,
-`cves`, `poc_refs`, `poc_sources`, `tooling`). Authoritative DDL in
-`SqliteReport.EnsureSchema`; doc mirror in [`DB_SCHEMA.md`](./DB_SCHEMA.md).
-Browsed via Datasette ([`DATASETTE.md`](./DATASETTE.md)).
+Writes `out/findings.db` — ten tables (`hosts`, `services`, `findings`,
+`cves`, `poc_refs`, `poc_sources`, `tooling`, `exploit_runs`, `sessions`,
+`loot`). Authoritative DDL in `SqliteReport.EnsureSchema`; doc mirror in
+[`DB_SCHEMA.md`](./DB_SCHEMA.md). Browsed via Datasette
+([`DATASETTE.md`](./DATASETTE.md)).
 
 ## Enrichment (not `IReconTool` — runs after recon completes) {#enrichment}
 
@@ -265,18 +281,40 @@ cache. Opt-out via `DREDERICK_SKIP_CVE=1`.
 ### `PocAggregator` + `IPocSource` implementations
 
 For every annotated CVE, walks the registered PoC sources —
-`SearchsploitSource` (Exploit-DB), plus (in progress) GHSA, Metasploit
-module names, nuclei template IDs — records a `poc_refs` row per pointer
-and caches the source under `out/poc_cache/<source>/<external_id>/` with
-SHA-256 provenance in `poc_sources`. Default-on; opt out with
-`--no-fetch-poc`. **Drederick never executes cached PoC code and never
-initiates outbound requests from it.**
+`SearchsploitSource` (Exploit-DB), `GhsaSource` (GitHub Security
+Advisories), `MetasploitSource` (module index), `NucleiSource` (template
+index) — records a `poc_refs` row per pointer and caches the source
+under `out/poc_cache/<source>/<external_id>/` with SHA-256 provenance in
+`poc_sources`. Artifacts are stored **verbatim**. Default-on; opt out
+with `--no-fetch-poc`. Execution of cached PoCs is handled by
+[`ExploitRunner`](ARCHITECTURE.md#layer-exploit) under
+`--allow-exec-pocs`, not by `PocAggregator` itself.
 
-## Planned enrichment sources {#enrichment-planned}
+## Offensive toolbox (exploit + post-ex) {#offensive-toolbox}
 
-- **GHSA source** — GitHub Security Advisory mappings for the CVE set
-  (pointers only, no code fetch).
-- **Metasploit module source** — offline grep of the MSF modules tree
-  detected by `drederick doctor` — record module names only.
-- **Nuclei template source** — offline index of installed nuclei templates
-  — record template IDs only.
+Exploit, credential, payload, and post-ex tools under
+`src/Drederick/Exploit/` are documented in
+[`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) and the
+[`Drederick.Exploit` architecture section](ARCHITECTURE.md#layer-exploit).
+Each one follows the same pattern as a recon tool (`_scope.Require` as
+first statement, audit bracketing, typed result) plus a
+[`RunPermissions`](../src/Drederick/Exploit/RunPermissions.cs) category
+gate. Summary:
+
+| Tool | Category flag(s) |
+| ---- | ---------------- |
+| `ExploitRunner` (cached PoC spawn) | `--allow-exec-pocs` |
+| `MsfRcRunner` (msfconsole `-r`) | `--allow-exec-pocs` (+ `--allow-payloads` when delivering) |
+| `NucleiRunner` | `--allow-exec-pocs` |
+| `PasswordSprayTool` | `--allow-cred-attacks` + `--acknowledge-lockout-risk` |
+| `MultiStageExploitRunner` | `--allow-exec-pocs` + `--allow-payloads` |
+| `PostExLinux` / `PostExWindows` | (via session opened by exploit tools) |
+| `SessionPivotProber` | (post-ex; pivot CIDRs re-checked per-IP) |
+
+## Jeopardy CTF subsystem {#jeopardy-subsystem}
+
+`src/Drederick/Jeopardy/` is a separate pipeline for challenge-based CTFs
+(CTFd polling, LLM-driven solving, sandboxed tool execution, flag
+submission). It is orthogonal to the offensive recon/exploit toolbox but
+shares `Scope`, `AuditLog`, and `KnowledgeBase`. See
+[`JEOPARDY.md`](JEOPARDY.md).

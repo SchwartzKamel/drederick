@@ -24,7 +24,12 @@ related:
 
 - Engine: SQLite 3, `PRAGMA foreign_keys = ON`.
 - File path: `out/findings.db` (override via `drederick --out <dir>`).
-- 7 tables, idempotent upserts across runs.
+- 11 tables, idempotent upserts across runs. The recon/enrichment core
+  (`hosts`, `services`, `findings`, `cves`, `poc_refs`, `poc_sources`,
+  `tooling`) is augmented by the offensive-harness tables
+  (`exploit_runs`, `sessions`, `loot`) and the operator-annotation table
+  (`notes`, DDL in
+  [`NotesSchema.cs`](../src/Drederick/Reporting/NotesSchema.cs)).
 - Convention: all timestamps are **ISO-8601 strings** in UTC.
 
 <a id="tables"></a>
@@ -146,6 +151,88 @@ Result of `drederick doctor`.
 | `path`        | TEXT    |                      | Binary path. |
 | `detected_at` | TEXT    | NOT NULL             | ISO-8601 UTC. |
 
+### `exploit_runs` {#table-exploit-runs}
+
+One row per spawned offensive invocation (nuclei, msfconsole PoC,
+password spray, cached exploit). Written by `SqliteReport.UpsertExploitRun`
+from an `ExploitRunRecord`
+([`Exploit/ExploitResult.cs`](../src/Drederick/Exploit/ExploitResult.cs)).
+
+| column            | type    | constraints                | notes |
+| ----------------- | ------- | -------------------------- | ----- |
+| `id`              | INTEGER | PRIMARY KEY                |       |
+| `tool`            | TEXT    | NOT NULL                   | Kebab-case `IExploitTool.Name` (`nuclei-runner`, `msf-rc-runner`, `password-spray`, …). |
+| `target`          | TEXT    | NOT NULL                   | Primary scope-validated target (IP / host / URL). |
+| `category`        | TEXT    | NOT NULL                   | `ExecPocs` / `CredAttacks` / `Payloads` / `Destructive` / `Dos`. See [`ExploitCategory.cs`](../src/Drederick/Exploit/ExploitCategory.cs). |
+| `invocation_id`   | TEXT    | NOT NULL, UNIQUE           | 16-hex-char id minted by `ExploitRunner.NewWorkingDir`; matches the working-dir segment. |
+| `artifact`        | TEXT    |                            | Path to cached PoC / module / template that was executed (nullable for ad-hoc). |
+| `artifact_sha256` | TEXT    |                            | SHA-256 of `artifact` when present. |
+| `argv_digest`     | TEXT    | NOT NULL                   | SHA-256 over `binary + " " + arguments`; stable for identical argv across runs. |
+| `exit_code`       | INTEGER |                            | Subprocess exit code; NULL until finish upsert. |
+| `started_at`      | TEXT    | NOT NULL                   | ISO-8601 UTC. |
+| `finished_at`     | TEXT    |                            | ISO-8601 UTC; NULL while in-flight. |
+| `stdout_bytes`    | INTEGER |                            | Full (un-truncated) stdout size. |
+| `stdout_sha256`   | TEXT    |                            | SHA-256 of full stdout. |
+| `stderr_bytes`    | INTEGER |                            | Full stderr size. |
+| `stderr_sha256`   | TEXT    |                            | SHA-256 of full stderr. |
+| `work_dir`        | TEXT    |                            | `out/<sanitized-target>/<tool>/<invocation_id>/`. |
+| `error`           | TEXT    |                            | Runner-level error (timeout, spawn failure) — not subprocess stderr. |
+
+Indices: `idx_exploit_runs_target(target)`, `idx_exploit_runs_tool(tool)`.
+Note: truncated stdout/stderr live **only** in `ExploitRunRecord` JSON
+(reports / audit entries), never in SQLite — SHA-256 + byte count is the
+contract.
+
+### `sessions` {#table-sessions}
+
+One row per opened interactive session (Meterpreter, SSH, WinRM, …).
+Written by `SqliteReport.UpsertSession` from a `SessionRecord`.
+
+| column       | type    | constraints          | notes |
+| ------------ | ------- | -------------------- | ----- |
+| `id`         | INTEGER | PRIMARY KEY          |       |
+| `session_id` | TEXT    | NOT NULL, UNIQUE     | Opaque id assigned by `SessionManager`. |
+| `target`     | TEXT    | NOT NULL             | Scope-validated target the session is on. |
+| `protocol`   | TEXT    | NOT NULL             | `meterpreter` / `ssh` / `winrm` / …. |
+| `via_tool`   | TEXT    | NOT NULL             | `IExploitTool.Name` that opened the session. |
+| `opened_at`  | TEXT    | NOT NULL             | ISO-8601 UTC. |
+| `closed_at`  | TEXT    |                      | ISO-8601 UTC; NULL while session is live. |
+
+Index: `idx_sessions_target(target)`.
+
+### `loot` {#table-loot}
+
+One row per captured secret (credential, hash, Kerberos ticket, file).
+Only the SHA-256 of the secret is stored here; plaintext stays in
+`out/<host>/loot/` — see
+[`@invariant-id:no-exfiltration`](../docs/SCOPE_AND_LEGAL.md#invariants).
+
+| column         | type    | constraints                          | notes |
+| -------------- | ------- | ------------------------------------ | ----- |
+| `id`           | INTEGER | PRIMARY KEY                          |       |
+| `target`       | TEXT    | NOT NULL                             | Scope-validated target the loot was captured from. |
+| `kind`         | TEXT    | NOT NULL                             | `credential` / `nt-hash` / `kerberos-ticket` / `session-key` / `secret-file` / …. |
+| `value_sha256` | TEXT    | NOT NULL                             | SHA-256 of the captured secret. Plaintext never appears in this table. |
+| `source_tool`  | TEXT    | NOT NULL                             | `IExploitTool.Name` that captured it. |
+| `captured_at`  | TEXT    | NOT NULL                             | ISO-8601 UTC. |
+| `metadata`     | TEXT    |                                      | Optional JSON (realm, username, filename, …). |
+| —              | —       | `UNIQUE(target, kind, value_sha256)` | Dedup across re-runs. |
+
+Index: `idx_loot_target(target)`.
+
+### `notes` {#table-notes}
+
+Operator/CTF annotations (flags, credentials, screenshots, commands).
+DDL is owned by
+[`NotesSchema.cs`](../src/Drederick/Reporting/NotesSchema.cs) and
+appended to the core schema by `SqliteReport.EnsureSchema`. Highlights:
+`category` is `CHECK`-constrained to
+`('flag','credential','exploit','screenshot','command','note')`;
+`source` to `('cli','ui','import')`. `host_id` is TEXT (not a SQL FK)
+because notes may attach to a free-form host label; `service_id` is a
+nullable `INTEGER`. Full column list and facet configuration are in
+[`datasette/metadata.json`](../datasette/metadata.json).
+
 <a id="foreign-keys"></a>
 ## Foreign keys + cross-table links
 
@@ -157,6 +244,9 @@ Result of `drederick doctor`.
 | `findings.data_json$.cve_id` | `cves.cve_id`         | **Logical** (JSON) | Use `json_extract(f.data_json, '$.cve_id')`. Not a SQL FK. |
 | `poc_refs.cve_id`            | `cves.cve_id`         | Logical | Matched by string equality. |
 | `poc_sources.(source, external_id)` | `poc_refs.(source, external_id)` | Logical | Same compound key, no SQL FK. |
+| `exploit_runs.artifact` → `poc_sources.path` | | Logical (path match) | When an `ExecPocs` run fires a cached PoC, `artifact` is the `poc_sources.path` value and `artifact_sha256` equals `poc_sources.sha256`. |
+| `sessions.via_tool` → `exploit_runs.tool`    | | Logical | Same kebab-case `IExploitTool.Name` vocabulary. |
+| `loot.source_tool` → `exploit_runs.tool`     | | Logical | Same kebab-case `IExploitTool.Name` vocabulary. |
 
 <a id="joins"></a>
 ## Common JOIN patterns
@@ -302,12 +392,14 @@ following. Breaking any of these requires a migration + a changelog note.
 
 | id | Invariant |
 | -- | --------- |
-| `@schema:seven-tables` | Exactly seven tables: `hosts`, `services`, `findings`, `cves`, `poc_refs`, `poc_sources`, `tooling`. New tables may be added; these seven won't be renamed or dropped. |
+| `@schema:core-tables-stable` | These tables won't be renamed or dropped: `hosts`, `services`, `findings`, `cves`, `poc_refs`, `poc_sources`, `tooling`, `exploit_runs`, `sessions`, `loot`, `notes`. New tables may be added. |
 | `@schema:idempotent-upsert` | Every writer is idempotent — re-running a scan does not duplicate rows. |
 | `@schema:findings-dedup-index` | `UNIQUE INDEX idx_findings_unique(host_id, COALESCE(service_id, 0), kind, data_json)` is the dedup contract. |
 | `@schema:cve-join-via-json` | `findings ↔ cves` joins go through `json_extract(findings.data_json, '$.cve_id')`. Do not add a SQL FK — the `cves.cve_id` pool is larger than `findings`. |
 | `@schema:iso8601-utc` | All timestamp columns are ISO-8601 strings in UTC. |
 | `@schema:poc-cache-provenance` | Every row in `poc_sources` carries a non-null `sha256`. Readers may treat mismatch vs on-disk file as a cache-poisoning signal. |
-| `@schema:label-columns` | Datasette label columns: `hosts.address`, `cves.cve_id`, `tooling.name`. These stay stable so facet navigation doesn't break. |
+| `@schema:label-columns` | Datasette label columns: `hosts.address`, `cves.cve_id`, `tooling.name`, `notes.title`. These stay stable so facet navigation doesn't break. |
 | `@schema:kind-vocab-controlled` | New `findings.kind` values require an entry in [`kind` vocabulary](#kind-vocab). Do not invent ad-hoc kinds. |
-| `@schema:poc-never-executed` | `poc_sources.path` is storage only. No reader in this codebase may exec, chmod +x, import, or HTTP-fetch from files at those paths. See [`SCOPE_AND_LEGAL.md#aggregate-vs-execute`](SCOPE_AND_LEGAL.md#aggregate-vs-execute). |
+| `@schema:loot-digest-only` | `loot.value_sha256` is the **only** representation of a captured secret in SQLite — plaintext never appears in any column of any table. See [`@invariant-id:no-exfiltration`](SCOPE_AND_LEGAL.md#invariants). |
+| `@schema:exploit-runs-append-mostly` | `exploit_runs` is upserted by `invocation_id`; `started_at` is immutable after first insert, only `finished_at` / `exit_code` / stdout-stderr digests / `error` change on the finish upsert. |
+| `@schema:argv-digest-stable` | `exploit_runs.argv_digest` = `sha256(binary + " " + arguments)`. Stable across runs — safe to use as a correlation key in dashboards and cross-session queries. |

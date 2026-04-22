@@ -4,7 +4,7 @@ audience: [humans, agents]
 primary: humans
 stability: stable
 last_audited: 2026-04
-related: [SCOPE_AND_LEGAL.md, DEVELOPING.md, ../SECURITY.md, ../README.md]
+related: [SCOPE_AND_LEGAL.md, POST_EXPLOITATION.md, LLM_SETUP.md, DEVELOPING.md, ../SECURITY.md, ../README.md]
 ---
 
 # Credential Storage & Management
@@ -284,20 +284,42 @@ drederick --help 2>&1 | grep -i credential  # Show credential sources
 
 ## Security Reminders
 
-### Drederick Never Executes PoCs
+### Scope is the authorization boundary
 
-Drederick **aggregates** public PoC artefacts from Exploit-DB but **never executes** them. This is safe for untrusted networks and protected labs.
+Drederick is a **full-auto offensive security harness** inside scope. It
+discovers, fingerprints, **and** executes cached PoCs, drives Metasploit,
+runs credential attacks, delivers payloads, and handles post-ex — all
+gated on per-category opt-in flags (`--allow-exec-pocs`,
+`--allow-cred-attacks` + `--acknowledge-lockout-risk`, `--allow-payloads`,
+`--allow-destructive`, `--allow-dos`). **Outside scope it does nothing.**
+Every network-touching tool re-checks the scope allow-list as its first
+statement — there is no flag, env var, debug build, or prompt phrasing
+that disables that check. See
+[SCOPE_AND_LEGAL.md](SCOPE_AND_LEGAL.md#invariants).
 
-### Credentials Are Used for Discovery Only
+### Operator credentials vs captured credentials
 
-Credentials are **only used for reconnaissance** (nmap, DNS, LDAP). They're never used for exploitation or payload delivery. Drederick is scope-enforced and operator-controlled.
+Two distinct categories live in this document's orbit:
+
+- **Operator credentials** — the tokens documented above (HTB API
+  tokens, `OPENAI_API_KEY`, proxy credentials). These authenticate
+  *you* to external services. Store them in environment variables or
+  `~/.drederick/config.json` with `chmod 600`.
+- **Captured credentials** — material Drederick obtains during a run
+  (cracked hashes, captured tickets, successful spray results). These
+  land in `out/` (see `loot` / `exploit_runs` / `sessions` tables in
+  `findings.db`) and are never exfiltrated to a third party. Plaintext
+  passwords attempted during credential attacks are **never** logged —
+  `audit.jsonl` records a SHA-256 of the attempted secret so the
+  operator can correlate without leaking wordlists.
 
 ### Always Respect Scope Boundaries
 
 Scope enforcement is **mandatory**. Before scanning:
 1. Verify your scope file contains only authorized targets
 2. Use `--require-vpn` for lab/CTF work (HTB protection)
-3. Use `--no-lab` for stricter scope enforcement in production
+3. Use `--no-lab` for stricter scope enforcement in production — every
+   exploitation category becomes opt-in per flag
 
 ### Revoke Credentials on Exit
 

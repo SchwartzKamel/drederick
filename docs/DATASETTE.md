@@ -96,7 +96,7 @@ datasette serve out/findings.db --metadata datasette/metadata.json \
 ## First 30 seconds
 
 1. **Home page** (`/`) — lists the databases. You'll see one: `findings`.
-2. **Database page** (`/findings`) — lists all seven tables with row counts
+2. **Database page** (`/findings`) — lists all eleven tables with row counts
    and the five canned queries.
 3. **Table page** (`/findings/<table>`) — rows with clickable facets in the
    sidebar. `?service=http` or `?proto=tcp` filters in place.
@@ -109,8 +109,13 @@ datasette serve out/findings.db --metadata datasette/metadata.json \
 
 ## Schema walkthrough
 
-Seven tables, all emitted by `SqliteReport.EnsureSchema`. One row per real
-thing; idempotent upserts across runs.
+Eleven tables, emitted by `SqliteReport.EnsureSchema` (+ appended
+`NotesSchema.GetCreateTableDdl()`). One row per real thing; idempotent
+upserts across runs. The recon/enrichment core is `hosts`, `services`,
+`findings`, `cves`, `poc_refs`, `poc_sources`, `tooling`; the offensive
+harness adds `exploit_runs`, `sessions`, `loot`; operator annotations
+live in `notes`. Machine-readable column reference:
+[`DB_SCHEMA.md`](DB_SCHEMA.md).
 
 ### `hosts`
 
@@ -203,6 +208,67 @@ Result of `drederick doctor`. Unique on `name`.
 | `source`  | `apt` / `dnf` / `pacman` / `zypper` / `brew` / `pipx` / `uv` / `go` / `gem` / `path`. |
 | `path`    | Binary path on `PATH`. |
 
+### `exploit_runs`
+
+One row per spawned offensive invocation. Written by
+`SqliteReport.UpsertExploitRun` from
+[`ExploitRunRecord`](../src/Drederick/Exploit/ExploitResult.cs).
+Unique on `invocation_id`.
+
+| Column | Meaning |
+| ------ | ------- |
+| `tool` / `target` / `category` | `IExploitTool.Name`, scope-validated target, `ExecPocs` / `CredAttacks` / `Payloads` / `Destructive` / `Dos`. |
+| `invocation_id`                | 16-hex-char id; matches the working-dir segment on disk. |
+| `artifact` / `artifact_sha256` | Cached PoC / module / template path + hash (nullable). |
+| `argv_digest`                  | `sha256(binary + " " + arguments)` — stable across runs. |
+| `exit_code`                    | Subprocess exit code (NULL until finish). |
+| `started_at` / `finished_at`   | ISO-8601 UTC. |
+| `stdout_bytes` / `stdout_sha256` / `stderr_bytes` / `stderr_sha256` | Full size + hash; truncated bodies live in JSON reports, not SQLite. |
+| `work_dir`                     | `out/<host>/<tool>/<invocation_id>/`. |
+| `error`                        | Runner-level error (timeout, spawn failure), not subprocess stderr. |
+
+### `sessions`
+
+One row per interactive session opened (Meterpreter, SSH, WinRM, …).
+Unique on `session_id`.
+
+| Column | Meaning |
+| ------ | ------- |
+| `session_id` | Opaque id assigned by `SessionManager`. |
+| `target`     | Scope-validated target. |
+| `protocol`   | `meterpreter` / `ssh` / `winrm` / …. |
+| `via_tool`   | `IExploitTool.Name` that opened the session. |
+| `opened_at` / `closed_at` | ISO-8601 UTC; `closed_at` is NULL while the session is live. |
+
+### `loot`
+
+One row per captured secret. **Plaintext never appears in this table**
+— `value_sha256` is the only representation (see
+[`SCOPE_AND_LEGAL.md`](./SCOPE_AND_LEGAL.md), `@invariant-id:no-exfiltration`).
+Plaintext stays in `out/<host>/loot/`. Unique on
+`(target, kind, value_sha256)`.
+
+| Column | Meaning |
+| ------ | ------- |
+| `target`       | Scope-validated target the loot came from. |
+| `kind`         | `credential` / `nt-hash` / `kerberos-ticket` / `session-key` / `secret-file` / …. |
+| `value_sha256` | SHA-256 of the captured secret. |
+| `source_tool`  | `IExploitTool.Name` that captured it. |
+| `captured_at`  | ISO-8601 UTC. |
+| `metadata`     | Optional JSON (realm, username, filename, …). |
+
+### `notes`
+
+Operator / CTF annotations — flags, credentials, screenshots, and
+arbitrary tactical notes. DDL comes from
+[`NotesSchema.cs`](../src/Drederick/Reporting/NotesSchema.cs) and is
+appended onto the core schema by `SqliteReport.EnsureSchema`.
+Searchable via Datasette on `title` / `content` / `tags`; faceted on
+`category` / `is_flag` / `is_archived`. `category` is `CHECK`-
+constrained to `('flag','credential','exploit','screenshot','command','note')`.
+See [`datasette/metadata.json`](../datasette/metadata.json) for the
+column-level descriptions surfaced in the UI.
+
 ### How the tables join
 
 ```mermaid
@@ -242,6 +308,13 @@ All live at `/findings/<name>`.
 | `pocs_by_source`      | Count of PoC references per upstream source (`exploit-db`, `github`, …). |
 | `tooling_detected`    | Alphabetical dump of the `tooling` table. Run after `drederick doctor`. |
 | `top_cves_by_cvss`    | Top 50 CVEs by CVSS (NULLs last). Broad severity skim. |
+
+> **Offensive-harness tables not yet faceted.** `exploit_runs`,
+> `sessions`, and `loot` are served by Datasette with default column
+> views and no metadata facets / canned queries. Filter ad-hoc via
+> `?tool=…` / `?category=…` / `?protocol=…` on the table pages, or use
+> the custom-SQL recipes below. Adding facets and canned queries for
+> these is tracked as a datasette-zone follow-up.
 
 ## Custom SQL recipes
 
@@ -296,6 +369,37 @@ WHERE f.kind = 'smb'
   AND json_extract(f.data_json, '$.signing_required') = 0;
 ```
 
+### Exploit runs that opened a session
+
+```sql
+SELECT e.target, e.tool, e.category, e.exit_code,
+       s.session_id, s.protocol, s.opened_at, s.closed_at
+FROM exploit_runs e
+JOIN sessions s ON s.via_tool = e.tool AND s.target = e.target
+WHERE e.exit_code = 0
+ORDER BY s.opened_at DESC;
+```
+
+### Most-fired exploit tools this run
+
+```sql
+SELECT tool, category, COUNT(*) AS runs,
+       SUM(CASE WHEN exit_code = 0 THEN 1 ELSE 0 END) AS succeeded
+FROM exploit_runs
+GROUP BY tool, category
+ORDER BY runs DESC;
+```
+
+### Loot captured per host (digests only — plaintext stays in `out/<host>/loot/`)
+
+```sql
+SELECT target, kind, COUNT(*) AS captures,
+       MAX(captured_at) AS last_capture
+FROM loot
+GROUP BY target, kind
+ORDER BY target, kind;
+```
+
 ### Diff between two scan runs (services seen today vs. the cross-run KB)
 
 Datasette shows the **current** `findings.db`; for cross-run deltas the
@@ -330,10 +434,19 @@ The intended path from "scan finished" to "I know what to manually try":
    in your editor. Read it. This is where your brain earns its keep.
 5. **Cross-check with `poc_sources`.** Confirm the `sha256` matches what's
    on disk — guard against stale cache or tampering.
-6. **Decide**. If you choose to run the PoC, do it **outside Drederick**,
-   from a host you control, against a target you are authorized to
-   compromise. Drederick will not invoke the PoC for you, and that is not
-   a feature gap — see [`SCOPE_AND_LEGAL.md`](./SCOPE_AND_LEGAL.md).
+6. **Decide**. If you choose to run the PoC automatically, Drederick
+   can drive it for you — `ExploitRunner` / `NucleiRunner` /
+   `MsfRcRunner` execute cached PoCs, Metasploit modules, and nuclei
+   templates against scope-validated targets when the corresponding
+   per-run opt-in is enabled (`--allow-exec-pocs`, plus
+   `--allow-destructive` / `--allow-payloads` / `--allow-cred-attacks`
+   / `--allow-dos` for higher-blast-radius categories; lab mode turns
+   most of these on by default, strict mode requires them explicitly).
+   Every spawn is recorded in the `exploit_runs` table (argv digest,
+   exit code, stdout/stderr hashes) and the `audit.jsonl` log. Scope
+   is still load-bearing: every host in argv is re-checked through
+   `Scope.Require` before the subprocess starts — see
+   [`SCOPE_AND_LEGAL.md`](./SCOPE_AND_LEGAL.md).
 
 ## Security notes
 

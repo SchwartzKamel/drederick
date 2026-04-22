@@ -13,6 +13,10 @@ related:
   - docs/DEVELOPING.md
   - docs/MODULES.md
   - docs/DB_SCHEMA.md
+  - docs/POST_EXPLOITATION.md
+  - docs/JEOPARDY.md
+  - docs/COMPARISON.md
+  - docs/CREDENTIALS.md
 ---
 -->
 
@@ -86,6 +90,9 @@ Build, test, and run commands you can rely on.
 | `drederick --no-fetch-poc` | Skip PoC source caching. | `src/Drederick/Enrichment/PocAggregator.cs` | `PocAggregatorTests` |
 | `drederick --allow-dos` / `--allow-destructive` / `--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` / `--acknowledge-lockout-risk` | Per-run opt-ins for high-blast-radius categories (required in strict mode; defaults on in lab mode except `--allow-dos`). | `src/Drederick/Cli/*` | `OptInFlagTests` |
 | `dotnet run --project src/Drederick.UI` | Launch the Avalonia point-and-click operator console. | `src/Drederick.UI/**`, `src/Drederick/Host/**` | `tests/Drederick.UI.Tests/**` |
+| `drederick ctf-solve --scope … --ctfd <url> [--models <csv>]` | Jeopardy CTF swarm: race multiple LLMs across every challenge, auto-submit flags. | `src/Drederick/Jeopardy/**`, `src/Drederick/Cli/CommandLineOptions.cs` | `tests/Drederick.Tests/Jeopardy/**` |
+| `drederick ctf-msg --kind <hint\|focus\|skip\|stop\|shutdown> [--challenge …] [--text …]` | Inject mid-run operator hint / control signal into a live `ctf-solve` session. | `src/Drederick/Jeopardy/Cli/**`, `src/Drederick/Jeopardy/Bus/**` | `tests/Drederick.Tests/Jeopardy/**` |
+| `drederick --autopilot` | End-to-end recon → exploit → loot → session chain driven by `AutopilotRunner`. | `src/Drederick/Autopilot/**` | `AutopilotRunnerTests` |
 
 Continuous integration is wired in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
 release artifacts via [`.github/workflows/release.yml`](.github/workflows/release.yml).
@@ -131,6 +138,22 @@ surgical edits, identify the owning concept first.
 | `Makefile` | `quickstart`, `bootstrap`, `publish`, `install` targets. | build |
 | `.github/workflows/ci.yml` | CI build + test. | ci |
 | `.github/workflows/release.yml` | Release artifact pipeline. | release |
+| `src/Drederick/Jeopardy/Ctfd/` | `CtfdClient` — CTFd v3 API client (list challenges, submit flag, track solves). | jeopardy-ctfd |
+| `src/Drederick/Jeopardy/Llm/` | Multi-backend LLM wiring (Copilot SDK, Azure OpenAI, llama.cpp). | jeopardy-llm |
+| `src/Drederick/Jeopardy/Sandbox/` | `Dockerfile.jeopardy-sandbox`, sandbox launcher, `--network none` policy. | jeopardy-sandbox |
+| `src/Drederick/Jeopardy/Solver/` | Per-category solver loops (web / crypto / pwn / rev / forensics / misc / osint). | jeopardy-solver |
+| `src/Drederick/Jeopardy/Swarm/` | `SolverSwarm` — races multiple models per challenge; first-to-solve wins. | jeopardy-swarm |
+| `src/Drederick/Jeopardy/Coordinator/` | `FlagSubmitCoordinator`, solve dedup, challenge-state machine. | jeopardy-coordinator |
+| `src/Drederick/Jeopardy/Bus/` | `SolverMessageBus` — cross-solver hint bus + operator `ctf-msg` injection. | jeopardy-bus |
+| `src/Drederick/Jeopardy/Budget/` | `CostTracker`, `BudgetExceededException`, per-challenge token caps. | jeopardy-budget |
+| `src/Drederick/Jeopardy/Detection/` | `LoopDetector` — exact-repeat / AB-oscillation / no-progress detection. | jeopardy-detection |
+| `src/Drederick/Jeopardy/Prompts/` | Category-specific Tatum-voiced prompt templates. | jeopardy-prompts |
+| `src/Drederick/Jeopardy/Cli/` | `ctf-solve` / `ctf-msg` subcommand handlers. | jeopardy-cli |
+| `src/Drederick/Jeopardy/Submit/` | Flag-submission pipeline with plaintext redaction. | jeopardy-submit |
+| `src/Drederick/Jeopardy/Ops/` | Jeopardy operational helpers (run state, reporting). | jeopardy-ops |
+| `src/Drederick/Autopilot/` | `AutopilotRunner`, `ExploitationPlanner`, `CredentialStore`, `FlagExtractor`, `AutopilotReporter`. | autopilot |
+| `src/Drederick/Ops/` | Operational helpers: `HtbRanges`, `VpnDetector`. | ops |
+| `src/Drederick/Bundling/` | `DatasetteBootstrap`, `BootstrapOptions` (bundled Datasette bring-up). | bundling |
 
 <a id="extension-points"></a>
 ## Extension points
@@ -292,12 +315,20 @@ each other's zones. Current canonical zones:
 | ---- | ----------- |
 | `ci-build-workflow` | `.github/workflows/ci.yml` |
 | `release-pipeline`  | `.github/workflows/release.yml` |
-| `docs-audit-index`  | `docs/**`, `AGENTS.md`, `README.md` (non-code edits), `docs/DB_SCHEMA.md`, `.github/copilot-instructions.md` (top-of-file pointer only) |
+| `docs-audit-index`  | `docs/README.md`, `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `docs/COMPARISON.md` |
 | `recon-*`           | `src/Drederick/Recon/**` |
 | `exploit-*`         | `src/Drederick/Exploit/**` |
 | `enrichment-*`      | `src/Drederick/Enrichment/**` |
 | `scope-policy`      | `src/Drederick/Scope/**` |
 | `ui-shell`          | `src/Drederick.UI/**`, `tests/Drederick.UI.Tests/**`, `src/Drederick/Host/**` |
+| `autopilot`         | `src/Drederick/Autopilot/**` |
+| `ops`               | `src/Drederick/Ops/**` |
+| `bundling`          | `src/Drederick/Bundling/**` |
+| `jeopardy-*`        | `src/Drederick/Jeopardy/**` (sub-zones per subdirectory: `jeopardy-ctfd`, `jeopardy-llm`, `jeopardy-sandbox`, `jeopardy-solver`, `jeopardy-swarm`, `jeopardy-coordinator`, `jeopardy-bus`, `jeopardy-budget`, `jeopardy-detection`, `jeopardy-prompts`, `jeopardy-cli`, `jeopardy-submit`, `jeopardy-ops`) |
+| `docs-audit-index`    | (see above — narrowed zone) |
+
+| `docs-audit-reference`| `docs/SCOPE_AND_LEGAL.md`, `docs/DEVELOPING.md`, `docs/MODULES.md`, `docs/DB_SCHEMA.md`, `docs/ARCHITECTURE.md` |
+| `docs-audit-*`        | per-doc zones under `docs/**` (one owner per file during concurrent audits) |
 
 Before editing, check this table and the working agent list. If two
 scopes overlap, coordinate via issue comments — do not racewrite.

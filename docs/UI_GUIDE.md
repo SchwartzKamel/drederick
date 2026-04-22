@@ -5,6 +5,7 @@ primary: humans
 stability: evolving
 last_audited: 2026-04
 related:
+  - UI.md
   - DATASETTE.md
   - ARCHITECTURE.md
   - SCOPE_AND_LEGAL.md
@@ -12,125 +13,74 @@ related:
 
 # UI guide
 
-> **TL;DR.** Current UI = Datasette (`drederick serve`). React dashboard is
-> **planned, not implemented**. Use the CLI + Datasette until
-> `src/Drederick.Web` lands.
+> **Consolidation note.** This file used to describe a planned React
+> dashboard that was never built. The Avalonia operator console landed
+> instead (see [`UI.md`](./UI.md)). Most of this file is now a thin
+> pointer into the two canonical UI docs; it is flagged for
+> consolidation — the main agent can decide whether to fold it into
+> UI.md or keep it as a landing page.
 
-Drederick has two UIs on its roadmap. Datasette is the **usable-today UI**;
-the React dashboard is the **planned forward-looking UI**.
+Drederick ships two operator-facing UIs:
 
-## Current UI: Datasette
+| Surface | Purpose | Authoritative doc |
+| ------- | ------- | ----------------- |
+| **Avalonia operator console** (`Drederick.UI`) | Live launcher: compose scope, pick targets, launch recon, watch progress, triage findings, author notes, detect operator tooling. | [`UI.md`](./UI.md) |
+| **Datasette** (`drederick serve`) | Post-run SQL triage over `out/findings.db` with canned queries for CVE/PoC workflows. | [`DATASETTE.md`](./DATASETTE.md) |
 
-Every run writes `out/findings.db`. `drederick serve` launches
-[Datasette](https://datasette.io/) against it with labelled tables, facets,
-and five canned queries tuned for CVE / PoC / tooling triage.
+## Quickstart
 
 ```bash
+# Live operator console (Avalonia, net10):
+dotnet run --project src/Drederick.UI
+
+# Post-run SQL triage (Datasette):
 drederick serve --out out/
 # → http://127.0.0.1:8001
 ```
 
-For the full schema walkthrough, facet navigation, canned-query reference,
-custom SQL recipes, and the PoC triage workflow, see
-[**`DATASETTE.md`**](./DATASETTE.md) — that is the authoritative doc for
-the current UI.
+Both surfaces are localhost-only and both rely on the same
+scope-enforced engine. Targets entered in the Avalonia console are
+re-validated by `_scope.Require(target)` *inside each tool*, not at the
+UI boundary — the UI cannot escape the allow-list. The UI loads scope
+via the same `ScopeLoader` as the CLI (default-deny, wildcard refusal,
+prefix caps) and never writes back to the scope file the operator
+loaded (the `scope-file-read-only` invariant).
 
-## Planned: React dashboard
+## What lives where
 
-> **Status: WIP.** The React + TypeScript point-and-click UI described below
-> is not yet implemented. This section captures the intended design so it
-> can be picked up in a follow-up PR. Until it lands, use `drederick serve`
-> (Datasette) or the CLI directly.
+- **Scope composition / run launching / progress stream / notes /
+  findings browser / binary analysis / first-run init / operator
+  tooling doctor** — Avalonia console ([`UI.md`](./UI.md)).
+- **Ad-hoc SQL over `findings.db` (hosts, services, findings, cves,
+  poc_refs, poc_sources, exploit_runs, sessions, loot, tooling)** —
+  Datasette ([`DATASETTE.md`](./DATASETTE.md)). The Avalonia console's
+  **Findings → Open in Datasette** button launches `drederick serve`
+  against the currently selected output directory.
 
-### Goals
+## What's still CLI-only
 
-- Point-and-click orchestration for lab/CTF operators.
-- Localhost-only. No remote mode, no cloud mode, no "share scan" button.
-- Surface the scope allow-list prominently: you should always be able to see
-  which targets Drederick will and will not touch.
-- Stream findings live as scanners emit them (Datasette is post-run only).
+The offensive engine (`ExploitRunner`, `MsfDriver`, `CredRunner`,
+`PayloadStager`, session tracking) and the Jeopardy CTF subsystem ship
+today as CLI features. Run them with the per-category opt-in flags
+(`--allow-exec-pocs`, `--allow-cred-attacks`, `--allow-payloads`,
+`--allow-destructive`, `--allow-dos`, `--acknowledge-lockout-risk`).
+Surfacing them in the Avalonia console is tracked in [`UI.md`
+§Deferred](./UI.md#first-iteration-scope).
 
-### Planned architecture
+## Until consolidation
 
-```mermaid
-flowchart TD
-    Browser["Browser<br/>(React / TS / Tailwind)"]
-    Host["ASP.NET Core host<br/>(src/Drederick.Web)"]
-    Core["Drederick core<br/>(Recon / Scope / Audit /<br/>Memory / Enrichment)"]
-    Browser -->|fetch + SignalR| Host
-    Host --> Core
-```
+- **Scope editing** — Avalonia's Scope tab (inline CIDR editor or
+  file browse) or edit `scope.yaml` by hand; `ScopeLoader` validates
+  either path.
+- **Run launching** — Avalonia's Run tab, or
+  `drederick --scope … --target … --out …`.
+- **Live feed** — Avalonia's Progress tab (bound to `ScanEvent`), or
+  `tail -f out/audit.jsonl` during the run.
+- **Report viewing** — `out/report.md`, `out/report.json`,
+  Avalonia's Findings tab, or Datasette.
+- **CVE / PoC triage** — Datasette canned queries
+  (see [`DATASETTE.md`](./DATASETTE.md)).
+- **Notes** — Avalonia's Notes tab (CRUD over `findings.db` notes
+  table).
+- **Manual cheatsheet** — `out/<host>/manual_commands.txt`.
 
-- **Bind:** `127.0.0.1` only.
-- **Auth:** one-time token printed on the CLI by `drederick ui` and also
-  written to `~/.drederick/ui.token`. No password, no user accounts.
-- **Transport:** REST for configuration + commands; SignalR for the live
-  finding/audit stream.
-
-### Planned views
-
-#### 1. Scope editor
-
-- Load/save the YAML scope file.
-- Inline validation against the same rules as `ScopeLoader` (wildcard refusal,
-  prefix caps, syntax).
-- Prominent lab/CTF-only banner.
-- `--lab` toggle is explicit; switching to strict mode or enabling
-  `--allow-broad` is logged to `audit.jsonl`.
-
-#### 2. Run launcher
-
-- Pick scope + targets (or `--expand`).
-- Pick concurrency (`--host-concurrency`, `--service-concurrency`).
-- Pick which tiers to enable (top-1000 TCP → full-range TCP → top-100 UDP).
-- Toggle `--content-discovery` and `--no-fetch-poc` explicitly.
-- Preview of what *will* run (services, expected ports, estimated scanner
-  count).
-- "Start" button and "Stop all" kill-switch.
-
-#### 3. Live dashboard
-
-- Per-host cards with status pills per service.
-- Streaming findings table, SignalR-backed.
-- Per-scanner progress bars.
-- Kill-switch per job or global.
-- Live audit tail (read-only).
-
-#### 4. Report viewer
-
-- Renders the existing `report.md` and `report.json`.
-- Diff against the previous run from `memory/findings.json`.
-- Export to Markdown / JSON.
-- Embedded CVE / PoC triage pane (same data as the Datasette
-  `services_with_pocs` canned query, but wired into the React graph).
-
-#### 5. Manual commands
-
-- Renders `out/<host>/manual_commands.txt` with copy buttons.
-- Clearly marked *"run at your own discretion, outside Drederick"* — copying a
-  command does not make Drederick execute it.
-
-### What the UI will never do
-
-- Send findings to a third party.
-- Execute a cached PoC or make the request a PoC would have made.
-- Expose an "I'm authorized" toggle that disables the scope check.
-- Offer exploit, brute-force, or payload-delivery actions — even behind an
-  "advanced" submenu. These are not supported features of Drederick and
-  won't be supported through a UI either.
-
-### Until the React UI lands
-
-Use the CLI + Datasette. Every piece of data the React UI will eventually
-wrap is already available:
-
-- **Scope editing** — edit `scope.yaml` in your favorite editor;
-  `ScopeLoader` validates on run.
-- **Run launching** — `drederick --scope … --target … --out …` with
-  `--host-concurrency` / `--service-concurrency` / `--content-discovery`
-  / `--no-fetch-poc`.
-- **Live feed** — `tail -f out/audit.jsonl` during the run.
-- **Report viewing** — `out/report.md`, `out/report.json`, and Datasette.
-- **CVE / PoC triage** — the `services_with_pocs` canned query in
-  [`DATASETTE.md`](./DATASETTE.md).
-- **Manual commands** — `out/<host>/manual_commands.txt`.

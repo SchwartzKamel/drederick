@@ -17,9 +17,18 @@ related:
 
 # UI — Drederick operator console
 
-> **Status: experimental.** The Avalonia operator console is a live scan
-> launcher, not a triage surface. Post-run triage still goes through
-> [Datasette](DATASETTE.md); do not reimplement it here.
+> **Status: experimental.** The Avalonia operator console is a live
+> **recon** launcher plus enrichment/triage/notes surface. Post-run SQL
+> triage still goes through [Datasette](DATASETTE.md); do not reimplement
+> it here.
+>
+> **Current scope of this UI.** The console today drives recon, CVE/PoC
+> enrichment, binary analysis, findings browsing, and the notes repo
+> backed by `findings.db`. The offensive subsystem that landed in the
+> engine (`ExploitRunner`, `CredRunner`, `PayloadStager`, `MsfDriver`)
+> and the Jeopardy CTF subsystem are **not yet surfaced in this UI** —
+> run them from the CLI. The doc describes what the XAML + view-models
+> actually render, not an aspirational surface.
 
 Drederick ships two operator-facing UIs that complement each other:
 
@@ -98,11 +107,25 @@ scope check lives inside each recon tool, not at the UI boundary
    - Click **Analyze**: runs `BinaryAnalyzer` on the thread pool, displays
      a text report (metadata, security posture, dependencies, strings,
      findings) on the left and a structured findings list on the right.
-   - `@invariant-id:aggregate-not-execute`: the binary is read only; it is
-     never executed. A minimal local scope (`127.0.0.1/32`) satisfies
-     `_scope.RequireFile(path)` since that check is file-existence only.
+   - The binary is read only; it is never executed. A minimal local
+     scope (`127.0.0.1/32`) satisfies `_scope.RequireFile(path)` since
+     that check is file-existence only.
    - `ui.analyze.start` / `.finish` / `.error` / `.saved` audit events.
-7. **Init tab** *(phase 3)*
+7. **Notes tab**
+   - CRUD over the notes table inside `out/findings.db`
+     (`NotesRepository`): title, content, tags, category
+     (`note` / `flag` / `credential` / `exploit` / `screenshot` /
+     `command`), and an optional flag-format string.
+   - **Refresh** reloads the list; **New Note** clears the form;
+     **Flags Only** filters to flagged rows; the search box runs a
+     repository search.
+   - The right-hand pane is a split create/edit form — select a row to
+     edit, **Archive** / **Delete** / **Save**. The `credential` /
+     `exploit` / `command` categories are *labels on operator-authored
+     notes* (pentest journal entries); they do not execute anything.
+   - Lazy-binds to `{OutputDir}/findings.db`; surfaces a "Run a scan
+     first" message if the DB doesn't exist yet.
+8. **Init tab** *(phase 3)*
    - A single scrollable form with four distinct sections, matching the
      steps of the CLI's `drederick init` wizard:
      - §1 **Verify operator tooling** — Detect button (read-only);
@@ -159,21 +182,28 @@ honours by construction:
 
 | Invariant | UI expression |
 | --------- | ------------- |
-| `@invariant-id:scope-in-every-tool` | UI never spawns scanner binaries; every call goes through `DrederickHost` → `ReconToolbox` → scope-enforced `IReconTool`s. |
-| `@invariant-id:scope-default-deny`  | Start button disabled unless a scope is validated (no file = no scope = no run). |
+| `@invariant-id:scope-in-every-tool` | UI never spawns scanner or exploit binaries directly; every call goes through `DrederickHost` → `ReconToolbox` → scope-enforced `IReconTool`s. Every target typed into the Run tab is re-validated by `scope.Contains(...)` in `RunViewModel.AddTarget` *and* again inside each tool's `_scope.Require(target)`. |
+| `@invariant-id:scope-default-deny`  | Start button disabled unless a scope is validated *and* at least one target is in the list (no file = no scope = no run). |
 | `@invariant-id:scope-wildcard-refused` | Inline CIDR editor shows the raw `ScopeException` text when the operator pastes `0.0.0.0/0` or `::/0`; the refusal is not dismissable from the UI. |
 | `@invariant-id:scope-prefix-cap`   | `Allow-broad` must be clicked *and* confirmed via a separate banner before Start will enable. |
-| `@invariant-id:aggregate-not-execute` | The UI has no "Run PoC", no `chmod +x`, no "Open terminal in poc_cache". A CI-enforced source scan (`UiAssemblyInvariantsTests`) fails if any scanner binary name (`nmap`, `hydra`, `msfconsole`, `crackmapexec`, `responder`, …) or `chmod +x` / `poc_cache` pattern appears in `src/Drederick.UI/`. The one narrowly-allowed subprocess launch is the harness's own `drederick serve` CLI (Datasette over the read-only `findings.db`), invoked by the Findings tab's **Open in Datasette** button. |
-| `@invariant-id:no-credential-attacks` | Zero credential fields. Targets are the only input. |
+| `@invariant-id:scope-file-read-only` | The Scope tab's **Save inline…** button writes a *new* file chosen by the operator; it never silently overwrites the loaded scope file. No code path in the UI writes back to the path in the **Scope file** text box. |
 | `@invariant-id:llm-cannot-escape-scope` | When the "Use agent runner" checkbox is on, the agent routes through the same scope-enforced `AIFunction`s as the CLI. |
+| **UI surface boundary** | The UI in this iteration exposes **recon + enrichment + binary analysis + findings/notes triage + doctor/init**. The offensive engine (`ExploitRunner`, `CredRunner`, `PayloadStager`, `MsfDriver`) and the Jeopardy CTF subsystem exist in the engine but are **CLI-driven today**. `UiAssemblyInvariantsTests` enforces that the UI source tree never directly spawns scanner/exploit binaries (`nmap`, `hydra`, `msfconsole`, `crackmapexec`, `responder`, `evil-winrm`, `impacket-*`, …) or `chmod +x` / anything under `poc_cache` — when exploitation lands in the UI, it will go through `DrederickHost` (which re-checks scope) and not by spawning binaries from the Avalonia process. |
 
 <a id="first-iteration-scope"></a>
 ## Deferred to follow-ups
 
-Explicitly not landing in this iteration, to keep the PR small:
+Explicitly not landing in this iteration:
 
-- **Analyze** (`drederick analyze`) and **Init** (`drederick init`) wizards
-  from the UI — low immediate UX win, heavy dialog logic.
+- **Offensive surface in the UI.** The engine now ships
+  `ExploitRunner`, `MsfDriver`, `CredRunner`, `PayloadStager`, and
+  session tracking. The UI does not yet expose these — operators run
+  them from the CLI with the per-category opt-in flags
+  (`--allow-exec-pocs`, `--allow-cred-attacks`, `--allow-payloads`,
+  `--allow-destructive`). When a UI surface lands it will go through
+  `DrederickHost` and honour the same flags.
+- **Jeopardy CTF subsystem in the UI.** Challenge browser / submission
+  flow is CLI-only today.
 - **UI packaging** (AppImage/MSI/DMG). `dotnet run --project src/Drederick.UI`
   is the supported entry point today; single-release consolidation (one
   artifact producing CLI + GUI) is a separate packaging effort.
@@ -182,8 +212,9 @@ Already landed in phase 2: **DoctorView**, **FindingsView** (with
 "Open in Datasette"), and enrichment parity (CVE annotation, PoC
 aggregation, VPN preflight) inside `DrederickHost.RunAsync`.
 
-Already landed in phase 3: **AnalyzeView** (binary security analysis) and
-**InitView** (first-run setup wizard).
+Already landed in phase 3: **AnalyzeView** (binary security analysis),
+**InitView** (first-run setup wizard), and **NotesView** (CRUD over
+`findings.db` notes table).
 
 <a id="testing"></a>
 ## Testing
@@ -211,9 +242,15 @@ The UI test project covers:
 - `InitViewModelTests` — credential save writes `config.json`; sample-scope
   creates `~/scope.txt`; skips if file already exists; `QuickStart` contains
   key commands; `GetConfigPath` contains `.drederick/config.json`.
-- `UiAssemblyInvariantsTests` — source-tree scan refusing forbidden scanner
-  binary names (`nmap`, `hydra`, `msfconsole`, `crackmapexec`, `responder`,
-  `impacket-GetUserSPNs`, …) and `chmod +x` / `poc_cache` patterns.
+- `NotesViewModelTests` — repository-missing status, create/update/delete,
+  flag filtering, category validation.
+- `UiAssemblyInvariantsTests` — source-tree scan refusing direct scanner
+  / exploit binary spawns from the UI project (`nmap`, `hydra`,
+  `msfconsole`, `crackmapexec`, `responder`, `impacket-GetUserSPNs`,
+  `evil-winrm`, …) and `chmod +x` / `poc_cache` patterns. This is a
+  UI-layer constraint — the *engine* may spawn these binaries via
+  `ReconToolbox` / `ExploitToolbox` with scope re-checks; the UI
+  process does not.
 
 <a id="dependencies"></a>
 ## Dependency posture

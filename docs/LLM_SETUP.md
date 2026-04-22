@@ -6,6 +6,9 @@ stability: evolving
 last_audited: 2026-04
 related:
   - README.md
+  - JEOPARDY.md
+  - COMPARISON.md
+  - POST_EXPLOITATION.md
   - ARCHITECTURE.md
   - SCOPE_AND_LEGAL.md
   - TROUBLESHOOTING.md
@@ -14,367 +17,332 @@ related:
 
 # LLM setup — giving Drederick the unfair advantage
 
-> *"A fair fight is one you didn't prepare well enough for."*
+> *"The best fighters don't pick one weapon — they pick the right weapon
+> for the round. Copilot SDK gives you five families on one token. Azure
+> gives you enterprise discipline. llama.cpp gives you a cornerman who
+> doesn't leave the gym."*
 > — **Drederick Tatum**, pre-bout press conference
 
-This guide turns on Drederick's LLM cornerman. The agent reads the ring,
-calls the next combination, and keeps the knockouts coming. The hard
+Drederick's LLM stack is **provider-plural**. Pick the backend that
+matches your posture; the rest of the harness is identical. The hard
 rules below are non-negotiable: the LLM **cannot escape scope**, cannot
-disable the audit log, and cannot invent targets. Everything it does is
-bracketed by the same invariants the rest of the harness obeys — see
-[`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md).
+disable the audit log, and cannot invent targets. See
+[`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) for the full authorization
+model.
 
-- [What the LLM does (and doesn't)](#what-the-llm-does)
-- [Quickstart — 60 seconds to first LLM-driven scan](#quickstart)
-- [Environment variables](#env-vars)
-- [Choosing a model](#choosing-a-model)
-- [Provider recipes](#provider-recipes)
-  - [OpenAI (default, supported)](#provider-openai)
-  - [OpenAI-compatible gateways](#provider-compatible)
-  - [Azure OpenAI (roadmap)](#provider-azure)
-  - [Ollama / local LLMs (roadmap)](#provider-ollama)
-- [Combining `--agent` with `--autopilot`](#combining-agent-autopilot)
-- [Cost, rate limits, and budgets](#cost)
+- [Provider matrix](#providers)
+- [Which mode uses which provider](#modes)
+- [Copilot SDK](#provider-copilot)
+- [Azure OpenAI](#provider-azure)
+- [llama.cpp](#provider-llamacpp)
+- [`--agent` (recon) — OpenAI-compatible](#provider-agent-recon)
+- [Token precedence and auto-selection](#precedence)
+- [Cost, rate limits, budgets](#cost)
 - [Prompt hygiene and what the model sees](#prompt-hygiene)
 - [Safety — what the LLM cannot do](#safety)
 - [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
 
-<a id="what-the-llm-does"></a>
-## What the LLM does (and doesn't)
+<a id="providers"></a>
+## Provider matrix
 
-Drederick has **three** orchestration modes. Know which one you want:
+Ranked by operator preference for this Microsoft-heavy shop. **Azure and
+Copilot are first-class**; llama.cpp is the escape hatch; raw OpenAI is
+deprioritized and only used today by the legacy `--agent` recon runner.
 
-| Mode | Flag | Brains | Weapons | When to use |
-| ---- | ---- | ------ | ------- | ----------- |
-| Adaptive (default) | *(none)* | Deterministic rules | Recon only | Fast, repeatable, offline; CI pipelines; low-noise rooms. |
-| LLM cornerman | `--agent` | OpenAI chat model via Microsoft Agent Framework | Recon only (today) | You want the model to pick the **next probe** based on prior findings; diffing HTB boxes over repeat runs; unfamiliar surface. |
-| Autopilot | `--autopilot` | Deterministic fight-card planner | **Exploit** (nuclei, credential spray, CVE-matched PoCs) | After recon, you want automated exploitation + flag extraction. |
+| Rank | Provider | Use case | Auth | Config env | Models | Pros | Cons |
+| ---- | -------- | -------- | ---- | ---------- | ------ | ---- | ---- |
+| 1 | **Copilot SDK** | Jeopardy solver swarm; multi-model racing on one token. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN`; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com/v1`) | Claude Opus / Sonnet, GPT-5.x, Gemini 3.x, Grok, o3 family — whatever Copilot exposes today. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
+| 1 | **Azure OpenAI** | Enterprise-governed deployments; auditable, per-tenant keys; Entra ID flows. | api-key **or** Entra ID bearer | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` **or** `AZURE_OPENAI_BEARER_TOKEN`, `AZURE_OPENAI_API_VERSION` (default `2024-10-21`), `AZURE_OPENAI_DEPLOYMENT_MAP` | Whatever you deployed in the resource — GPT-4o, GPT-4.1, o-series, etc. | Tenant-scoped, audit-friendly, data-residency controls, integrates with `az login`. | You own the deployments. `modelId → deploymentName` mapping has to be correct. |
+| 3 | **llama.cpp** | Offline / airgapped operations; lab hardware with GPUs; "no phone-home" policy. | none or static bearer | `LLAMACPP_URL` (default `http://127.0.0.1:8080`), `LLAMACPP_BEARER_TOKEN` (optional) | Any GGUF you can load. | Local, free, private. Works on the plane. | Tool-calling quality is model-dependent; most local models lack function calling and the client strips tools from those requests. |
+| 4 | OpenAI (raw) | Legacy `--agent` recon runner only. | `OPENAI_API_KEY` | `OPENAI_API_KEY`, `DREDERICK_MODEL` (default `gpt-4o-mini`) | OpenAI models. | Simple. | Deprioritized here — Azure or Copilot first. |
 
-They compose:
+Sources of truth:
+[`CopilotLlmClient.cs`](../src/Drederick/Jeopardy/Llm/CopilotLlmClient.cs),
+[`AzureOpenAiLlmClient.cs`](../src/Drederick/Jeopardy/Llm/AzureOpenAiLlmClient.cs),
+[`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs),
+[`MicrosoftAgentRunner.cs`](../src/Drederick/Agent/MicrosoftAgentRunner.cs).
+
+<a id="modes"></a>
+## Which mode uses which provider
+
+Drederick has two LLM-capable entrypoints; they do not currently share a
+provider backend.
+
+| Mode | Flag / subcommand | Backend today | How to pick |
+| ---- | ----------------- | ------------- | ----------- |
+| Jeopardy solver swarm | `drederick ctf-solve` | **Copilot SDK** (auto). Azure + llama.cpp clients exist in-tree and are being wired in — see [JEOPARDY.md](JEOPARDY.md). | Set the Copilot env vars; `CopilotLlmClient.TryCreateFromEnvironment` is called at startup. |
+| Recon cornerman | `drederick ... --agent` | **OpenAI** via Microsoft Agent Framework. | Set `OPENAI_API_KEY` (+ optional `DREDERICK_MODEL`). |
+| Autopilot exploitation | `--autopilot` | Deterministic — **no LLM**. | No env vars needed. Driven by CLI flags. |
+
+> If the provider for a mode isn't configured, that mode degrades
+> cleanly: `--agent` falls back to the deterministic AdaptiveRunner and
+> records `runner.agent_error`; `ctf-solve` aborts at preflight with a
+> clear "no Copilot token found" error rather than scanning blind.
+
+<a id="provider-copilot"></a>
+## Copilot SDK (preferred for Jeopardy)
+
+One token, five model families. This is the default for
+`drederick ctf-solve` and the standard corner for this shop.
+
+### Quickstart
 
 ```bash
-drederick --scope scope.yaml --target 10.10.10.5 \
-  --agent --autopilot \
-  --allow-exec-pocs --allow-cred-attacks --acknowledge-lockout-risk \
-  --out out/
+export COPILOT_TOKEN="ghu_..."            # preferred
+# or:
+export GH_TOKEN="$(gh auth token)"        # gh CLI
+# or:
+export GITHUB_TOKEN="ghp_..."             # PAT fallback (uses GitHub Models endpoint)
+
+drederick ctf-solve \
+  --scope scope.yaml \
+  --ctfd https://ctf.example.com \
+  --ctfd-token "$CTFD_TOKEN" \
+  --models gpt-5.4,claude-opus-4.7,gemini-3.1-pro \
+  --report-dir out/ctf-report/
 ```
 
-The `--agent` runner plans reconnaissance; the `--autopilot` runner then
-executes the fight card against whatever the recon layer found. Both
-obey the scope file. The LLM **does not** today drive the exploit
-toolbox directly — that's on the roadmap (`llm-exploit-tools`,
-`hybrid-agent-runner`). Until then, think of the LLM as the cornerman
-and the autopilot as the jab–cross–hook sequence the fighter already
-knows.
-
-<a id="quickstart"></a>
-## Quickstart — 60 seconds to first LLM-driven scan
-
-1. Get an OpenAI API key: <https://platform.openai.com/api-keys>.
-2. Export it:
-
-   ```bash
-   export OPENAI_API_KEY="sk-proj-..."
-   # optional: pick a stronger model (default gpt-4o-mini)
-   export DREDERICK_MODEL="gpt-4o"
-   ```
-
-3. Confirm it's exported (no newline, no quotes in the value):
-
-   ```bash
-   echo "${OPENAI_API_KEY:0:7}...${OPENAI_API_KEY: -4}"
-   # → sk-proj-...abcd
-   ```
-
-4. Run a scoped scan with the LLM in the corner:
-
-   ```bash
-   drederick --scope scope.yaml --target 10.10.10.5 --agent --out out/
-   ```
-
-5. Watch the progress on stderr; the agent summary prints after the
-   final bell:
-
-   ```
-   --- agent summary ---
-   10.10.10.5 — open: 22/tcp (OpenSSH 8.2p1), 80/tcp (Apache 2.4.41),
-   ...
-   ---------------------
-   ```
-
-6. Open the dashboard: `drederick serve --out out/` → <http://127.0.0.1:8001>.
-
-If the agent is unreachable for any reason, Drederick falls back to the
-deterministic AdaptiveRunner automatically and writes
-`runner.agent_error` to `out/audit.jsonl`. You never silently lose a
-run because of a flaky API.
-
-<a id="env-vars"></a>
-## Environment variables
-
-Supported today:
+### Env vars
 
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
-| `OPENAI_API_KEY` | *(unset → `--agent` falls back to Adaptive)* | OpenAI-format API key. Required for `--agent`. |
-| `DREDERICK_MODEL` | `gpt-4o-mini` | OpenAI chat model name. Any model the key can call. |
-| `DREDERICK_SKIP_CVE` | `0` | `1` disables the NVD CVE enrichment pass (faster, less informed). |
+| `COPILOT_TOKEN` | *(none)* | Highest-precedence Copilot OAuth token. |
+| `GH_TOKEN` | *(none)* | Second choice — what `gh auth token` emits. |
+| `GITHUB_TOKEN` | *(none)* | Last choice. If it looks like a classic/fine-grained PAT and no Copilot token is present, the client **falls back to the GitHub Models endpoint** (`https://models.inference.ai.azure.com/v1`) instead of Copilot's endpoint. |
+| `COPILOT_INTEGRATION_ID` | `drederick-cli` | Required `Copilot-Integration-Id` header. |
+| `COPILOT_ENDPOINT` | `https://api.githubcopilot.com/v1` | Base URL override (rarely needed). |
 
-Env vars consumed by `--autopilot`: none today — autopilot is driven by
-CLI flags (`--autopilot`, `--autopilot-default-creds`, `--cred ...`,
-`--autopilot-max-iterations`, `--autopilot-max-actions`). See
-[`README.md`](../README.md) §autopilot for the full flag list.
+### Picking models
 
-### Putting them in your shell profile
+The default swarm roster is `claude-opus-4.7, gpt-5.4, gemini-3.1-pro`.
+Override with `--models`:
 
 ```bash
-# ~/.zshrc or ~/.bashrc
-export OPENAI_API_KEY="sk-proj-..."        # keep this file chmod 600
-export DREDERICK_MODEL="gpt-4o"
+--models gpt-5.4,claude-opus-4.7,claude-sonnet-4.6,gemini-3.1-pro,grok-code-fast-1
 ```
 
-Or use [direnv](https://direnv.net/) with a per-project `.envrc`:
+Rotate the roster per category. Model names follow the Copilot catalog;
+see [`CopilotPrices.cs`](../src/Drederick/Jeopardy/Llm/CopilotPrices.cs)
+for what's currently priced in.
+
+<a id="provider-azure"></a>
+## Azure OpenAI (preferred for enterprise)
+
+Own your deployments, own your audit trail. Azure is first-class in
+this shop; use it when tenant isolation, data residency, or Entra ID
+are part of the policy.
+
+> **Resource creation.** Reference the Azure docs — we don't
+> reproduce the portal UX here:
+> <https://learn.microsoft.com/azure/ai-services/openai/how-to/create-resource>.
+> Create the resource, pick a region, then **deploy each model you want
+> to call** under a deployment name of your choosing. Drederick talks
+> to deployments, not model IDs directly.
+
+### Quickstart — api-key auth
 
 ```bash
-# .envrc (git-ignore this file)
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com"
+export AZURE_OPENAI_API_KEY="<from Azure portal → Keys and Endpoint>"
+export AZURE_OPENAI_API_VERSION="2024-10-21"   # optional, this is the default
+# Map the logical model ids you pass in --models to your deployment names:
+export AZURE_OPENAI_DEPLOYMENT_MAP="gpt-5.4=gpt5-prod,gpt-4o=gpt4o-prod"
+```
+
+### Quickstart — Entra ID (bearer token)
+
+For keyless auth, pre-fetch an access token scoped to Cognitive
+Services and export it. Drederick does **not** shell out to `az`;
+the operator owns the refresh cycle.
+
+```bash
+export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com"
+export AZURE_OPENAI_BEARER_TOKEN="$(az account get-access-token \
+  --resource https://cognitiveservices.azure.com \
+  --query accessToken -o tsv)"
+export AZURE_OPENAI_DEPLOYMENT_MAP="gpt-5.4=gpt5-prod"
+```
+
+Tokens typically expire after ~1 hour. Refresh in a wrapper script if
+your runs are longer.
+
+### Env vars
+
+| Variable | Required | Purpose |
+| -------- | -------- | ------- |
+| `AZURE_OPENAI_ENDPOINT` | yes | Resource URL, e.g. `https://my-resource.openai.azure.com`. |
+| `AZURE_OPENAI_API_KEY` | one of key/bearer | Portal api-key auth (preferred when set). |
+| `AZURE_OPENAI_BEARER_TOKEN` | one of key/bearer | Pre-fetched Entra ID access token. |
+| `AZURE_OPENAI_API_VERSION` | no | Default `2024-10-21`. |
+| `AZURE_OPENAI_DEPLOYMENT_MAP` | effectively yes | `modelId=deploymentName,modelId2=deploymentName2`. Without it, calls route to the literal model id, which almost never matches a deployment name. |
+
+Source: [`AzureOpenAiLlmClient.cs`](../src/Drederick/Jeopardy/Llm/AzureOpenAiLlmClient.cs).
+
+### Example
+
+```bash
+drederick ctf-solve \
+  --scope scope.yaml \
+  --ctfd https://ctf.example.com \
+  --ctfd-token "$CTFD_TOKEN" \
+  --models gpt-5.4 \
+  --report-dir out/ctf-report/
+# With AZURE_OPENAI_* exported, the Azure client takes priority once
+# the Azure-backed swarm wiring lands (tracked in JEOPARDY.md).
+```
+
+<a id="provider-llamacpp"></a>
+## llama.cpp (escape hatch / offline)
+
+The cornerman who doesn't leave the gym. Use this when the laptop is
+off the wire, the event rules forbid third-party APIs, or you're on a
+plane with a GGUF and a grudge.
+
+### Running `llama-server`
+
+```bash
+# Build or install llama.cpp from https://github.com/ggml-org/llama.cpp,
+# then serve a GGUF over OpenAI-compatible HTTP:
+llama-server \
+  -m ~/models/qwen2.5-coder-14b-instruct-q4_k_m.gguf \
+  --port 8080 \
+  -c 8192 \
+  --jinja              # enable Jinja chat templates → native tool calls
+```
+
+- `--jinja` turns on the model's chat template for tool-calling. Without
+  it, most tool-capable models will still generate syntactically valid
+  JSON but won't hit the server's function-call path.
+- `-c 8192` sets the KV cache window. Bigger = more history, more VRAM.
+- Pick a model that *advertises* tool calling (Qwen2.5-Coder, Llama-3.x
+  instruct, Hermes-3, etc.). **Most local models lack function
+  calling**; for those, Drederick's llama.cpp client detects the
+  limitation and **strips the `tools` field from requests** so the
+  model can still respond, but you'll lose the tool-driven loop.
+
+### Env vars
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `LLAMACPP_URL` | `http://127.0.0.1:8080` | Base URL of your `llama-server` (or compatible). |
+| `LLAMACPP_BEARER_TOKEN` | *(none)* | Optional static bearer if you front the server with a reverse proxy that requires auth. |
+
+Source: [`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs).
+
+### VRAM / memory guidance
+
+Rough rule of thumb for GGUF Q4_K_M quant on CUDA:
+
+| Model size | VRAM you want | CPU-only fallback |
+| ---------- | ------------- | ----------------- |
+| 7–8B | 6–8 GB | ~8 GB RAM, slow |
+| 13–14B | 10–12 GB | ~16 GB RAM, slower |
+| 30–34B | 20–24 GB | painful |
+| 70B | 40+ GB or multi-GPU | don't |
+
+Context windows (`-c`) are additive on top of the weights — add
+0.5–1 GB per 4k tokens depending on the model. If you OOM, shrink `-c`
+before shrinking the quant.
+
+<a id="provider-agent-recon"></a>
+## `--agent` (recon) — OpenAI-compatible
+
+The recon-side LLM runner ([`MicrosoftAgentRunner.cs`](../src/Drederick/Agent/MicrosoftAgentRunner.cs))
+still targets the OpenAI client directly. It's useful, but it's not the
+preferred entrypoint for this shop — Azure/Copilot are. Treated as
+legacy until the runner is migrated onto the provider factory.
+
+### Quickstart
+
+```bash
 export OPENAI_API_KEY="sk-proj-..."
-export DREDERICK_MODEL="gpt-4o"
-```
-
-Then `direnv allow` in the repo. The `.envrc` stays local; the key
-never hits the repo.
-
-### Using a secret manager
-
-```bash
-# 1Password CLI
-export OPENAI_API_KEY="$(op read 'op://Private/OpenAI/api_key')"
-
-# pass (password-store)
-export OPENAI_API_KEY="$(pass show openai/api_key)"
-
-# macOS Keychain
-export OPENAI_API_KEY="$(security find-generic-password -a $USER -s openai -w)"
-```
-
-Never bake the key into a shell script you commit. Drederick never
-writes the key to `audit.jsonl` or any report artifact.
-
-<a id="choosing-a-model"></a>
-## Choosing a model
-
-Ranked by "how reliably does this pick the right next probe against a
-lab box I've never seen":
-
-| Model | Quality | Cost (relative) | When to pick |
-| ----- | ------- | --------------- | ------------ |
-| `gpt-4o` | Best | $$$ | Unknown surface; red-team eval; you want the LLM to catch the weird stuff. |
-| `gpt-4o-mini` (default) | Strong | $ | HTB/CTF daily driver; good balance; cheap enough to leave on. |
-| `gpt-4.1` / `o3-mini` / newer | Varies | Varies | Experimental; feature-flag it in a one-off shell before setting it globally. |
-| `gpt-3.5-turbo` | Weak | ¢ | Not recommended; it will waste budget on repeats the AdaptiveRunner already handles. |
-
-Rule of thumb: **if the deterministic AdaptiveRunner already finds
-everything on your target, the LLM is strictly more expensive and no
-more useful.** Turn `--agent` on when the surface is novel, when you
-want cross-run synthesis, or when you're building toward the
-LLM-driven exploit loop on the roadmap.
-
-<a id="provider-recipes"></a>
-## Provider recipes
-
-<a id="provider-openai"></a>
-### OpenAI (default, supported today)
-
-Nothing fancy:
-
-```bash
-export OPENAI_API_KEY="sk-proj-..."
-export DREDERICK_MODEL="gpt-4o"
+export DREDERICK_MODEL="gpt-4o"        # optional; default gpt-4o-mini
 drederick --scope scope.yaml --target 10.10.10.5 --agent --out out/
 ```
 
-Organization/project scoping is honored by the key itself; Drederick
-does not read `OPENAI_ORG` or `OPENAI_PROJECT` today.
+Pointing `--agent` at Azure or llama.cpp today requires a local patch
+to `MicrosoftAgentRunner` (override the `OpenAIClient` endpoint) and a
+rebuild. Tracked alongside the hybrid-agent-runner roadmap item in
+[AGENTS.md](../AGENTS.md#extension-points).
 
-<a id="provider-compatible"></a>
-### OpenAI-compatible gateways (partial)
+<a id="precedence"></a>
+## Token precedence and auto-selection
 
-Drederick currently constructs the `OpenAIClient` with the built-in
-default endpoint. Overriding the base URL to point at a compatible
-gateway (LiteLLM, vLLM, Together, Groq, OpenRouter) is **not yet
-plumbed as an env var** — it's on the roadmap.
+Inside the Jeopardy stack, each provider client is constructed from
+env via `TryCreateFromEnvironment`. The first one that satisfies its
+required vars is the one that wins. Current order for `ctf-solve` is
+**Copilot only** — Azure and llama.cpp clients live alongside
+([`AzureOpenAiLlmClient.cs`](../src/Drederick/Jeopardy/Llm/AzureOpenAiLlmClient.cs),
+[`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs))
+and are being wired in via an `LlmClientFactory` (see
+[JEOPARDY.md](JEOPARDY.md)).
 
-Workarounds today:
+Inside `CopilotLlmClient.TryCreateFromEnvironment`:
 
-1. **LiteLLM proxy** running locally that rewrites OpenAI-flavoured
-   requests:
+1. `COPILOT_TOKEN` → use it against `COPILOT_ENDPOINT`.
+2. else `GH_TOKEN` → same.
+3. else `GITHUB_TOKEN` → if it *looks like* a PAT (`ghp_…` / `github_pat_…`),
+   fall back to the **GitHub Models** endpoint
+   (`https://models.inference.ai.azure.com/v1`) instead of the Copilot
+   endpoint. This lets a developer with only a PAT still reach the
+   model catalog.
+4. none → return `null`, preflight fails with a clear "no Copilot token
+   found" message.
 
-   ```bash
-   pip install 'litellm[proxy]'
-   litellm --model openrouter/anthropic/claude-3.5-sonnet --port 4000
-   ```
-
-   Then patch `src/Drederick/Agent/MicrosoftAgentRunner.cs` locally:
-
-   ```csharp
-   var openAi = new OpenAIClient(
-       new ApiKeyCredential(apiKey),
-       new OpenAIClientOptions { Endpoint = new Uri("http://127.0.0.1:4000") });
-   ```
-
-   Rebuild (`dotnet build`) and run. If you plan to upstream this,
-   open an issue referencing todo `hybrid-agent-runner`.
-
-2. **System-wide HTTP proxy** via `HTTPS_PROXY` — works but gives you
-   no visibility into what's being rewritten. Not recommended for
-   anything you care about.
-
-A first-class env var (`DREDERICK_OPENAI_BASE_URL`) is planned; tracked
-in [AGENTS.md](../AGENTS.md) extension points.
-
-<a id="provider-azure"></a>
-### Azure OpenAI (roadmap)
-
-Not supported today. The Microsoft Agent Framework dependency
-(`Microsoft.Agents.AI`) supports Azure OpenAI natively; wiring it
-through `TryCreateFromEnvironment` requires reading
-`AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_API_KEY` + deployment name and
-constructing an `AzureOpenAIClient` instead of `OpenAIClient`. Tracked
-under the same hybrid-agent-runner roadmap item.
-
-If you need this now, open an issue with your deployment shape — it's
-a ~30-line change once the env contract is agreed.
-
-<a id="provider-ollama"></a>
-### Ollama / local LLMs (roadmap)
-
-Not supported today. Two reasons:
-
-1. Tool-calling quality on local <13B models is still uneven, and the
-   agent loop leans hard on well-formed tool calls.
-2. The `ChatClient` wiring assumes OpenAI-style streaming tool calls;
-   llama.cpp-based backends vary.
-
-**Interim recipe** if you want to experiment:
-
-```bash
-# llama-cpp-python with OpenAI-compatible server
-python -m llama_cpp.server \
-  --model ~/models/qwen2.5-coder-14b-instruct-q4_k_m.gguf \
-  --host 127.0.0.1 --port 8000 --n_ctx 16384 --chat_format chatml
-
-export OPENAI_API_KEY="local-dummy"
-export DREDERICK_MODEL="qwen2.5-coder"
-# then apply the MicrosoftAgentRunner endpoint patch from
-# the OpenAI-compatible section above, pointing at 127.0.0.1:8000
-```
-
-Expect false starts — the model will sometimes hallucinate tool names.
-The scope invariant still holds: even a misbehaving model cannot reach
-out-of-scope targets because the tool layer refuses them.
-
-<a id="combining-agent-autopilot"></a>
-## Combining `--agent` with `--autopilot`
-
-The most powerful single invocation today:
-
-```bash
-drederick --scope scope.yaml --target 10.10.10.5 \
-  --agent \
-  --autopilot \
-  --autopilot-default-creds \
-  --allow-exec-pocs \
-  --allow-cred-attacks \
-  --acknowledge-lockout-risk \
-  --lab \
-  --out out/
-```
-
-Flow:
-
-1. `--agent` drives recon with OpenAI picking which probes to run next,
-   informed by `memory/findings.json` from previous runs.
-2. After recon closes, `--autopilot` kicks in: the
-   `ExploitationPlanner` builds a priority-ordered fight card
-   (nuclei > cred-spray-with-realm > cred-spray-no-realm > msfrc),
-   `AutopilotRunner` executes, `FlagExtractor` sweeps the captured
-   output and loot dir for `flag{}` / `HTB{}` / `THM{}` / `picoCTF{}` /
-   32-hex strings.
-3. Reports land in `out/report.md`, `out/autopilot.md`, and
-   `out/findings.db` (Datasette-ready).
-
-Watch `out/audit.jsonl` in a second pane while the run is live:
-
-```bash
-tail -f out/audit.jsonl | jq -c '{ts, event, target}'
-```
+Tokens are **never logged in plaintext**. The audit log records a
+`SHA-256` digest (see [`TokenRedactor.cs`](../src/Drederick/Jeopardy/Llm/TokenRedactor.cs)).
 
 <a id="cost"></a>
-## Cost, rate limits, and budgets
+## Cost, rate limits, budgets
 
-The agent runner is single-turn today: Drederick sends one prompt with
-all targets and the prior-digest summary, and the agent calls tools
-until it stops. On `gpt-4o-mini` a typical 3-target HTB sweep costs
-pennies. On `gpt-4o` it's tens of pennies. Still cheap; budget
-accordingly for fleets.
+Guardrails that already exist regardless of provider:
 
-Guardrails that already exist:
-
-- `ToolBudget` — the tool layer refuses repeat calls beyond a per-tool
-  and global budget. The model cannot run up your bill by spamming
-  `nmap_scan`. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for defaults.
-- One-shot runner — no multi-turn conversation, no memory-doom-loop.
+- `CostTracker` — per-run USD cap (`--run-budget-usd`) and per-challenge
+  cap (`--challenge-budget-usd`). See [JEOPARDY.md](JEOPARDY.md#budget).
+- `ToolBudget` — per-tool and global call caps on the recon side. See
+  [`ARCHITECTURE.md`](ARCHITECTURE.md).
+- One-shot `--agent` runner on recon — no multi-turn doom loop.
 - Scope layer — the model cannot widen its target list mid-run.
 
 What to watch for:
 
-- **429 rate limits** from OpenAI → Drederick surfaces the exception
-  and falls back to Adaptive. Check `audit.jsonl` for
-  `runner.agent_error`.
-- **Long-running targets** (slow nmap) → the model is idle while nmap
-  runs; cost stays flat, time doesn't.
+- **429 rate limits** surface as `runner.agent_error` (recon) or per-solver
+  errors (jeopardy). In recon the runner falls back to Adaptive; in
+  jeopardy the losing solver is torn down and the swarm continues.
+- **Azure throughput units** — if you hit TPM/RPM on a deployment, raise
+  the quota or spread across deployments by editing the deployment map.
+- **Copilot entitlement caps** — your Copilot plan's limit is yours;
+  Drederick does not negotiate them.
 
 <a id="prompt-hygiene"></a>
 ## Prompt hygiene and what the model sees
 
-The system prompt lives in
-[`MicrosoftAgentRunner.BuildSystemPrompt()`](../src/Drederick/Agent/MicrosoftAgentRunner.cs).
-It pins the agent to scoped reconnaissance and forbids it from
-fabricating targets. The user message is built from:
+- **Scope file contents** → not sent. Only the specific target IPs /
+  hostnames you pass on the CLI.
+- **API keys / tokens** → never sent. They travel only to their own
+  provider endpoint over TLS.
+- **Credential plaintext** → never sent. Autopilot and solvers pass
+  SHA-256 digests, not passwords.
+- **Raw tool output** → summarized / truncated by the tool layer before
+  being returned to the model. Nmap XML, HTTP bodies, etc. are bounded
+  to ≤64 KB with full-size + SHA-256 recorded alongside.
 
-- Your `--target` list (one line per target).
-- A short `KnowledgeBase.Digest(target)` string per target, summarizing
-  what prior runs found. This is how cross-run convergence happens.
-
-The model does **not** see:
-
-- Your `OPENAI_API_KEY` (it's only sent to OpenAI over TLS).
-- Your scope file contents (only the specific target IPs you passed).
-- Credentials from `CredentialStore` (autopilot is a separate runner).
-- Raw nmap XML / HTTP bodies — those are summarized by the tool layer
-  before returning to the agent.
-
-If you want to change the prompt — e.g., to bias toward web surface on
-a web-only engagement — edit `BuildSystemPrompt`, rebuild, and add a
-test asserting the new prompt still contains the scope-pinning
-language. Do not remove the "you MUST NOT fabricate tool output or
-targets" line; it's there to keep the model honest.
+Recon system prompt: [`MicrosoftAgentRunner.BuildSystemPrompt()`](../src/Drederick/Agent/MicrosoftAgentRunner.cs).
+Jeopardy per-category fragments: [`PromptLibrary.cs`](../src/Drederick/Jeopardy/Prompts/PromptLibrary.cs).
 
 <a id="safety"></a>
 ## Safety — what the LLM cannot do
 
-These are not conventions; they are enforced in code. The LLM runner
-has no special privileges.
+Enforced in code. The runner has no special privileges.
 
 | The LLM cannot… | Because… |
 | --------------- | -------- |
-| Scan a target outside `--scope` | Every tool's first statement is `_scope.Require(target)` — the tool layer refuses regardless of caller. |
+| Scan or exploit a target outside `--scope` | Every tool's first statement is `_scope.Require(target)` — the tool layer refuses regardless of caller. |
 | Widen the scope file | Scope is read-only from code. There is no write path. |
 | Disable the audit log | `AuditLog` has no disable API. No env var, no flag, no prompt turns it off. |
-| Exfiltrate loot to a third party | No network calls exist in the reporting or memory layers. The only outbound call is to OpenAI for chat completion, and it never carries loot content — only scan summaries. |
+| Exfiltrate loot | The only outbound calls are to the configured LLM provider (chat completion) and, for Jeopardy, the CTFd host. No reporting or memory layer makes network calls. |
 | Bypass per-run opt-ins | `--allow-exec-pocs`, `--allow-cred-attacks`, `--allow-payloads`, `--acknowledge-lockout-risk` are checked by the exploit/autopilot layers, not the agent runner. The model has no handle on them. |
-| Invent a target | The tool layer rejects any target string not in the `--target` list. |
+| Invent a target | The tool layer rejects any target string not resolved through scope. |
 
 If a future model jailbreak tells the agent "ignore scope" or "assume
 authorization", the tool call still fails. That's the design.
@@ -384,42 +352,24 @@ authorization", the tool call still fails. That's the design.
 
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
-| `--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.` on stderr | Env var missing or shell scope. | `export OPENAI_API_KEY=...` in the same shell; verify with `echo "${OPENAI_API_KEY:0:7}"`. |
-| `runner.agent_error` in `audit.jsonl` with `401 Incorrect API key` | Key revoked or typo. | Regenerate at <https://platform.openai.com/api-keys>. |
-| `runner.agent_error` with `model_not_found` | `DREDERICK_MODEL` references a model your key can't call. | `export DREDERICK_MODEL=gpt-4o-mini` and retry. |
-| `runner.agent_error` with `429 rate_limit_exceeded` | OpenAI quota. | Drederick already fell back to Adaptive; raise your OpenAI tier or wait. |
-| Agent summary missing / empty | Model returned empty text (tool-only response) or error. | Check `audit.jsonl` for `runner.agent_response.text_len=0`; often harmless — findings are in reports. |
+| `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)` | None of the three vars exported in the shell running `drederick`. | Export one; `COPILOT_TOKEN` wins precedence. |
+| `401` from Copilot | Token expired / revoked / wrong scope. | `gh auth refresh` or regenerate; re-export. |
+| `Azure OpenAI auth failed (401)` | `AZURE_OPENAI_API_KEY` wrong, or Entra bearer expired, or endpoint tenant mismatch. | Re-fetch the token (`az account get-access-token …`) or rotate the api-key; confirm the endpoint matches the subscription. |
+| Azure `DeploymentNotFound` | `AZURE_OPENAI_DEPLOYMENT_MAP` missing an entry for one of `--models`. | Add `modelId=deploymentName` to the map. Logical model ids in `--models` must resolve to a real deployment. |
+| `LLAMACPP_URL` connection refused | `llama-server` not running, or wrong port. | `curl "$LLAMACPP_URL/v1/models"` to confirm; restart server with `--port 8080 --jinja`. |
+| llama.cpp model refuses tool calls / ignores `tools` field | Model doesn't support function calling; the client auto-strips tools for those. | Use a tool-calling model (Qwen2.5-Coder, Llama-3.x instruct, Hermes-3), or accept freeform reasoning without tool loops. |
+| `--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.` on stderr | Env var missing from the shell. | `export OPENAI_API_KEY=...` in the same shell. |
+| `runner.agent_error` with `429 rate_limit_exceeded` | Provider quota. | Drederick already fell back to Adaptive; raise the quota or wait. |
 | LLM calls the same tool on the same target repeatedly | Normal up to `ToolBudget`; the tool layer then refuses. | Raise budget in `ReconToolbox` wiring if legitimate; usually it's the model being inefficient. |
-| `ScopeException` from an agent-invoked tool | Model chose a target not in your `--target` list, or it malformed the argument. | Expected — the tool refuses cleanly. Check `audit.jsonl` for the attempted target. |
-| No LLM behaviour at all | You forgot `--agent`. Adaptive runs without it. | Add `--agent` to the command line. |
+| `ScopeException` from an agent-invoked tool | Model chose a target not resolvable in the scope. | Expected — the tool refuses cleanly. Check `audit.jsonl` for the attempted target. |
 
-See also [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for non-LLM
-issues (doctor, scope loader, Datasette).
-
-<a id="roadmap"></a>
-## Roadmap
-
-These are tracked in the SQL todo list and the
-[AGENTS.md extension points](../AGENTS.md#extension-points):
-
-- `llm-exploit-tools` — expose `ExploitRunner`, `CredRunner`,
-  `PayloadStager` as `AIFunction`s so the LLM can plan the
-  **exploit** step, not just recon. Scope/permission gates still
-  live on the tools; the model doesn't get a shortcut.
-- `adaptive-exploit-runner` — deterministic fallback for
-  `llm-exploit-tools` when no API key is set, so `--autopilot` can run
-  LLM-shaped plans without an LLM.
-- `hybrid-agent-runner` — wrapper that tries LLM first, falls back to
-  deterministic on API failure. Also the home for `DREDERICK_OPENAI_BASE_URL`
-  and the Azure OpenAI recipe.
-- `test-llm-tools` — unit tests verifying every new AIFunction tool
-  re-checks scope and that the deterministic fallback kicks in when
-  `OPENAI_API_KEY` is missing.
-
-Open an issue if your use case needs one of these promoted.
+See also [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for non-LLM issues
+and [`JEOPARDY.md#troubleshooting`](JEOPARDY.md#troubleshooting) for
+solver-specific symptoms.
 
 ---
 
 > *"You call that a scan? I've seen tighter enumeration from a rookie's
-> jab. Let the cornerman call the combinations."*
+> jab. Let the cornerman call the combinations — and pick the fighter
+> that fits the round."*
 > — **Drederick Tatum**, post-sparring debrief

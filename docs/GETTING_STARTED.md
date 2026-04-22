@@ -4,12 +4,19 @@ audience: [humans, agents]
 primary: humans
 stability: stable
 last_audited: 2026-04
-related: [CREDENTIALS.md, SCOPE_AND_LEGAL.md, TROUBLESHOOTING.md, ../README.md, DATASETTE.md]
+related: [CREDENTIALS.md, SCOPE_AND_LEGAL.md, TROUBLESHOOTING.md, JEOPARDY.md, LLM_SETUP.md, COMPARISON.md, POST_EXPLOITATION.md, ../README.md, DATASETTE.md]
 ---
 
 # Getting Started with Drederick
 
-Welcome! This guide will help you get up and running with Drederick in minutes.
+Welcome. Drederick is a scope-enforced, full-auto offensive harness —
+and, with `ctf-solve`, a parallel Jeopardy CTF solver. Inside the scope
+file it will enumerate, exploit, credential-attack, deliver payloads,
+and race LLM-driven solvers at a scoreboard. Outside scope it does
+nothing. This guide gets you from zero to a first scoped run.
+
+> New here and wondering how this compares to AutoRecon, nmapAutomator,
+> or ctf-agent? See [COMPARISON.md](COMPARISON.md).
 
 ## Installation
 
@@ -105,18 +112,35 @@ drederick --help
 
 You should see the help text with all available subcommands.
 
-## Your First Scan
+## Your First Run
 
-### Basic Scan
+Drederick has three operating modes. Which one you want depends on the
+engagement:
+
+| Goal | Command |
+| ---- | ------- |
+| Recon + annotate (safe defaults inside scope) | `drederick --scope ~/scope.txt --target 10.0.0.1 --out ~/results` |
+| Offensive pass (recon + exploit inside scope) | same command — **lab mode is default**, exploit categories except DoS are on. Strict mode (`--no-lab`) requires explicit `--allow-*` flags. |
+| Jeopardy CTF solver swarm | `drederick ctf-solve --scope scope.yaml --ctfd https://ctf.example.com --ctfd-token "$CTFD_TOKEN" --report-dir out/ctf-report/` — see [JEOPARDY.md](JEOPARDY.md). |
+
+### Basic recon + offensive pass
 
 ```bash
 drederick --scope ~/scope.txt --target 10.0.0.1 --out ~/results
 ```
 
 **Flags explained:**
-- `--scope ~/scope.txt` — Scope file (required for safety)
-- `--target 10.0.0.1` — Single target to scan
+- `--scope ~/scope.txt` — Scope file (required; default-deny allow-list)
+- `--target 10.0.0.1` — Single target (repeatable)
 - `--out ~/results` — Output directory (default: `./out/`)
+
+In lab mode (default) this runs recon **and** exploitation inside scope
+— cached PoCs, credential attacks (with lockout-aware throttling), and
+payload staging are all on. DoS / malware categories require explicit
+`--allow-dos`. In strict mode (`--no-lab`) every offensive category is
+off until you pass the matching `--allow-*` flag. See
+[SCOPE_AND_LEGAL.md](SCOPE_AND_LEGAL.md) for the per-category opt-in
+contract.
 
 ### Scan Multiple Targets
 
@@ -134,13 +158,36 @@ The `--expand` flag will enumerate all hosts in your scope file and scan them.
 
 ### Lab/CTF Mode (Recommended for HTB)
 
+Lab mode is the **default**. The only extra flag worth adding on HTB is
+`--require-vpn`:
+
 ```bash
-drederick --scope ~/scope.txt --target 10.10.10.x --lab --require-vpn --out ~/results
+drederick --scope ~/scope.txt --target 10.10.10.X --require-vpn --out ~/results
 ```
 
-**Flags:**
-- `--lab` — Enable lab mode (relaxes scope checks, enables extra NSE scripts, shows cheatsheet)
-- `--require-vpn` — Abort if you're not on the VPN (prevents accidental out-of-scope scans)
+- Lab mode: scope cap `/8` (v4), NSE categories broadened, cheatsheet
+  generated, exploitation categories except DoS enabled by default.
+- `--require-vpn` — Abort if you're not on a `tun*`/`tap*` interface
+  resolving to HTB's published ranges.
+- Pass `--no-lab` for strict mode (scope cap `/16`, every offensive
+  category off until explicitly allowed).
+
+### Jeopardy CTF (new)
+
+For CTFd-backed Jeopardy events, run the solver swarm. It races LLM
+fighters per challenge and submits the first accepted flag:
+
+```bash
+drederick ctf-solve \
+  --scope scope.yaml \
+  --ctfd https://ctf.example.com \
+  --ctfd-token "$CTFD_TOKEN" \
+  --out out/
+```
+
+Full recipe, model roster, budgets, and operator hints in
+[JEOPARDY.md](JEOPARDY.md). LLM provider setup (Copilot, Azure OpenAI,
+llama.cpp) in [LLM_SETUP.md](LLM_SETUP.md).
 
 ## Output & Results
 
@@ -178,6 +225,10 @@ See [docs/DB_SCHEMA.md](DB_SCHEMA.md) for database structure.
 
 - [README](../README.md) — Feature overview
 - [SCOPE & LEGAL](SCOPE_AND_LEGAL.md) — Scope enforcement, legal guardrails
+- [JEOPARDY](JEOPARDY.md) — Jeopardy CTF solver swarm (`ctf-solve`)
+- [LLM_SETUP](LLM_SETUP.md) — Copilot, Azure OpenAI, llama.cpp
+- [POST_EXPLOITATION](POST_EXPLOITATION.md) — Session handling and loot
+- [COMPARISON](COMPARISON.md) — vs AutoRecon, nmapAutomator, ctf-agent
 - [CREDENTIALS](CREDENTIALS.md) — Store API keys, tokens, proxies
 - [DATASETTE UI](DATASETTE.md) — Dashboard features
 - [TROUBLESHOOTING](TROUBLESHOOTING.md) — Common issues & solutions
@@ -202,15 +253,17 @@ Then visit the dashboard to see the auto-generated cheatsheet with manual comman
 2. Set scope to the machine IP: `echo "10.10.10.X" > scope.txt`
 3. Run with lab mode:
    ```bash
-   drederick --scope scope.txt --target 10.10.10.X --lab --require-vpn --out results
+   drederick --scope scope.txt --target 10.10.10.X --require-vpn --out results
    ```
 
 ### Scope Best Practices
 
-- **Lab mode** (`--lab`): scope cap is `/8` (very broad)
-- **Production** (`--no-lab`): scope cap is `/16` (stricter)
-- Always specify a scope file—never scan without one
-- Default: lab mode (safe for CTF/authorized testing)
+- **Lab mode** (default): scope cap `/8` (v4), `/32` (v6); offensive
+  categories on except DoS.
+- **Strict** (`--no-lab`): scope cap `/16` (v4), `/48` (v6); every
+  offensive category off until the matching `--allow-*` flag.
+- Always specify a scope file—never run without one. Empty scope and
+  `0.0.0.0/0` / `::/0` are refused.
 
 ### Performance Tuning
 
@@ -230,7 +283,7 @@ Create separate directories for each lab/CTF:
 ```bash
 mkdir -p ~/htb/machines/{lame,pwnbox,remote}
 echo "10.10.10.3" > ~/htb/machines/lame/scope.txt
-drederick --scope ~/htb/machines/lame/scope.txt --lab --out ~/htb/machines/lame/results
+drederick --scope ~/htb/machines/lame/scope.txt --out ~/htb/machines/lame/results
 ```
 
 ## Troubleshooting

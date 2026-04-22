@@ -105,7 +105,7 @@ Exit codes:
 | Requirement | How to satisfy it |
 | ----------- | ----------------- |
 | **Docker** (sandbox runtime) | Install via your package manager, then `docker info` should succeed. Run `drederick doctor --category=jeopardy` to verify (`DockerInstalledCheck`, `DockerDaemonCheck` in [`JeopardyDoctorChecks.cs`](../src/Drederick/Doctor/JeopardyDoctorChecks.cs)). |
-| **GitHub Copilot token** (first-class) | Set `COPILOT_TOKEN` (preferred), `GH_TOKEN`, or `GITHUB_TOKEN`. Resolution precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. Full recipe in [`LLM_SETUP.md`](LLM_SETUP.md). |
+| **GitHub Copilot token** (first-class) | Set `COPILOT_TOKEN` (preferred), `GH_TOKEN`, or `GITHUB_TOKEN`. Resolution precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. Full recipe — plus Azure OpenAI and llama.cpp as alternate backends — in [`LLM_SETUP.md`](LLM_SETUP.md). |
 | **CTFd API token** | In the CTFd UI: click your profile → **Settings** → **Access Tokens** → generate one. Keep it in `$CTFD_TOKEN` or pass `--ctfd-token`; the token is never logged — only its SHA-256 lands in `audit.jsonl`. |
 | **Sandbox image** | Build it once per host: `docker build -t drederick/jeopardy-sandbox -f sandbox/Dockerfile.jeopardy-sandbox sandbox/`. The image is `ubuntu:24.04` with the full CTF toolchain preinstalled (see [`sandbox/jeopardy-tools.txt`](../sandbox/jeopardy-tools.txt)). |
 | **Scope file** | At minimum, the CTFd host. Ideally every challenge infra host as well. |
@@ -205,7 +205,9 @@ Pass `--models` as a comma-separated list. Default roster:
 claude-opus-4.7, gpt-5.4, gemini-3.1-pro
 ```
 
-Recommended roster (leans on Copilot's multi-model access):
+Recommended roster (leans on Copilot's multi-model access; same
+`--models` syntax works once the Azure / llama.cpp backends are wired
+through the `ctf-solve` factory — see [LLM_SETUP.md](LLM_SETUP.md)):
 
 | Model | Why it's on the card |
 | ----- | -------------------- |
