@@ -382,6 +382,21 @@ audit.Record("multistage.ready", new Dictionary<string, object?>
 });
 _ = multiStage;  // reserved for autopilot / UI integration
 // --- end multi-stage-wiring ---
+
+// --- session-manager-wiring ---
+// Registry of live post-ex sessions opened by the multi-stage chain (or by
+// the operator). Dispatches platform-appropriate enumeration (PostExLinux /
+// PostExWindows) through each session. Scope is re-checked on every entry
+// point; platform is probed when a session is registered as Unknown.
+var postExLinux = new PostExLinux(scope, audit, new DefaultProcessRunner());
+var postExWindows = new PostExWindows(scope, audit, new DefaultProcessRunner());
+var sessionManager = new SessionManager(scope, audit, postExLinux, postExWindows, permissions);
+audit.Record("session.manager.ready", new Dictionary<string, object?>
+{
+    ["max_concurrent_enumerations"] = SessionManager.MaxConcurrentEnumerations,
+});
+_ = sessionManager;  // reserved for autopilot / UI integration
+// --- end session-manager-wiring ---
 if (!opts.Quiet)
 {
     // Live progress: one-liner per tool invocation on stderr so stdout stays

@@ -1,8 +1,23 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Drederick.Exploit;
 using Drederick.Recon;
 
 namespace Drederick.Memory;
+
+/// <summary>
+/// A host discovered from inside a pivot session. Kept in <see cref="KnowledgeBase.PivotFindings"/>
+/// so a later run can focus on the pivot-reachable subnet without re-sweeping it.
+/// </summary>
+public sealed class PivotKbEntry
+{
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+    [JsonPropertyName("ip")] public string Ip { get; set; } = "";
+    [JsonPropertyName("reachable")] public bool Reachable { get; set; }
+    [JsonPropertyName("open_ports")] public List<int> OpenPorts { get; set; } = new();
+    [JsonPropertyName("banner")] public string? Banner { get; set; }
+    [JsonPropertyName("discovered_at")] public string DiscoveredAt { get; set; } = "";
+}
 
 /// <summary>
 /// Cross-run knowledge base. The agent reads prior findings on startup and
@@ -22,6 +37,9 @@ public sealed class KnowledgeBase
 
     [JsonPropertyName("hosts")]
     public Dictionary<string, HostFinding> Hosts { get; set; } = new();
+
+    [JsonPropertyName("pivot_findings")]
+    public List<PivotKbEntry> PivotFindings { get; set; } = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -72,6 +90,38 @@ public sealed class KnowledgeBase
             {
                 Hosts[f.Target] = f;
             }
+        }
+    }
+
+    /// <summary>
+    /// Record a host discovered from inside a pivot session. The finding is tagged
+    /// <c>source: "session:&lt;id&gt;"</c> so a consumer can filter pivot-derived
+    /// discoveries from externally-scanned hosts.
+    /// </summary>
+    public void AddPivotFinding(string sourceSessionId, PivotTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var entry = new PivotKbEntry
+        {
+            Source = $"session:{sourceSessionId}",
+            Ip = target.Ip,
+            Reachable = target.Reachable,
+            OpenPorts = target.OpenPorts.ToList(),
+            Banner = target.Banner,
+            DiscoveredAt = DateTimeOffset.UtcNow.ToString("o"),
+        };
+        lock (_gate)
+        {
+            PivotFindings.Add(entry);
+        }
+    }
+
+    /// <summary>Pivot findings whose <c>Source</c> tag matches <paramref name="sourceTag"/> (e.g. <c>session:abc</c>).</summary>
+    public IReadOnlyList<PivotKbEntry> FindPivotsBySource(string sourceTag)
+    {
+        lock (_gate)
+        {
+            return PivotFindings.Where(p => p.Source == sourceTag).ToList();
         }
     }
 
