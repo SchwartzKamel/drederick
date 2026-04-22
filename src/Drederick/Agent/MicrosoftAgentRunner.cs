@@ -31,6 +31,9 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         string modelId,
         LlmExploitTools? exploitTools = null)
     {
+        ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(chatClient);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
         _audit = audit;
         _chatClient = chatClient;
         _modelId = modelId;
