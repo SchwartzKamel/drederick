@@ -127,7 +127,12 @@ public sealed record JeopardyDoctorDeps(
     string CopilotHost = "api.githubcopilot.com",
     string CopilotModelsUrl = "https://api.githubcopilot.com/v1/models",
     string DockerRootDir = "/var/lib/docker",
-    long MinFreeBytes = 10L * 1024 * 1024 * 1024);
+    long MinFreeBytes = 10L * 1024 * 1024 * 1024,
+    // --- jeopardy-llm-provider-deps ---
+    Drederick.Jeopardy.Llm.LlmProvider LlmProvider = Drederick.Jeopardy.Llm.LlmProvider.Copilot,
+    string? AzureEndpoint = null,
+    string? LlamaCppUrl = null);
+// --- end jeopardy-llm-provider-deps ---
 
 /// <summary>
 /// Factory that builds all ten Jeopardy checks. Kept as a single public entry

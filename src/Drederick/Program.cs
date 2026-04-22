@@ -659,6 +659,44 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
 }
 // --- end adaptive-exploit-wiring ---
 
+// --- hybrid-runner-wiring ---
+// When `--agent=hybrid` is set, wrap the chosen runner so the LLM path is
+// tried first and the deterministic AdaptiveRunner / AdaptiveExploitRunner
+// is invoked as the fallback. Scope rejections always propagate; only
+// operational failures (no API key, network, auth, rate-limit, transient
+// SDK errors) trigger the fallback. See HybridAgentRunner for the full
+// safety contract.
+if (opts.UseHybridAgent)
+{
+    IReconAgentRunner? llmInner = null;
+    var llmCandidate = MicrosoftAgentRunner.TryCreateFromEnvironment(audit);
+    if (llmCandidate is not null)
+    {
+        llmInner = llmCandidate.WithExploitTools(llmExploitTools);
+    }
+
+    IReconAgentRunner deterministicInner;
+    if (runner is AdaptiveExploitRunner alreadyWrapped)
+    {
+        deterministicInner = alreadyWrapped;
+    }
+    else if (runner is AdaptiveRunner adaptiveOnly)
+    {
+        deterministicInner = adaptiveOnly;
+    }
+    else
+    {
+        // The chosen `runner` was the LLM runner itself (UseAgent=true and
+        // an API key was present). Build a fresh deterministic runner for
+        // the fallback path so we never re-enter the LLM on failure.
+        deterministicInner = new AdaptiveRunner(
+            audit, opts.HostConcurrency, opts.ServiceConcurrency, opts.ContentDiscovery);
+    }
+
+    runner = new HybridAgentRunner(llmInner, deterministicInner, audit);
+}
+// --- end hybrid-runner-wiring ---
+
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 

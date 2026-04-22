@@ -140,7 +140,7 @@ public static class CtfSolveRunner
         CoordinatorConfig cfg;
         HttpClient? ownedHttp = null;
         CtfdClient? ownedCtfd = null;
-        CopilotLlmClient? ownedLlm = null;
+        ICopilotLlmClient? ownedLlm = null;
 
         try
         {
@@ -153,17 +153,17 @@ public static class CtfSolveRunner
                 ownedHttp = new HttpClient();
                 ownedCtfd = new CtfdClient(ctfdUri, opts.CtfdToken!, scope, audit, ownedHttp);
 
-                ownedLlm = CopilotLlmClient.TryCreateFromEnvironment(audit);
+                ownedLlm = LlmProviderFactory.Create(opts.LlmProvider, opts, audit);
                 if (ownedLlm is null)
                 {
-                    Console.Error.WriteLine(
-                        "ctf-solve: no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN).");
+                    // LlmProviderFactory already wrote a provider-specific error to stderr.
                     Console.Error.WriteLine(
                         "ctf-solve: run 'drederick doctor --category=jeopardy' to diagnose setup issues.");
                     audit.Record("cli.ctf_solve.finish", new Dictionary<string, object?>
                     {
                         ["exit"] = 1,
-                        ["reason"] = "no_copilot_token",
+                        ["reason"] = "no_llm_client",
+                        ["provider"] = opts.LlmProvider.ToString().ToLowerInvariant(),
                     });
                     return 1;
                 }
@@ -216,7 +216,7 @@ public static class CtfSolveRunner
             });
             ownedHttp?.Dispose();
             ownedCtfd?.Dispose();
-            ownedLlm?.Dispose();
+            (ownedLlm as IDisposable)?.Dispose();
             return exit;
         }
         catch (Exception ex)
@@ -231,7 +231,7 @@ public static class CtfSolveRunner
             });
             ownedHttp?.Dispose();
             ownedCtfd?.Dispose();
-            ownedLlm?.Dispose();
+            (ownedLlm as IDisposable)?.Dispose();
             return exit;
         }
 
@@ -276,7 +276,7 @@ public static class CtfSolveRunner
 
         ownedHttp?.Dispose();
         ownedCtfd?.Dispose();
-        ownedLlm?.Dispose();
+        (ownedLlm as IDisposable)?.Dispose();
 
         return exit;
     }

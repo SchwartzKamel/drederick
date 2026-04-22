@@ -1,3 +1,5 @@
+using Drederick.Jeopardy.Llm;
+
 namespace Drederick.Cli;
 
 public sealed class CommandLineOptions
@@ -8,6 +10,15 @@ public sealed class CommandLineOptions
     public string MemoryPath { get; set; } = "memory/findings.json";
     public bool AllowBroad { get; set; }
     public bool UseAgent { get; set; } // -a / --agent: use MS Agent Framework
+
+    /// <summary>
+    /// Hybrid runner mode: try the LLM planner first, fall back to the
+    /// deterministic runner on operational failure (no API key, network,
+    /// auth, rate-limit, transient SDK error). Set by <c>--agent=hybrid</c>.
+    /// Implies <see cref="UseAgent"/>. Scope rejections still propagate —
+    /// the hybrid wrapper never swallows <c>ScopeException</c>.
+    /// </summary>
+    public bool UseHybridAgent { get; set; }
     public bool Expand { get; set; }   // --expand: expand scope to all hosts
     public int Parallelism { get; set; } = 4;
 
@@ -246,6 +257,25 @@ public sealed class CommandLineOptions
     public string? CtfMsgChallengeId { get; set; }
     public string? CtfMsgSolverId { get; set; }
     public string? CtfMsgBody { get; set; }
+
+    // --- jeopardy-llm-provider-options ---
+    /// <summary>Which LLM backend the ctf-solve swarm talks to. Default <see cref="LlmProvider.Copilot"/>.</summary>
+    public LlmProvider LlmProvider { get; set; } = LlmProvider.Copilot;
+
+    /// <summary>Azure OpenAI endpoint override (e.g. https://my-resource.openai.azure.com). Falls back to $AZURE_OPENAI_ENDPOINT.</summary>
+    public string? AzureEndpoint { get; set; }
+    /// <summary>Azure OpenAI API version override. Falls back to $AZURE_OPENAI_API_VERSION, then the client default.</summary>
+    public string? AzureApiVersion { get; set; }
+    /// <summary>Repeatable <c>--azure-deployment=modelId=deploymentName</c>. Wins over $AZURE_OPENAI_DEPLOYMENT_MAP.</summary>
+    public Dictionary<string, string> AzureDeploymentMap { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>llama-server base URL override. Falls back to $LLAMACPP_URL, then 127.0.0.1:8080.</summary>
+    public string? LlamaCppUrl { get; set; }
+    /// <summary>Repeatable <c>--llamacpp-model=modelId=modelName</c> (both sides registered as aliases). Wins over $LLAMACPP_MODELS.</summary>
+    public Dictionary<string, string> LlamaCppModels { get; }
+        = new(StringComparer.Ordinal);
+    // --- end jeopardy-llm-provider-options ---
     // --- end jeopardy-cli-options ---
 
     // --- web-cli-options ---
@@ -354,6 +384,80 @@ public sealed class CommandLineOptions
                 continue;
             }
             // --- end jeopardy-doctor ---
+            // --- jeopardy-llm-provider: accept --flag=value shorthand ---
+            // The provider flags are documented with --flag=value syntax
+            // (e.g. --llm-provider=azure). Split those inline; everything else
+            // continues to use the --flag <value> two-token form.
+            {
+                var eq = a.IndexOf('=');
+                if (eq > 2 && a.StartsWith("--", StringComparison.Ordinal))
+                {
+                    var head = a[..eq];
+                    if (head is "--llm-provider" or "--azure-endpoint" or "--azure-api-version"
+                        or "--azure-deployment" or "--llamacpp-url" or "--llamacpp-model")
+                    {
+                        var val = a[(eq + 1)..];
+                        // Rewrite and re-enter the loop body by replacing args in place.
+                        // We can't mutate `args` (it's the caller's array), so splice
+                        // into a local list that `i`/`args[i+1]` will read from next.
+                        // Simpler: handle inline via a mini-switch.
+                        switch (head)
+                        {
+                            case "--llm-provider":
+                                if (!o.CtfSolveSubcommand)
+                                    throw new ArgumentException($"Unknown argument: {a}");
+                                o.LlmProvider = LlmProviderFactory.Parse(val);
+                                break;
+                            case "--azure-endpoint":
+                                if (!o.CtfSolveSubcommand)
+                                    throw new ArgumentException($"Unknown argument: {a}");
+                                o.AzureEndpoint = val;
+                                break;
+                            case "--azure-api-version":
+                                if (!o.CtfSolveSubcommand)
+                                    throw new ArgumentException($"Unknown argument: {a}");
+                                o.AzureApiVersion = val;
+                                break;
+                            case "--azure-deployment":
+                                {
+                                    if (!o.CtfSolveSubcommand)
+                                        throw new ArgumentException($"Unknown argument: {a}");
+                                    var eq2 = val.IndexOf('=');
+                                    if (eq2 <= 0 || eq2 == val.Length - 1)
+                                        throw new ArgumentException(
+                                            $"--azure-deployment must be modelId=deploymentName, got '{val}'.");
+                                    o.AzureDeploymentMap[val[..eq2].Trim()] = val[(eq2 + 1)..].Trim();
+                                    break;
+                                }
+                            case "--llamacpp-url":
+                                if (!o.CtfSolveSubcommand)
+                                    throw new ArgumentException($"Unknown argument: {a}");
+                                o.LlamaCppUrl = val;
+                                break;
+                            case "--llamacpp-model":
+                                {
+                                    if (!o.CtfSolveSubcommand)
+                                        throw new ArgumentException($"Unknown argument: {a}");
+                                    var eq2 = val.IndexOf('=');
+                                    if (eq2 < 0)
+                                    {
+                                        o.LlamaCppModels[val.Trim()] = val.Trim();
+                                    }
+                                    else
+                                    {
+                                        if (eq2 == 0 || eq2 == val.Length - 1)
+                                            throw new ArgumentException(
+                                                $"--llamacpp-model must be modelId or modelId=modelName, got '{val}'.");
+                                        o.LlamaCppModels[val[..eq2].Trim()] = val[(eq2 + 1)..].Trim();
+                                    }
+                                    break;
+                                }
+                        }
+                        continue;
+                    }
+                }
+            }
+            // --- end jeopardy-llm-provider ---
             switch (a)
             {
                 case "--install":
@@ -392,6 +496,14 @@ public sealed class CommandLineOptions
                 case "-a":
                 case "--agent":
                     o.UseAgent = true; break;
+                // --- hybrid-runner-flag-parse ---
+                case "--agent=hybrid":
+                    o.UseAgent = true; o.UseHybridAgent = true; break;
+                case "--agent=llm":
+                    o.UseAgent = true; o.UseHybridAgent = false; break;
+                case "--agent=adaptive":
+                    o.UseAgent = false; o.UseHybridAgent = false; break;
+                // --- end hybrid-runner-flag-parse ---
                 case "--expand":
                     o.Expand = true; break;
                 case "--content-discovery":
@@ -756,6 +868,62 @@ public sealed class CommandLineOptions
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.CtfMsgBody = RequireNext(args, ref i, a);
                     break;
+                // --- jeopardy-llm-provider-flag-parse ---
+                case "--llm-provider":
+                    {
+                        if (!o.CtfSolveSubcommand)
+                            throw new ArgumentException($"Unknown argument: {a}");
+                        var v = RequireNext(args, ref i, a);
+                        o.LlmProvider = LlmProviderFactory.Parse(v);
+                        break;
+                    }
+                case "--azure-endpoint":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.AzureEndpoint = RequireNext(args, ref i, a);
+                    break;
+                case "--azure-api-version":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.AzureApiVersion = RequireNext(args, ref i, a);
+                    break;
+                case "--azure-deployment":
+                    {
+                        if (!o.CtfSolveSubcommand)
+                            throw new ArgumentException($"Unknown argument: {a}");
+                        var v = RequireNext(args, ref i, a);
+                        var eq = v.IndexOf('=');
+                        if (eq <= 0 || eq == v.Length - 1)
+                            throw new ArgumentException(
+                                $"--azure-deployment must be modelId=deploymentName, got '{v}'.");
+                        o.AzureDeploymentMap[v[..eq].Trim()] = v[(eq + 1)..].Trim();
+                        break;
+                    }
+                case "--llamacpp-url":
+                    if (!o.CtfSolveSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.LlamaCppUrl = RequireNext(args, ref i, a);
+                    break;
+                case "--llamacpp-model":
+                    {
+                        if (!o.CtfSolveSubcommand)
+                            throw new ArgumentException($"Unknown argument: {a}");
+                        var v = RequireNext(args, ref i, a);
+                        var eq = v.IndexOf('=');
+                        if (eq < 0)
+                        {
+                            o.LlamaCppModels[v.Trim()] = v.Trim();
+                        }
+                        else
+                        {
+                            if (eq == 0 || eq == v.Length - 1)
+                                throw new ArgumentException(
+                                    $"--llamacpp-model must be modelId or modelId=modelName, got '{v}'.");
+                            o.LlamaCppModels[v[..eq].Trim()] = v[(eq + 1)..].Trim();
+                        }
+                        break;
+                    }
+                // --- end jeopardy-llm-provider-flag-parse ---
                 // --- end jeopardy-cli-flag-parse ---
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
@@ -855,6 +1023,10 @@ public sealed class CommandLineOptions
 
         Jeopardy CTF mode:
           drederick ctf-solve --scope <file> --ctfd <url> [--models <csv>]
+                              [--llm-provider copilot|azure|llamacpp]
+                              [--azure-endpoint <url>] [--azure-api-version <v>]
+                              [--azure-deployment modelId=deploymentName]...
+                              [--llamacpp-url <url>] [--llamacpp-model modelId[=modelName]]...
                               [--wall-clock-min 20] [--run-budget-usd 100]
                               [--challenge-budget-usd 5] [--max-concurrent 4]
                               [--poll-interval-sec 5] [--category-filter pwn,crypto]
@@ -866,7 +1038,10 @@ public sealed class CommandLineOptions
           drederick doctor --category=jeopardy
 
           See docs/JEOPARDY.md for the full guide.
-          Env: COPILOT_TOKEN (or GH_TOKEN / GITHUB_TOKEN), CTFD_URL, CTFD_TOKEN.
+          Env: COPILOT_TOKEN (or GH_TOKEN / GITHUB_TOKEN) for copilot,
+               AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY (or
+               AZURE_OPENAI_BEARER_TOKEN / AZURE_OPENAI_USE_ENTRA=1) for azure,
+               LLAMACPP_URL for llamacpp; CTFD_URL, CTFD_TOKEN for the target.
           Default models: claude-opus-4.7,gpt-5.4,gemini-3.1-pro.
           Default inbox: ~/.drederick/jeopardy-inbox.jsonl.
 
@@ -882,6 +1057,13 @@ public sealed class CommandLineOptions
           -a, --agent          Use Microsoft Agent Framework runner (needs
                                OPENAI_API_KEY; model via DREDERICK_MODEL).
                                Default: deterministic AdaptiveRunner.
+          --agent=hybrid       Try the LLM runner first; fall back to the
+                               deterministic runner on operational failure
+                               (no API key, network, auth, rate-limit,
+                               transient SDK errors). ScopeException always
+                               propagates — never swallowed.
+          --agent=llm          Same as --agent (explicit LLM-only).
+          --agent=adaptive     Force the deterministic runner.
 
         OUTPUT:
           -o, --out <dir>      Output directory (default: out/).
