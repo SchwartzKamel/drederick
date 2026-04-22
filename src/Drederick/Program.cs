@@ -227,6 +227,118 @@ if (opts.CtfMsgSubcommand)
 }
 // --- end jeopardy-cli-wiring ---
 
+// --- web-cli-wiring ---
+// Dispatch `drederick web` to the standalone drederick-web binary produced
+// by src/Drederick.Web/. Out-of-process dispatch (same pattern as
+// `drederick serve` → datasette) keeps the project reference graph acyclic:
+// Drederick.Web already references Drederick for AuditLog / Scope types, so
+// a reverse project reference would be a build cycle. The web binary
+// inherits the same invariant posture — it opens its own AuditLog in
+// <out>/audit.jsonl and enforces the bearer-token / loopback rules at its
+// middleware boundary.
+if (opts.WebSubcommand)
+{
+    Directory.CreateDirectory(opts.OutputDir);
+    var webAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var webAudit = new AuditLog(webAuditPath);
+
+    var webArgs = new List<string>
+    {
+        "--web-bind", opts.WebBind,
+        "--web-port", opts.WebPort.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        "--out", opts.OutputDir,
+    };
+    if (!string.IsNullOrEmpty(opts.WebToken))
+    {
+        webArgs.Add("--web-token");
+        webArgs.Add(opts.WebToken);
+    }
+
+    // Resolve drederick-web binary. Order: (1) PATH, (2) alongside the
+    // running drederick executable, (3) dev-tree fallback via `dotnet run`.
+    string? webBinary = null;
+    var onPath = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? Array.Empty<string>();
+    foreach (var dir in onPath)
+    {
+        if (string.IsNullOrEmpty(dir)) continue;
+        foreach (var exe in new[] { "drederick-web", "drederick-web.exe" })
+        {
+            var candidate = Path.Combine(dir, exe);
+            if (File.Exists(candidate)) { webBinary = candidate; break; }
+        }
+        if (webBinary is not null) break;
+    }
+    if (webBinary is null)
+    {
+        var self = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(self))
+        {
+            var selfDir = Path.GetDirectoryName(self);
+            if (!string.IsNullOrEmpty(selfDir))
+            {
+                foreach (var exe in new[] { "drederick-web", "drederick-web.exe" })
+                {
+                    var candidate = Path.Combine(selfDir, exe);
+                    if (File.Exists(candidate)) { webBinary = candidate; break; }
+                }
+            }
+        }
+    }
+
+    webAudit.Record("web.cli.dispatch", new Dictionary<string, object?>
+    {
+        ["bind"] = opts.WebBind,
+        ["port"] = opts.WebPort,
+        ["binary"] = webBinary ?? "dotnet-run-fallback",
+    });
+
+    System.Diagnostics.ProcessStartInfo psi;
+    if (webBinary is not null)
+    {
+        psi = new System.Diagnostics.ProcessStartInfo(webBinary) { UseShellExecute = false };
+        foreach (var arg in webArgs) psi.ArgumentList.Add(arg);
+    }
+    else
+    {
+        // Dev fallback: `dotnet run --project src/Drederick.Web` from the
+        // repo root. Fails cleanly if we're not in the dev tree.
+        var projectPath = Path.Combine("src", "Drederick.Web", "Drederick.Web.csproj");
+        if (!File.Exists(projectPath))
+        {
+            Console.Error.WriteLine(
+                "drederick web: could not locate the drederick-web binary on PATH or alongside " +
+                "the drederick executable, and no dev-tree project found at " +
+                $"{projectPath}. Install drederick-web (see docs) or run from the repo root.");
+            return 127;
+        }
+        psi = new System.Diagnostics.ProcessStartInfo("dotnet") { UseShellExecute = false };
+        psi.ArgumentList.Add("run");
+        psi.ArgumentList.Add("--project");
+        psi.ArgumentList.Add(projectPath);
+        psi.ArgumentList.Add("--");
+        foreach (var arg in webArgs) psi.ArgumentList.Add(arg);
+    }
+
+    try
+    {
+        using var proc = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("Process.Start returned null.");
+        proc.WaitForExit();
+        return proc.ExitCode;
+    }
+    catch (System.ComponentModel.Win32Exception ex)
+    {
+        Console.Error.WriteLine($"drederick web: failed to launch {webBinary ?? "dotnet"}: {ex.Message}");
+        return 127;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"drederick web: launch failed: {ex.Message}");
+        return 1;
+    }
+}
+// --- end web-cli-wiring ---
+
 if (string.IsNullOrEmpty(opts.ScopePath))
 {
     Console.Error.WriteLine("--scope is required.");

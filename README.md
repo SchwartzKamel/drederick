@@ -341,6 +341,7 @@ read [`AGENTS.md`](AGENTS.md) first.
 - [`docs/LLM_SETUP.md`](docs/LLM_SETUP.md) — wiring OpenAI / Azure /
   llama.cpp for `--agent`, combining with `--autopilot`.
 - [`docs/UI.md`](docs/UI.md) — Avalonia point-and-click operator console.
+- [`docs/WEB_UI.md`](docs/WEB_UI.md) — browser-based operator pane (`Drederick.Web` + React SPA): architecture, threat model, launch, surfaces.
 - [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — first-run walkthrough.
 
 <a id="architecture-short"></a>

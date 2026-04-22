@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Drederick.Web</RootNamespace>
+    <AssemblyName>drederick-web</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- Allow the test project to alias the internal top-level Program class
+         so it can be used as the TEntry type for WebApplicationFactory<T>. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- .NET 10 native OpenAPI generation (Microsoft.AspNetCore.App is
+         implicit via the Web SDK, so no FrameworkReference needed). -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference the core drederick engine so Web can use AuditLog,
+         ScopeLoader, DrederickHost, CommandLineOptions. Same pattern as
+         Drederick.UI — @invariant-id:scope-in-every-tool is preserved
+         because downstream API calls go through the same scope-enforced
+         toolbox. -->
+    <ProjectReference Include="..\Drederick\Drederick.csproj">
+      <Private>true</Private>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Drederick.Web.Tests" />
+  </ItemGroup>
+</Project>

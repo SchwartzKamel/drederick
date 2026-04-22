@@ -61,6 +61,7 @@ related:
 | [`DB_SCHEMA.md`](DB_SCHEMA.md) | agents | Machine-readable schema, JOIN patterns, stable invariants. | agent |
 | [`UI_GUIDE.md`](UI_GUIDE.md) | humans | Current vs planned UI; React dashboard design. | human |
 | [`UI.md`](UI.md) | humans | Avalonia point-and-click operator console (`Drederick.UI`): quickstart, invariants, tests. | human |
+| [`WEB_UI.md`](WEB_UI.md) | humans + operators | Browser-based operator pane (`Drederick.Web` + `web/` SPA): architecture, threat model, launch, surfaces. | human |
 | [`COMPARISON.md`](COMPARISON.md) | humans | Drederick vs peers across three fronts: recon (AutoRecon / nmapAutomator / Reconnoitre), full-auto offensive (PentestGPT / HackingBuddyGPT / Metasploit Pro), and Jeopardy CTF solving (ctf-agent / EnIGMA / CAI). | human |
 | [`GETTING_STARTED.md`](GETTING_STARTED.md) | humans | End-to-end first-run walkthrough. | human |
 | [`CREDENTIALS.md`](CREDENTIALS.md) | humans + agents | Credential-attack subsystem: `CredRunner`, spray/brute/AS-REP/kerberoast/PtH, lockout throttling, secret-hashing rules. | both |

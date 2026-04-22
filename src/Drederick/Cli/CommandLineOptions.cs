@@ -248,6 +248,19 @@ public sealed class CommandLineOptions
     public string? CtfMsgBody { get; set; }
     // --- end jeopardy-cli-options ---
 
+    // --- web-cli-options ---
+    /// <summary>web subcommand selected: launches the Drederick REST/SignalR host.</summary>
+    public bool WebSubcommand { get; set; }
+    /// <summary>Bind host for `drederick web`. Default 127.0.0.1 (loopback; no auth required).</summary>
+    public string WebBind { get; set; } = "127.0.0.1";
+    /// <summary>Bind port for `drederick web`. Default 7070.</summary>
+    public int WebPort { get; set; } = 7070;
+    /// <summary>Explicit bearer token for non-loopback binds. Overrides $DREDERICK_WEB_TOKEN and auto-generation.</summary>
+    public string? WebToken { get; set; }
+    // --- web-cli-help anchor — help text for the `web` subcommand lives in
+    // the raw-string HelpText property below, under a plain "web" heading.
+    // --- end web-cli-options ---
+
     public static CommandLineOptions Parse(string[] args)
     {
         var o = new CommandLineOptions();
@@ -324,6 +337,13 @@ public sealed class CommandLineOptions
             start = 1;
         }
         // --- end jeopardy-cli-subcommand-dispatch ---
+        // --- web-cli-subcommand-dispatch ---
+        else if (args.Length > 0 && args[0] == "web")
+        {
+            o.WebSubcommand = true;
+            start = 1;
+        }
+        // --- end web-cli-subcommand-dispatch ---
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -491,6 +511,28 @@ public sealed class CommandLineOptions
                     break;
                 // END ANCHOR: datasette-bootstrap-flag-parse
                 // --- end datasette-integration ---------------------------------
+                // --- web-cli-flag-parse ---
+                case "--web-bind":
+                    if (!o.WebSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.WebBind = RequireNext(args, ref i, a);
+                    break;
+                case "--web-port":
+                    {
+                        if (!o.WebSubcommand)
+                            throw new ArgumentException($"Unknown argument: {a}");
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 65535)
+                            throw new ArgumentException($"--web-port must be a TCP port in [1, 65535], got '{v}'.");
+                        o.WebPort = n;
+                        break;
+                    }
+                case "--web-token":
+                    if (!o.WebSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.WebToken = RequireNext(args, ref i, a);
+                    break;
+                // --- end web-cli-flag-parse ---
                 // --- init subcommand flags ---------------------------------
                 case "--skip-creds":
                     if (!o.InitSubcommand)
@@ -769,6 +811,7 @@ public sealed class CommandLineOptions
                           [--datasette-path <path>] [--no-auto-install] [-y|--yes]
           drederick init [--skip-creds] [--skip-scope] [-y|--yes]
           drederick analyze <binary-path> [--json] [--verbose] [--output <file>] [-s <scope>]
+          drederick web [--web-bind <host>] [--web-port <n>] [--web-token <tok>] [-o <dir>]
 
         SUBCOMMANDS:
           doctor               Check operator-workstation tooling (nmap, searchsploit,
@@ -799,6 +842,16 @@ public sealed class CommandLineOptions
                                delete. Flags: --title, --content, --flag,
                                --tags, --category, --host, --file, --archived,
                                --json. See 'drederick note' (no args) for help.
+
+          web                  Start the Drederick operator web console
+                               (REST + SignalR host, default 127.0.0.1:7070).
+                               Loopback binds require no auth; non-loopback
+                               binds require a bearer token. Token sources
+                               (priority): --web-token, $DREDERICK_WEB_TOKEN,
+                               auto-generated 32-byte URL-safe random
+                               (written to <out>/web-token.txt, mode 0600).
+                               Flags: --web-bind <host>, --web-port <int>,
+                               --web-token <value>, -o/--out <dir>.
 
         Jeopardy CTF mode:
           drederick ctf-solve --scope <file> --ctfd <url> [--models <csv>]

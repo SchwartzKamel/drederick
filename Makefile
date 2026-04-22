@@ -258,3 +258,14 @@ version: ## Print version info for the local workspace
 	 else \
 	    printf "  installed:   $(C_YELL)no$(C_RESET) (run 'make install')\n"; \
 	 fi
+
+# --- web targets ---
+.PHONY: web-install web-dev web-build
+web-install: ## Install SPA dependencies (pnpm)
+	@cd web && pnpm install
+
+web-dev: ## Run the SPA dev server (http://localhost:5173)
+	@cd web && pnpm dev
+
+web-build: ## Build the SPA into src/Drederick.Web/wwwroot
+	@cd web && pnpm build

@@ -2,9 +2,11 @@
   <Folder Name="/src/">
     <Project Path="src/Drederick/Drederick.csproj" />
     <Project Path="src/Drederick.UI/Drederick.UI.csproj" />
+    <Project Path="src/Drederick.Web/Drederick.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Drederick.Tests/Drederick.Tests.csproj" />
     <Project Path="tests/Drederick.UI.Tests/Drederick.UI.Tests.csproj" />
+    <Project Path="tests/Drederick.Web.Tests/Drederick.Web.Tests.csproj" />
   </Folder>
 </Solution>
