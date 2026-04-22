@@ -72,7 +72,7 @@ provider backend.
 
 | Mode | Flag / subcommand | Backend today | How to pick |
 | ---- | ----------------- | ------------- | ----------- |
-| Jeopardy solver swarm (CLI) | `drederick ctf-solve` | **Copilot SDK** only today — the CLI calls `CopilotLlmClient.TryCreateFromEnvironment` directly. Azure + llama.cpp clients exist in-tree and ship via the Web UI (see below) and the `LlmClientFactory` wiring still in progress. | Set `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`. No `--llm-provider` flag yet. |
+| Jeopardy solver swarm (CLI) | `drederick ctf-solve` | **Copilot / Azure / llama.cpp** — operator-selectable per run via `LlmProviderFactory`. | Pass `--llm-provider=copilot\|azure\|llamacpp` (default `copilot`) and export the matching env vars (or pass the CLI flags listed below). |
 | Jeopardy solver swarm (Web UI) | `Drederick.Web` session-start form | **Copilot / Azure / llama.cpp** — operator-selectable per session. | Pick `copilot`, `azure`, or `llamacpp` in the form; export the matching env vars on the host running `Drederick.Web` ([details](#web-ui-provider)). |
 | Recon cornerman | `drederick ... --agent` | **OpenAI** via Microsoft Agent Framework. | Set `OPENAI_API_KEY` (+ optional `DREDERICK_MODEL`). |
 | Autopilot exploitation | `--autopilot` | Deterministic — **no LLM**. | No env vars needed. Driven by CLI flags. |
@@ -80,7 +80,43 @@ provider backend.
 > If the provider for a mode isn't configured, that mode degrades
 > cleanly: `--agent` falls back to the deterministic AdaptiveRunner and
 > records `runner.agent_error`; `ctf-solve` aborts at preflight with a
-> clear "no Copilot token found" error rather than scanning blind.
+> clear "no LLM client" error (with provider-specific hints) rather than scanning blind.
+
+<a id="ctf-solve-cli-recipes"></a>
+### `ctf-solve` CLI recipes
+
+All three providers are wired through
+[`LlmProviderFactory`](../src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs).
+Default is Copilot — omit `--llm-provider` to use it.
+
+```bash
+# Copilot (default)
+drederick ctf-solve --ctfd https://ctf.example/ --token $CTF_TOKEN
+
+# Azure OpenAI (api-key auth)
+export AZURE_OPENAI_API_KEY=...
+drederick ctf-solve --ctfd https://ctf.example/ --token $CTF_TOKEN \
+  --llm-provider=azure \
+  --azure-endpoint=https://foo.openai.azure.com \
+  --azure-deployment=gpt-5.4=gpt5-prod \
+  --azure-deployment=claude-haiku-4.5=haiku-prod
+
+# Azure OpenAI (Entra bearer token pre-fetched via az cli)
+export AZURE_OPENAI_BEARER_TOKEN=$(az account get-access-token \
+  --resource https://cognitiveservices.azure.com --query accessToken -o tsv)
+drederick ctf-solve ... --llm-provider=azure --azure-endpoint=https://foo.openai.azure.com
+
+# llama.cpp (local llama-server)
+drederick ctf-solve --ctfd https://ctf.example/ --token $CTF_TOKEN \
+  --llm-provider=llamacpp \
+  --llamacpp-url=http://127.0.0.1:8080 \
+  --llamacpp-model=qwen2.5-coder \
+  --llamacpp-model=llama3.1-70b=local-llama
+```
+
+The `doctor --category=jeopardy` subcommand accepts the same provider
+flags and runs provider-aware reachability checks (Azure `/openai/models`
+probe, llama.cpp `/v1/models` probe with a 2s timeout).
 
 <a id="provider-copilot"></a>
 ## Copilot SDK (preferred for Jeopardy)
@@ -317,12 +353,12 @@ for copilot, or the provider-specific env vars for azure / llamacpp).
 
 Inside the Jeopardy stack, each provider client is constructed from
 env via `TryCreateFromEnvironment`. The first one that satisfies its
-required vars is the one that wins. Current order for `ctf-solve` is
-**Copilot only** — Azure and llama.cpp clients live alongside
+required vars is the one that wins. `ctf-solve` now picks the backend
+via [`LlmProviderFactory`](../src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs)
+keyed off `--llm-provider` (default Copilot); Azure and llama.cpp
+clients live alongside
 ([`AzureOpenAiLlmClient.cs`](../src/Drederick/Jeopardy/Llm/AzureOpenAiLlmClient.cs),
-[`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs))
-and are being wired in via an `LlmClientFactory` (see
-[JEOPARDY.md](JEOPARDY.md)).
+[`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs)).
 
 Inside `CopilotLlmClient.TryCreateFromEnvironment`:
 
@@ -347,8 +383,8 @@ runs two checks under the `jeopardy` category:
 
 | Check id | What it verifies |
 | -------- | ---------------- |
-| `jeopardy.llm.token` | One of `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` is exported in the current shell, in that preference order. |
-| `jeopardy.llm.reachable` | `GET https://api.githubcopilot.com/v1/models` returns 200 with the resolved token. Gated by scope: the Copilot host must be in scope **or** `--allow-copilot-host` must be passed. |
+| `jeopardy.llm.token` | Provider-aware: Copilot looks for `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`; Azure verifies endpoint + one of api-key / bearer / Entra + a deployment; llama.cpp verifies the base URL parses. |
+| `jeopardy.llm.reachable` | Copilot: `GET https://api.githubcopilot.com/v1/models` (gated by scope unless `--allow-copilot-host`). Azure: `GET $endpoint/openai/models?api-version=…`. llama.cpp: `GET $url/v1/models` with a 2 s timeout (loopback allowed without scope). |
 
 Sample output when Copilot is wired correctly:
 
@@ -367,14 +403,11 @@ And when it's not:
 [jeopardy.llm.reachable] WARN  skipped — no LLM token set (see jeopardy.llm.token)
 ```
 
-> **Heads-up:** `drederick doctor` today validates **Copilot only**.
-> Azure and llama.cpp wiring is trusted to the operator — if you've
-> selected those providers in the Web UI, verify the env vars yourself
-> (a 200 from `$AZURE_OPENAI_ENDPOINT/openai/deployments?api-version=...`
-> or `curl "$LLAMACPP_URL/v1/models"` is the quick smoke test). A
-> provider-aware doctor check is on the roadmap; until then treat a
-> green `jeopardy.llm.*` as "Copilot is ready," not "all providers
-> ready."
+> **Provider selection:** pass `--llm-provider=azure` or
+> `--llm-provider=llamacpp` to `drederick doctor` (alongside
+> `--category=jeopardy`) to run the checks against those backends. The
+> doctor uses the same flags and env vars as `ctf-solve`, so a green
+> `jeopardy.llm.*` means "the selected provider is ready."
 
 Source: [`JeopardyDoctorChecks.cs`](../src/Drederick/Doctor/JeopardyDoctorChecks.cs).
 

@@ -404,23 +404,23 @@ public sealed class CommandLineOptions
                         switch (head)
                         {
                             case "--llm-provider":
-                                if (!o.CtfSolveSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.LlmProvider = LlmProviderFactory.Parse(val);
                                 break;
                             case "--azure-endpoint":
-                                if (!o.CtfSolveSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.AzureEndpoint = val;
                                 break;
                             case "--azure-api-version":
-                                if (!o.CtfSolveSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.AzureApiVersion = val;
                                 break;
                             case "--azure-deployment":
                                 {
-                                    if (!o.CtfSolveSubcommand)
+                                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                                         throw new ArgumentException($"Unknown argument: {a}");
                                     var eq2 = val.IndexOf('=');
                                     if (eq2 <= 0 || eq2 == val.Length - 1)
@@ -430,13 +430,13 @@ public sealed class CommandLineOptions
                                     break;
                                 }
                             case "--llamacpp-url":
-                                if (!o.CtfSolveSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.LlamaCppUrl = val;
                                 break;
                             case "--llamacpp-model":
                                 {
-                                    if (!o.CtfSolveSubcommand)
+                                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                                         throw new ArgumentException($"Unknown argument: {a}");
                                     var eq2 = val.IndexOf('=');
                                     if (eq2 < 0)
@@ -871,25 +871,25 @@ public sealed class CommandLineOptions
                 // --- jeopardy-llm-provider-flag-parse ---
                 case "--llm-provider":
                     {
-                        if (!o.CtfSolveSubcommand)
+                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                             throw new ArgumentException($"Unknown argument: {a}");
                         var v = RequireNext(args, ref i, a);
                         o.LlmProvider = LlmProviderFactory.Parse(v);
                         break;
                     }
                 case "--azure-endpoint":
-                    if (!o.CtfSolveSubcommand)
+                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.AzureEndpoint = RequireNext(args, ref i, a);
                     break;
                 case "--azure-api-version":
-                    if (!o.CtfSolveSubcommand)
+                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.AzureApiVersion = RequireNext(args, ref i, a);
                     break;
                 case "--azure-deployment":
                     {
-                        if (!o.CtfSolveSubcommand)
+                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                             throw new ArgumentException($"Unknown argument: {a}");
                         var v = RequireNext(args, ref i, a);
                         var eq = v.IndexOf('=');
@@ -900,13 +900,13 @@ public sealed class CommandLineOptions
                         break;
                     }
                 case "--llamacpp-url":
-                    if (!o.CtfSolveSubcommand)
+                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.LlamaCppUrl = RequireNext(args, ref i, a);
                     break;
                 case "--llamacpp-model":
                     {
-                        if (!o.CtfSolveSubcommand)
+                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
                             throw new ArgumentException($"Unknown argument: {a}");
                         var v = RequireNext(args, ref i, a);
                         var eq = v.IndexOf('=');

@@ -144,6 +144,98 @@ public class CtfSolveCliTests
         Assert.Contains("doctor --category=jeopardy", help);
     }
 
+    // --- jeopardy-llm-provider-cli-tests ---
+
+    [Fact]
+    public void Default_LlmProvider_Is_Copilot()
+    {
+        var o = CommandLineOptions.Parse(new[] { "ctf-solve" });
+        Assert.Equal(Drederick.Jeopardy.Llm.LlmProvider.Copilot, o.LlmProvider);
+    }
+
+    [Theory]
+    [InlineData("copilot", Drederick.Jeopardy.Llm.LlmProvider.Copilot)]
+    [InlineData("azure", Drederick.Jeopardy.Llm.LlmProvider.Azure)]
+    [InlineData("llamacpp", Drederick.Jeopardy.Llm.LlmProvider.LlamaCpp)]
+    [InlineData("llama-cpp", Drederick.Jeopardy.Llm.LlmProvider.LlamaCpp)]
+    public void Parses_LlmProvider_TwoToken(string raw, Drederick.Jeopardy.Llm.LlmProvider expected)
+    {
+        var o = CommandLineOptions.Parse(new[] { "ctf-solve", "--llm-provider", raw });
+        Assert.Equal(expected, o.LlmProvider);
+    }
+
+    [Fact]
+    public void Parses_LlmProvider_Equals_Form()
+    {
+        var o = CommandLineOptions.Parse(new[] { "ctf-solve", "--llm-provider=azure" });
+        Assert.Equal(Drederick.Jeopardy.Llm.LlmProvider.Azure, o.LlmProvider);
+    }
+
+    [Fact]
+    public void Parses_Azure_Flags_Both_Forms()
+    {
+        var o = CommandLineOptions.Parse(new[]
+        {
+            "ctf-solve",
+            "--llm-provider=azure",
+            "--azure-endpoint", "https://foo.openai.azure.test",
+            "--azure-api-version=2024-10-21",
+            "--azure-deployment", "gpt-5.4=gpt5-prod",
+            "--azure-deployment=haiku=haiku-prod",
+        });
+        Assert.Equal("https://foo.openai.azure.test", o.AzureEndpoint);
+        Assert.Equal("2024-10-21", o.AzureApiVersion);
+        Assert.Equal("gpt5-prod", o.AzureDeploymentMap["gpt-5.4"]);
+        Assert.Equal("haiku-prod", o.AzureDeploymentMap["haiku"]);
+    }
+
+    [Fact]
+    public void Rejects_Malformed_Azure_Deployment()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CommandLineOptions.Parse(new[] { "ctf-solve", "--azure-deployment", "no-equals-here" }));
+    }
+
+    [Fact]
+    public void Parses_LlamaCpp_Flags_Both_Forms()
+    {
+        var o = CommandLineOptions.Parse(new[]
+        {
+            "ctf-solve",
+            "--llm-provider=llamacpp",
+            "--llamacpp-url", "http://127.0.0.1:8080",
+            "--llamacpp-model=qwen=qwen2.5-coder",
+            "--llamacpp-model", "llama",
+        });
+        Assert.Equal("http://127.0.0.1:8080", o.LlamaCppUrl);
+        Assert.Equal("qwen2.5-coder", o.LlamaCppModels["qwen"]);
+        Assert.Equal("llama", o.LlamaCppModels["llama"]);
+    }
+
+    [Fact]
+    public void Doctor_Subcommand_Accepts_Provider_Flags()
+    {
+        var o = CommandLineOptions.Parse(new[]
+        {
+            "doctor",
+            "--category=jeopardy",
+            "--llm-provider=azure",
+            "--azure-endpoint=https://foo.openai.azure.test",
+        });
+        Assert.True(o.DoctorSubcommand);
+        Assert.Equal(Drederick.Jeopardy.Llm.LlmProvider.Azure, o.LlmProvider);
+        Assert.Equal("https://foo.openai.azure.test", o.AzureEndpoint);
+    }
+
+    [Fact]
+    public void Rejects_Provider_Flags_Without_CtfSolve_Or_Doctor()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            CommandLineOptions.Parse(new[] { "--llm-provider=azure" }));
+    }
+
+    // --- end jeopardy-llm-provider-cli-tests ---
+
     [Fact]
     public async Task RunAsync_Errors_Out_Without_Scope()
     {

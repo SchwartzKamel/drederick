@@ -61,7 +61,10 @@ if (opts.DoctorSubcommand)
             Http: new Drederick.Doctor.DefaultHttpStatusProbe(),
             DiskFree: new Drederick.Doctor.DefaultDiskFreeReader(),
             Scope: jeoScope,
-            AllowCopilotHost: opts.AllowCopilotHost);
+            AllowCopilotHost: opts.AllowCopilotHost,
+            LlmProvider: opts.LlmProvider,
+            AzureEndpoint: opts.AzureEndpoint,
+            LlamaCppUrl: opts.LlamaCppUrl);
         var jeoResults = await Drederick.Doctor.JeopardyDoctorChecks.RunAllAsync(
             deps, install: opts.DoctorInstall, assumeYes: opts.AssumeYes,
             Console.In, Console.Out, CancellationToken.None);

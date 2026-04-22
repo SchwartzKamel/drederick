@@ -542,18 +542,75 @@ internal sealed class LlmTokenCheck : IDoctorCheck
     public Task<DoctorCheckResult> RunAsync(bool install, bool assumeYes, TextReader stdin, TextWriter stdout, CancellationToken ct)
     {
         JeopardyDoctorChecks.RecordStart(_d.Audit, Id);
-        var picked = ResolveTokenVar(_d.Env);
-        if (picked is not null)
+        switch (_d.LlmProvider)
         {
-            return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
-                DoctorCheckStatus.Pass,
-                $"LLM token present via ${picked}"));
+            case Drederick.Jeopardy.Llm.LlmProvider.Azure:
+                {
+                    var endpoint = !string.IsNullOrWhiteSpace(_d.AzureEndpoint)
+                        ? _d.AzureEndpoint
+                        : _d.Env.Get("AZURE_OPENAI_ENDPOINT");
+                    var apiKey = _d.Env.Get("AZURE_OPENAI_API_KEY");
+                    var bearer = _d.Env.Get("AZURE_OPENAI_BEARER_TOKEN");
+                    var useEntra = string.Equals(_d.Env.Get("AZURE_OPENAI_USE_ENTRA"), "1", StringComparison.Ordinal);
+                    var deploy = _d.Env.Get("AZURE_OPENAI_DEPLOYMENT");
+                    var deployMap = _d.Env.Get("AZURE_OPENAI_DEPLOYMENT_MAP");
+                    var missing = new List<string>();
+                    if (string.IsNullOrWhiteSpace(endpoint)) missing.Add("AZURE_OPENAI_ENDPOINT (or --azure-endpoint)");
+                    var hasAuth = !string.IsNullOrWhiteSpace(apiKey)
+                        || !string.IsNullOrWhiteSpace(bearer)
+                        || useEntra;
+                    if (!hasAuth) missing.Add("AZURE_OPENAI_API_KEY or AZURE_OPENAI_BEARER_TOKEN or AZURE_OPENAI_USE_ENTRA=1");
+                    if (string.IsNullOrWhiteSpace(deploy) && string.IsNullOrWhiteSpace(deployMap))
+                        missing.Add("AZURE_OPENAI_DEPLOYMENT (or AZURE_OPENAI_DEPLOYMENT_MAP / --azure-deployment)");
+                    if (missing.Count == 0)
+                    {
+                        var authKind = !string.IsNullOrWhiteSpace(apiKey) ? "api_key"
+                            : !string.IsNullOrWhiteSpace(bearer) ? "bearer"
+                            : "entra";
+                        return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                            DoctorCheckStatus.Pass,
+                            $"Azure OpenAI configured ({authKind}) for endpoint set"));
+                    }
+                    return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                        DoctorCheckStatus.Fail,
+                        $"Azure OpenAI config incomplete: {string.Join("; ", missing)}",
+                        fixCommand: "export AZURE_OPENAI_ENDPOINT=... && export AZURE_OPENAI_API_KEY=... && export AZURE_OPENAI_DEPLOYMENT=<name>",
+                        fixRationale: "See docs/LLM_SETUP.md#provider-azure for full env matrix."));
+                }
+            case Drederick.Jeopardy.Llm.LlmProvider.LlamaCpp:
+                {
+                    var url = !string.IsNullOrWhiteSpace(_d.LlamaCppUrl)
+                        ? _d.LlamaCppUrl
+                        : _d.Env.Get("LLAMACPP_URL");
+                    if (string.IsNullOrWhiteSpace(url)) url = "http://127.0.0.1:8080";
+                    if (!Uri.TryCreate(url, UriKind.Absolute, out _))
+                    {
+                        return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                            DoctorCheckStatus.Fail,
+                            $"LLAMACPP_URL '{url}' is not a valid absolute URL",
+                            fixCommand: "export LLAMACPP_URL=http://127.0.0.1:8080"));
+                    }
+                    return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                        DoctorCheckStatus.Pass,
+                        $"llama.cpp base URL configured: {url}"));
+                }
+            case Drederick.Jeopardy.Llm.LlmProvider.Copilot:
+            default:
+                {
+                    var picked = ResolveTokenVar(_d.Env);
+                    if (picked is not null)
+                    {
+                        return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                            DoctorCheckStatus.Pass,
+                            $"LLM token present via ${picked}"));
+                    }
+                    return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                        DoctorCheckStatus.Fail,
+                        "no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment",
+                        fixCommand: "export COPILOT_TOKEN=<token>   # or GH_TOKEN / GITHUB_TOKEN",
+                        fixRationale: "See docs/LLM_SETUP.md and docs/JEOPARDY.md for provisioning steps."));
+                }
         }
-        return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
-            DoctorCheckStatus.Fail,
-            "no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment",
-            fixCommand: "export COPILOT_TOKEN=<token>   # or GH_TOKEN / GITHUB_TOKEN",
-            fixRationale: "See docs/LLM_SETUP.md and docs/JEOPARDY.md for provisioning steps."));
     }
 }
 
@@ -567,6 +624,20 @@ internal sealed class LlmReachableCheck : IDoctorCheck
     public async Task<DoctorCheckResult> RunAsync(bool install, bool assumeYes, TextReader stdin, TextWriter stdout, CancellationToken ct)
     {
         JeopardyDoctorChecks.RecordStart(_d.Audit, Id);
+        switch (_d.LlmProvider)
+        {
+            case Drederick.Jeopardy.Llm.LlmProvider.Azure:
+                return await CheckAzureAsync(ct).ConfigureAwait(false);
+            case Drederick.Jeopardy.Llm.LlmProvider.LlamaCpp:
+                return await CheckLlamaCppAsync(ct).ConfigureAwait(false);
+            case Drederick.Jeopardy.Llm.LlmProvider.Copilot:
+            default:
+                return await CheckCopilotAsync(ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<DoctorCheckResult> CheckCopilotAsync(CancellationToken ct)
+    {
         var picked = LlmTokenCheck.ResolveTokenVar(_d.Env);
         if (picked is null)
         {
@@ -616,6 +687,142 @@ internal sealed class LlmReachableCheck : IDoctorCheck
             DoctorCheckStatus.Fail,
             $"GET {_d.CopilotModelsUrl} → {(status < 0 ? "transport error" : status.ToString())}",
             fixCommand: "verify token scope/validity and proxy/egress; see docs/LLM_SETUP.md");
+    }
+
+    private async Task<DoctorCheckResult> CheckAzureAsync(CancellationToken ct)
+    {
+        var endpoint = !string.IsNullOrWhiteSpace(_d.AzureEndpoint)
+            ? _d.AzureEndpoint
+            : _d.Env.Get("AZURE_OPENAI_ENDPOINT");
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Warn,
+                "skipped — AZURE_OPENAI_ENDPOINT not set (see jeopardy.llm.token)");
+        }
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var u))
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                $"AZURE_OPENAI_ENDPOINT '{endpoint}' is not an absolute URL");
+        }
+
+        var scopeErr = JeopardyDoctorChecks.ScopeGate(_d.Scope, u.Host, _d.AllowCopilotHost, _d.CopilotHost);
+        if (scopeErr is not null)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                $"{u.Host}: {scopeErr}",
+                fixCommand: $"drederick scope add {u.Host}",
+                fixRationale: "Azure OpenAI endpoint must be in scope before doctor will probe it.");
+        }
+
+        // The data-plane root (/) typically answers 404 without auth, which is
+        // still a reachability signal. We don't authenticate because we don't
+        // want the api-key to leave the process for a reachability probe.
+        var probe = endpoint.TrimEnd('/') + "/openai/models?api-version=" + Drederick.Jeopardy.Llm.AzureOpenAiLlmClient.DefaultApiVersion;
+        int status;
+        try
+        {
+            status = await _d.Http.GetStatusAsync(probe,
+                new Dictionary<string, string> { ["Accept"] = "application/json", ["User-Agent"] = "drederick-doctor" },
+                ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                $"GET {probe} threw: {ex.Message}",
+                fixCommand: "check network egress and endpoint spelling");
+        }
+        // 200 = listable (rare), 401 = auth required (expected), 404 = wrong
+        // path but host resolves — all three prove TCP/TLS reachability.
+        if (status == 200 || status == 401 || status == 404)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Pass,
+                $"GET {probe} → {status}");
+        }
+        return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+            DoctorCheckStatus.Fail,
+            $"GET {probe} → {(status < 0 ? "transport error" : status.ToString())}",
+            fixCommand: "verify endpoint / network egress; see docs/LLM_SETUP.md#provider-azure");
+    }
+
+    private async Task<DoctorCheckResult> CheckLlamaCppAsync(CancellationToken ct)
+    {
+        var url = !string.IsNullOrWhiteSpace(_d.LlamaCppUrl)
+            ? _d.LlamaCppUrl
+            : _d.Env.Get("LLAMACPP_URL");
+        if (string.IsNullOrWhiteSpace(url)) url = "http://127.0.0.1:8080";
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var baseUri))
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                $"LLAMACPP_URL '{url}' is not a valid absolute URL");
+        }
+
+        // Localhost / loopback is always permitted without scope (the server
+        // runs on the operator workstation). For remote llama-server
+        // deployments the host must be in scope.
+        var host = baseUri.Host;
+        bool loopback = host is "127.0.0.1" or "::1" or "localhost";
+        if (!loopback)
+        {
+            var scopeErr = JeopardyDoctorChecks.ScopeGate(_d.Scope, host, _d.AllowCopilotHost, _d.CopilotHost);
+            if (scopeErr is not null)
+            {
+                return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                    DoctorCheckStatus.Fail,
+                    $"{host}: {scopeErr}",
+                    fixCommand: $"drederick scope add {host}",
+                    fixRationale: "Remote llama.cpp endpoint must be in scope before doctor will probe it.");
+            }
+        }
+
+        var probe = url.TrimEnd('/') + "/v1/models";
+        int status;
+        try
+        {
+            // 2s budget: llama-server answers instantly when up; when down
+            // we want a fast fail so `doctor` stays snappy.
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(2));
+            var headers = new Dictionary<string, string>
+            {
+                ["Accept"] = "application/json",
+                ["User-Agent"] = "drederick-doctor",
+            };
+            status = await _d.Http.GetStatusAsync(probe, headers, cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                $"GET {probe} timed out (>2s)",
+                fixCommand: "start llama-server (see docs/LLM_SETUP.md#provider-llamacpp)");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                $"GET {probe} threw: {ex.Message}",
+                fixCommand: "start llama-server (see docs/LLM_SETUP.md#provider-llamacpp)");
+        }
+        // 200 = healthy, 404 = slim build without /v1/models but reachable,
+        // 401 = reverse-proxy in front requiring auth but reachable.
+        if (status == 200 || status == 404 || status == 401)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Pass,
+                $"GET {probe} → {status}");
+        }
+        return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+            DoctorCheckStatus.Fail,
+            $"GET {probe} → {(status < 0 ? "transport error" : status.ToString())}",
+            fixCommand: "start/restart llama-server; see docs/LLM_SETUP.md#provider-llamacpp");
     }
 }
 
