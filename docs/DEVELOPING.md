@@ -515,44 +515,56 @@ that protect both boundaries.
   negative test on the built argv proving no forbidden NSE/CLI flag is
   enabled.
 
-## Running the web UI in dev (planned)
+## Running the web UI in dev
 
-Once `src/Drederick.Web` and `web/` land:
+The browser operator pane shipped in v0.3.0 — full surfaces + Playwright
+E2E; see [`WEB_UI.md`](./WEB_UI.md). For iterative development run the
+ASP.NET host and the Vite dev server side-by-side:
 
 ```bash
-# Terminal 1
+# Terminal 1 — backend (hot reload)
 cd src/Drederick.Web
 dotnet watch
 
-# Terminal 2
+# Terminal 2 — frontend (Vite dev, proxied to the backend)
 cd web
 npm install
 npm run dev
 ```
 
-The host will bind to `127.0.0.1` only and print a one-time auth token.
+Backend binds to `http://127.0.0.1:7070`; Vite dev server runs on
+`http://127.0.0.1:5173` and proxies `/api` and `/hubs` to the backend.
+`drederick web` on a published build prints (or reuses) a bearer token;
+in `dotnet watch` dev mode the token is read from `out/web-token.txt`
+when present and regenerated otherwise. E2E smoke lives in `web/e2e/`
+and is runnable via `npm run test:e2e` from `web/`.
 
-Until then, `drederick serve` against Datasette is the current UI — see
-[`DATASETTE.md`](./DATASETTE.md).
+`drederick serve` against Datasette remains available alongside the
+browser pane for ad-hoc SQL — see [`DATASETTE.md`](./DATASETTE.md).
 
 ## Project layout {#project-layout}
 
 ```text
-src/Drederick/          # Core engine (CLI today)
-  Agent/                # AdaptiveRunner, MicrosoftAgentRunner, HostWorkerPool
+src/Drederick/          # Core engine (CLI + Web backend)
+  Agent/                # AdaptiveRunner, MicrosoftAgentRunner, HybridAgentRunner,
+                        #   HostWorkerPool
   Audit/                # JSONL audit log (thread-safe)
   Autopilot/            # Post-recon exploitation planner
-  Cli/                  # CommandLineOptions, subcommands (doctor/serve/init/note/analyze)
+  Cli/                  # CommandLineOptions, subcommands (doctor/serve/init/note/analyze/web/ctf-*)
   Doctor/               # Operator-workstation preflight + installer
   Enrichment/           # NVD cache, CPE match, CVE annotate, PoC sources
   Exploit/              # IExploitTool + ExploitRunner, MsfRcRunner, NucleiRunner,
                         #   PasswordSprayTool, PayloadStager, SessionManager, PostEx*
-  Host/                 # DrederickHost facade shared by CLI and UI
+  Host/                 # DrederickHost facade shared by CLI, UI, and Web
+  Jeopardy/             # CTFd Jeopardy solver swarm (Budget, Bus, Cli, Coordinator,
+                        #   Ctfd, Detection, Llm, Ops, Prompts, Sandbox, Solver, Submit, Swarm)
   Memory/               # KnowledgeBase (cross-run state)
   Recon/                # IReconTool scanners + ReconToolbox
   Reporting/            # JSON, Markdown, cheatsheet, SqliteReport, NotesSchema
   Scope/                # Scope, ScopeLoader, ScopeException
 src/Drederick.UI/       # Avalonia point-and-click operator console
+src/Drederick.Web/      # ASP.NET Core host + SignalR hub (drederick web)
+web/                    # React + TypeScript + Vite SPA, built into wwwroot/
 datasette/              # metadata.json for Datasette UI
 tests/Drederick.Tests/  # xUnit tests for the engine
 tests/Drederick.UI.Tests/ # xUnit tests for the UI shell

@@ -32,6 +32,7 @@ from the CLI's error messages, other docs, and issues stay valid.
 | `.htb` hostname doesn't resolve | [htb-hostname](#htb-hostname) |
 | Scope rejected | [scope-parse](#scope-parse) |
 | `--agent` runner errors / timeouts | [llm-runner](#llm-runner) |
+| `--agent=hybrid` unexpectedly fell back to deterministic | [llm-runner](#llm-runner) (item 6) |
 | PoC cache empty despite CVEs | [poc-cache](#poc-cache) |
 | Scanner crashed mid-run | [scanner-fail](#scanner-fail) |
 | Jeopardy: Docker sandbox unreachable | [jeopardy-docker](#jeopardy-docker) |
@@ -417,6 +418,25 @@ as `runner.agent_error` in the audit log and then rethrown.
    have rejected every target — check for `scope` errors in
    `out/audit.jsonl` before blaming the model.
 
+6. **Hybrid mode (`--agent=hybrid`) unexpectedly ran the deterministic
+   runner.** `HybridAgentRunner` falls back to `AdaptiveRunner` on any
+   operational failure of the LLM planner — missing key, network
+   error, auth, rate limit, timeout, transient SDK exception. This is
+   intentional. Look for the fallback audit event:
+
+    ```bash
+    jq 'select(.event=="hybrid.llm_fallback")' out/audit.jsonl
+    ```
+
+   The record contains the exception **type** and a SHA-256 of the
+   message. The full message is deliberately not logged because
+   SDK/LLM errors can echo back prompt fragments, URLs, or token IDs.
+   If you want the LLM planner to be load-bearing (abort the run when
+   it can't run), use `--agent` / `--agent=llm`, not
+   `--agent=hybrid`. `ScopeException` and `OperationCanceledException`
+   always propagate from hybrid mode — they are never swallowed by
+   the fallback.
+
 ---
 
 ## poc-cache
@@ -579,12 +599,12 @@ Authentication against CTFd uses the API token you pass via
 
 ## jeopardy-llm
 
-`drederick ctf-solve` currently initializes the Copilot LLM client
-(see `src/Drederick/Jeopardy/Cli/CtfSolveRunner.cs` →
-`CopilotLlmClient.TryCreateFromEnvironment`). Azure OpenAI and
-llama.cpp clients live in-tree and are being wired through the
-provider factory (see [LLM_SETUP.md](LLM_SETUP.md)). Until then,
-`ctf-solve` needs a Copilot/GitHub token.
+`drederick ctf-solve` selects its LLM backend via
+[`LlmProviderFactory`](../src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs).
+Pick the backend with `--llm-provider {copilot|azure|llamacpp}`
+(default `copilot`). Copilot / Azure OpenAI / llama.cpp are all wired;
+per-provider flag reference lives in
+[`LLM_SETUP.md`](LLM_SETUP.md#ctf-solve-cli-recipes).
 
 1. `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)`:
 
@@ -602,10 +622,17 @@ provider factory (see [LLM_SETUP.md](LLM_SETUP.md)). Until then,
    `https://models.inference.ai.azure.com/v1` instead of the Copilot
    endpoint — see [LLM_SETUP.md#precedence](LLM_SETUP.md#precedence).
 
-2. Azure OpenAI env set but requests aren't going there — the
-   Jeopardy runner does not yet auto-pick Azure. For now, Copilot is
-   the only wired backend. If you need Azure in the swarm today, track
-   the `llm-provider-factory` todo.
+2. Azure OpenAI env set but requests aren't going there — pass
+   `--llm-provider=azure` explicitly. The Jeopardy runner defaults to
+   Copilot; it does not auto-switch based on `AZURE_OPENAI_*` env
+   alone. Minimum config:
+
+    ```bash
+    export AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com"
+    export AZURE_OPENAI_API_KEY="…"
+    export AZURE_OPENAI_DEPLOYMENT_MAP="gpt-5.4=gpt5-prod"
+    drederick ctf-solve --llm-provider=azure --models=gpt-5.4 …
+    ```
 
 3. `LLAMACPP_URL` connection refused — your `llama-server` isn't
    running or isn't bound on the expected port. Confirm:

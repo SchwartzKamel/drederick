@@ -93,6 +93,10 @@ Build, test, and run commands you can rely on.
 | `drederick ctf-solve --scope … --ctfd <url> [--models <csv>]` | Jeopardy CTF swarm: race multiple LLMs across every challenge, auto-submit flags. | `src/Drederick/Jeopardy/**`, `src/Drederick/Cli/CommandLineOptions.cs` | `tests/Drederick.Tests/Jeopardy/**` |
 | `drederick ctf-msg --kind <hint\|focus\|skip\|stop\|shutdown> [--challenge …] [--text …]` | Inject mid-run operator hint / control signal into a live `ctf-solve` session. | `src/Drederick/Jeopardy/Cli/**`, `src/Drederick/Jeopardy/Bus/**` | `tests/Drederick.Tests/Jeopardy/**` |
 | `drederick --autopilot` | End-to-end recon → exploit → loot → session chain driven by `AutopilotRunner`. | `src/Drederick/Autopilot/**` | `AutopilotRunnerTests` |
+| `drederick --agent=hybrid` | LLM-first runner with deterministic fallback on any operational failure (no key, network, auth, rate-limit, transient SDK error). `ScopeException` always propagates. | `src/Drederick/Agent/HybridAgentRunner.cs` | `HybridAgentRunnerTests` |
+| `drederick ctf-solve … --llm-provider={copilot,azure,llamacpp}` | Pick the Jeopardy solver swarm backend at runtime. Copilot default; `--azure-endpoint` / `--azure-deployment` / `--llamacpp-url` / `--llamacpp-model` supply per-provider config. | `src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs` | `LlmProviderFactoryTests` |
+| `drederick doctor --category=jeopardy [--llm-provider=…]` | Provider-aware Jeopardy preflight: Docker, sandbox image, `jeopardy.llm.token`, `jeopardy.llm.reachable`. | `src/Drederick/Doctor/JeopardyDoctorChecks.cs` | `JeopardyDoctorChecksTests` |
+| `drederick web [--web-bind <host>] [--web-port <int>] [--web-token <value>]` | Launch the browser operator pane (ASP.NET Core + SignalR + React SPA). Loopback + no-auth by default; non-loopback binds require a bearer token (auto-generated to `out/web-token.txt` if not supplied). | `src/Drederick.Web/**`, `web/**` | `tests/Drederick.Tests/Web/**`, `web/e2e/**` |
 
 Continuous integration is wired in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
 release artifacts via [`.github/workflows/release.yml`](.github/workflows/release.yml).
@@ -154,6 +158,11 @@ surgical edits, identify the owning concept first.
 | `src/Drederick/Autopilot/` | `AutopilotRunner`, `ExploitationPlanner`, `CredentialStore`, `FlagExtractor`, `AutopilotReporter`. | autopilot |
 | `src/Drederick/Ops/` | Operational helpers: `HtbRanges`, `VpnDetector`. | ops |
 | `src/Drederick/Bundling/` | `DatasetteBootstrap`, `BootstrapOptions` (bundled Datasette bring-up). | bundling |
+| `src/Drederick/Agent/HybridAgentRunner.cs` | LLM-first recon runner with automatic fallback to the deterministic runner on operational failure; `ScopeException` / `OperationCanceledException` always propagate. Wired via `--agent=hybrid`. | orchestration-hybrid |
+| `src/Drederick/Agent/LlmExploitTools.cs` | LLM-visible `AIFunction` wrappers around the exploit toolbox for `MicrosoftAgentRunner`. Every wrapper re-checks scope + `RunPermissions` before dispatch. | orchestration-llm |
+| `src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs` | Provider switch for `ctf-solve` and `drederick doctor --category=jeopardy`. Parses `--llm-provider={copilot,azure,llamacpp}` and builds the matching `ICopilotLlmClient`. | jeopardy-llm |
+| `src/Drederick.Web/` | ASP.NET Core minimal API + SignalR hub (`EventsHub`) serving the React SPA from `wwwroot/`. Bearer-token middleware on non-loopback binds. Owned by `ui-shell`. | ui-shell |
+| `web/` | Vite + React + TypeScript SPA for the Web UI. 8 operator pages, Playwright E2E under `web/e2e/`. | ui-shell |
 
 <a id="extension-points"></a>
 ## Extension points

@@ -36,6 +36,7 @@ model.
 - [Azure OpenAI](#provider-azure)
 - [llama.cpp](#provider-llamacpp)
 - [`--agent` (recon) — OpenAI-compatible](#provider-agent-recon)
+- [`--agent=hybrid` (recon) — LLM first, deterministic fallback](#provider-agent-hybrid)
 - [Web UI provider selection](#web-ui-provider)
 - [Token precedence and auto-selection](#precedence)
 - [`drederick doctor` — LLM checks](#doctor)
@@ -75,6 +76,7 @@ provider backend.
 | Jeopardy solver swarm (CLI) | `drederick ctf-solve` | **Copilot / Azure / llama.cpp** — operator-selectable per run via `LlmProviderFactory`. | Pass `--llm-provider=copilot\|azure\|llamacpp` (default `copilot`) and export the matching env vars (or pass the CLI flags listed below). |
 | Jeopardy solver swarm (Web UI) | `Drederick.Web` session-start form | **Copilot / Azure / llama.cpp** — operator-selectable per session. | Pick `copilot`, `azure`, or `llamacpp` in the form; export the matching env vars on the host running `Drederick.Web` ([details](#web-ui-provider)). |
 | Recon cornerman | `drederick ... --agent` | **OpenAI** via Microsoft Agent Framework. | Set `OPENAI_API_KEY` (+ optional `DREDERICK_MODEL`). |
+| Recon cornerman — hybrid | `drederick ... --agent=hybrid` | **OpenAI** via Microsoft Agent Framework, with automatic fallback to `AdaptiveRunner` on operational failure. | Same env as `--agent`; if the key / network is missing, the deterministic runner takes over. Scope rejections still propagate. |
 | Autopilot exploitation | `--autopilot` | Deterministic — **no LLM**. | No env vars needed. Driven by CLI flags. |
 
 > If the provider for a mode isn't configured, that mode degrades
@@ -302,8 +304,48 @@ drederick --scope scope.yaml --target 10.10.10.5 --agent --out out/
 
 Pointing `--agent` at Azure or llama.cpp today requires a local patch
 to `MicrosoftAgentRunner` (override the `OpenAIClient` endpoint) and a
-rebuild. Tracked alongside the hybrid-agent-runner roadmap item in
-[AGENTS.md](../AGENTS.md#extension-points).
+rebuild. The provider-factory migration for recon is tracked on the
+roadmap; until it lands, the natural pairing for operators who want
+the LLM in the loop without a hard `OPENAI_API_KEY` dependency is
+[`--agent=hybrid`](#provider-agent-hybrid).
+
+<a id="provider-agent-hybrid"></a>
+## `--agent=hybrid` (recon) — LLM first, deterministic fallback
+
+`HybridAgentRunner` ([source](../src/Drederick/Agent/HybridAgentRunner.cs))
+wraps `MicrosoftAgentRunner` over `AdaptiveRunner`. It tries the LLM
+planner first and falls back to the deterministic runner on any
+operational failure — no `OPENAI_API_KEY`, network error, auth, rate
+limit, timeout, transient SDK exception. This is the natural pairing
+for Jeopardy-style workloads where you want the model when it's
+available but you do not want the run to abort when it isn't.
+
+```bash
+# LLM when the key is present, deterministic runner when it isn't.
+drederick --scope scope.yaml --target 10.10.10.5 --agent=hybrid --out out/
+```
+
+Invariants the hybrid wrapper preserves:
+
+- `ScopeException` is never swallowed. A scope rejection is an
+  authorization signal — it propagates, the operator sees it, and the
+  deterministic runner is **not** retried against the rejected target.
+- `OperationCanceledException` propagates unchanged — Ctrl-C stays
+  responsive and the deterministic runner is not re-invoked after a
+  user-requested cancel.
+- Every fallback emits a `hybrid.llm_fallback` audit event with the
+  exception **type** and a **SHA-256 digest** of the message. The full
+  message is deliberately never logged because LLM/SDK errors can echo
+  back prompt fragments, URLs, or token IDs.
+
+Related CLI variants:
+
+| Flag | Runner selected |
+| ---- | --------------- |
+| *(none)* | `AdaptiveRunner` — deterministic, no LLM. |
+| `--agent` / `--agent=llm` | `MicrosoftAgentRunner` — LLM only; aborts the run if the SDK call fails. |
+| `--agent=hybrid` | `HybridAgentRunner` — LLM first, `AdaptiveRunner` fallback on operational failure. |
+| `--agent=adaptive` | Force `AdaptiveRunner`, even if `UseAgent` is set elsewhere. |
 
 <a id="web-ui-provider"></a>
 ## Web UI provider selection

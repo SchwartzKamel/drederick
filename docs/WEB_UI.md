@@ -152,7 +152,7 @@ doc says otherwise.
 | ------------ | ------- |
 | **Runs**     | Start/stop recon passes against a target set; watch the live `ScanEvent` stream over SignalR; cancel in flight. |
 | **Findings** | Hosts, services, CVEs, PoC refs, exploit runs, sessions, loot. Digest-only for anything sensitive. Schema matches [`DB_SCHEMA.md`](DB_SCHEMA.md). |
-| **Jeopardy** | Live swarm dashboard — per-challenge, which models are racing, the current turn, token/time budget, and a hint-injection form that mirrors `drederick ctf-msg`. See [`JEOPARDY.md`](JEOPARDY.md). |
+| **Jeopardy** | Live swarm dashboard — per-challenge, which models are racing, the current turn, token/time budget, and a hint-injection form that mirrors `drederick ctf-msg`. The session-start form carries an `llm_provider` selector (`copilot` / `azure` / `llamacpp`) — the same three backends `--llm-provider` picks on the CLI ([details](LLM_SETUP.md#web-ui-provider)). See [`JEOPARDY.md`](JEOPARDY.md). |
 | **Offensive**| `ExploitRunner` / `CredRunner` / `PayloadStager` invocations, gated by the same per-run opt-ins as the CLI (`--allow-exec-pocs`, `--allow-cred-attacks`, `--allow-payloads`, `--allow-destructive`, `--allow-dos`). Post-exploitation hand-offs link to [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md). |
 | **Audit**    | Tail of `audit.jsonl` with filtering by tool / target / event type. Append-only at the sink; the UI is read-only. |
 | **Scope**    | Read-only viewer of the currently loaded scope file + a validator that previews which hosts an entry would resolve to. No edit path. |
@@ -232,18 +232,32 @@ cover.
 <a id="roadmap"></a>
 ## Roadmap
 
-- **Phase 1 — scaffold (current).** `src/Drederick.Web/` host,
-  `web/` Vite + React + TypeScript project, `drederick web`
-  subcommand, bearer-token middleware, `wwwroot/` embed path. No
-  substantive endpoints yet.
+**Phases 1–4 have shipped in v0.3.0** — the scaffold, REST + SignalR
+endpoints, all 8 operator pages, and the Playwright E2E suite are in
+tree. Remaining follow-ups:
+
+- **Accessibility + keyboard shortcuts** pass across all 8 pages.
+- **Dark mode** refinement.
+- **Rate limiting** on the API for non-loopback binds.
+- **TLS termination** guidance (reference reverse-proxy config) for
+  anything beyond a lab jump box.
+
+Historical phase breakdown (shipped):
+
+- **Phase 1 — scaffold.** `src/Drederick.Web/` host, `web/` Vite +
+  React + TypeScript project, `drederick web` subcommand,
+  bearer-token middleware, `wwwroot/` embed path.
 - **Phase 2 — endpoints + SignalR hub.** `/api/scope`, `/api/runs`,
   `/api/findings`, `/api/audit`, `/api/jeopardy`, `/api/offensive`,
   `/api/doctor`, `/api/notes`. Live `ScanEvent` / audit / Jeopardy
   turn feed over SignalR.
 - **Phase 3 — views.** All pages in [Surfaces](#surfaces) wired to
-  real data. Opt-in toggles on Runs. `<RedactedDigest />` landed.
-- **Phase 4 — E2E + polish.** Playwright smoke tests against a
-  fixture run, accessibility pass, keyboard shortcuts, dark mode.
+  real data. Opt-in toggles on Runs. `<RedactedValue />` + Tatum
+  microcopy library landed.
+- **Phase 4 — E2E.** Playwright smoke suite (`web/e2e/`) with 23
+  passing invariants — scope-file mtime stability, loot-never-plaintext,
+  wildcard refusal, 8-route smoke, exploit-run redaction, no-database
+  shape.
 
 <a id="see-also"></a>
 ## See also

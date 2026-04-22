@@ -88,6 +88,7 @@ Peers: [PentestGPT](https://github.com/GreyDGL/PentestGPT),
 | Payload generation + delivery | **yes (`PayloadStager`, msfvenom-backed)** | no | no | yes |
 | Session tracking + post-ex pivot | **yes (`out/sessions/`)** | no | partial | yes |
 | Multi-stage chain planner | **yes (adaptive + LLM runners)** | yes | yes | no |
+| LLM-first orchestration with deterministic fallback (no-key / network / rate-limit resilient) | **yes (`HybridAgentRunner`, `--agent=hybrid`)** | no | no | no |
 | Multi-model LLM (Copilot SDK → GPT / Claude / Gemini / Grok) | **yes** | single-model | single-model | no |
 | Azure OpenAI + llama.cpp backends | **yes** | partial | varies | no |
 | Append-only audit log with SHA-256 argv digests | **yes (`audit.jsonl`)** | no | no | enterprise tier |

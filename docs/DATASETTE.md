@@ -454,7 +454,9 @@ The intended path from "scan finished" to "I know what to manually try":
   there is **no authentication yet** — exposing Datasette on a LAN means
   anyone on that LAN can read your recon output, including cached PoC
   source paths. A one-time token model is planned (same pattern as the
-  future `src/Drederick.Web` host) but not yet implemented.
+  `src/Drederick.Web` host, which already enforces a bearer token on
+  non-loopback binds — see [`WEB_UI.md`](WEB_UI.md#threat-model)) but
+  not yet implemented for Datasette.
 - **Read-only by default.** Datasette doesn't expose `INSERT`/`UPDATE`
   unless you configure write plugins. Don't configure them.
 - **No public exposure.** `out/findings.db` contains CVE mappings, cached

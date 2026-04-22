@@ -20,16 +20,19 @@ related:
 
 > **TL;DR.** `CLI → Scope → Doctor → ReconToolbox (14 `IReconTool`s) →
 > HostWorkerPool → Runner (AdaptiveRunner / MicrosoftAgentRunner /
-> AutopilotRunner) → Enrichment (NVD + multi-source PoC) → ExploitToolbox
-> (`ExploitRunner`, `MsfRcRunner`, `NucleiRunner`, `PasswordSprayTool`,
+> HybridAgentRunner / AutopilotRunner) → Enrichment (NVD + multi-source PoC) →
+> ExploitToolbox (`ExploitRunner`, `MsfRcRunner`, `NucleiRunner`, `PasswordSprayTool`,
 > `MultiStageExploitRunner`) → Post-ex (`SessionManager`, `PostExLinux`,
 > `PostExWindows`, `SessionPivotProber`, `FlagExtractor`) → Reporting (JSON /
-> Markdown / SqliteReport) + Memory (`memory/findings.json`)`. A parallel
-> Jeopardy CTF subsystem lives under `src/Drederick/Jeopardy/`. Scope is
-> enforced *inside every tool* — recon, exploit, credential, payload, and
-> post-ex. `AuditLog` and `KnowledgeBase` are the only thread-safe shared
-> state. Read [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) for hard guarantees
-> before editing anything in this doc's blast radius.
+> Markdown / SqliteReport) + Memory (`memory/findings.json`) → Presentation
+> (Datasette / Avalonia `Drederick.UI` / browser `Drederick.Web` + SignalR)`.
+> A parallel Jeopardy CTF subsystem lives under `src/Drederick/Jeopardy/`;
+> the Jeopardy LLM backend is selectable via `LlmProviderFactory` (Copilot /
+> Azure OpenAI / llama.cpp). Scope is enforced *inside every tool* — recon,
+> exploit, credential, payload, and post-ex. `AuditLog` and `KnowledgeBase`
+> are the only thread-safe shared state. Read
+> [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) for hard guarantees before
+> editing anything in this doc's blast radius.
 
 <a id="intro"></a>
 ## Overview
@@ -152,6 +155,16 @@ documentation lives in [`MODULES.md`](./MODULES.md).
   attribute. The LLM chooses tool calls; scope and permission checks are
   re-enforced inside every tool, so the model cannot escape the allow-list
   or bypass category opt-ins.
+- `HybridAgentRunner` — wraps `MicrosoftAgentRunner` over
+  `AdaptiveRunner`: delegates to the LLM planner first, falls back to
+  the deterministic runner on any operational failure (null inner
+  runner, network/auth/rate-limit/timeout/transient SDK exception).
+  `ScopeException` and `OperationCanceledException` **always**
+  propagate — never swallowed. Enabled via `--agent=hybrid`. Every
+  fallback writes a `hybrid.llm_fallback` audit event keyed by
+  exception type + SHA-256 digest of the message (full message is
+  never logged because SDK errors can echo back prompts / URLs /
+  token IDs).
 - `AutopilotRunner` — post-recon offensive loop (`src/Drederick/Autopilot/`):
   walks the `ExploitationPlanner` card (`nuclei > spray-with-realm >
   spray > msfrc > multi-stage`), hands sessions off to `SessionManager`,
@@ -304,6 +317,17 @@ need per-run state, keep it inside `HostFinding` (one per target).
 datasette/metadata.json --host 127.0.0.1 --port 8001 --open`. Bound to
 localhost by default. See [`DATASETTE.md`](./DATASETTE.md) for the full
 schema walkthrough, facet guide, and PoC triage workflow.
+
+### Drederick.Web (browser operator pane) {#layer-presentation-web}
+
+`src/Drederick.Web/` — ASP.NET Core minimal API + SignalR hub
+(`EventsHub`) serving the React SPA under `web/` from `wwwroot/`.
+Launched via `drederick web`. Binds to `127.0.0.1` by default;
+non-loopback binds require a bearer token (auto-generated to
+`out/web-token.txt` if `--web-token` is not supplied). Every endpoint
+goes through `DrederickHost`, so scope is enforced inside the same
+tool layer the CLI uses. See [`WEB_UI.md`](./WEB_UI.md) for surfaces,
+threat model, and Playwright E2E guide.
 
 ### Avalonia operator console {#layer-presentation-avalonia}
 

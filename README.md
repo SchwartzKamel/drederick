@@ -67,7 +67,7 @@ and drops it at `~/.local/bin/drederick`. Override via environment:
 
 ```bash
 # Pin a version
-curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.3.0 bash
 
 # System-wide install (requires sudo)
 curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | sudo PREFIX=/usr/local/bin bash
@@ -149,9 +149,32 @@ triage workflow.
   `out/findings.db` with 7 labelled tables, clickable facets, and 5
   canned queries for CVE / PoC / tooling triage.
 - **Adaptive orchestration.** `AdaptiveRunner` (deterministic rule-based
-  planner, default) or `MicrosoftAgentRunner` (LLM-driven, enabled with
-  `--agent` + `OPENAI_API_KEY`). Either way, scope is enforced inside every
-  tool — the planner cannot escape the allow-list.
+  planner, default), `MicrosoftAgentRunner` (LLM-driven, enabled with
+  `--agent` + `OPENAI_API_KEY`), or `HybridAgentRunner` (LLM-first with
+  automatic fallback to the deterministic runner on any operational
+  failure — no key, network error, auth, rate limit, transient SDK
+  exception; enabled with `--agent=hybrid`). Either way, scope is
+  enforced inside every tool — the planner cannot escape the allow-list.
+- **Full-auto offensive subsystem.** `ExploitRunner` (cached PoC spawn),
+  `MsfRcRunner` (msfconsole `-r`), `NucleiRunner`, `PasswordSprayTool`,
+  `MultiStageExploitRunner`, `SessionManager` + `SessionPivotProber`,
+  `PostExLinux` / `PostExWindows`. Each call is scope-validated on every
+  host in argv (pivots, LHOST/RHOSTS, session callbacks). See
+  [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md).
+- **Autopilot.** `drederick --autopilot` chains recon → exploit → loot →
+  session → replan up to `--autopilot-max-iterations`. Deterministic
+  (no LLM required); see [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md).
+- **Jeopardy CTF solver swarm.** `drederick ctf-solve` races multiple
+  LLM models per challenge against a CTFd scoreboard, auto-submits
+  flags, deduplicates winners, and honors the same scope file. Backend
+  picker via `--llm-provider={copilot,azure,llamacpp}` (Copilot default).
+  See [`docs/JEOPARDY.md`](docs/JEOPARDY.md) and
+  [`docs/LLM_SETUP.md`](docs/LLM_SETUP.md).
+- **Browser operator pane.** `drederick web` serves a React SPA over an
+  ASP.NET Core minimal API + SignalR hub — live run orchestration,
+  Jeopardy swarm dashboard, audit tail, scope viewer, 8 operator pages.
+  Loopback-only by default; bearer-token required for non-loopback
+  binds. See [`docs/WEB_UI.md`](docs/WEB_UI.md).
 - **Bounded concurrency.** `Channel<ScanJob>`-backed worker pool with
   `--host-concurrency` (default 4, max 32) and `--service-concurrency`
   (default 8, max 64). Per-service probes fan out in parallel per host.
@@ -217,6 +240,11 @@ export OPENAI_API_KEY=sk-...
 export DREDERICK_MODEL=gpt-4o-mini          # optional, default gpt-4o-mini
 $DRED --scope scope.yaml --target 10.10.10.5 --agent --out out/
 
+# Hybrid planner: LLM first, fall back to the deterministic runner on any
+# operational failure (no key, network, auth, rate limit, transient SDK
+# error). ScopeException still propagates — never swallowed.
+$DRED --scope scope.yaml --target 10.10.10.5 --agent=hybrid --out out/
+
 # Skip PoC fetching for this run.
 $DRED --scope scope.yaml --target 10.10.10.5 --no-fetch-poc --out out/
 
@@ -236,6 +264,11 @@ $DRED ctf-msg --kind hint --challenge "web/baby-sqli" \
 # can be composed entirely inside the GUI — no scope file on disk required.
 # Same scope/no-exec invariants as the CLI; see docs/UI.md.
 dotnet run --project src/Drederick.UI
+
+# Launch the browser-based operator pane (loopback only, no auth by default).
+# Non-loopback binds require a bearer token — see docs/WEB_UI.md.
+$DRED web --out out/
+$DRED web --web-bind 0.0.0.0 --web-token <tok>   # remote access, TLS-proxy it
 
 # Doctor: detect operator tooling (read-only report).
 $DRED doctor
@@ -354,10 +387,10 @@ flowchart TD
     Audit["AuditLog<br/>(JSONL, thread-safe)"] --> Toolbox
     Toolbox --> Tools["IReconTool + IExploitTool set<br/>each re-checks scope on entry<br/>(recon, exploit, cred, payload)"]
     Tools --> Pool["HostWorkerPool<br/>(bounded Channel&lt;ScanJob&gt;)"]
-    Pool --> Runner["AdaptiveRunner<br/>or MicrosoftAgentRunner"]
+    Pool --> Runner["AdaptiveRunner<br/>MicrosoftAgentRunner<br/>or HybridAgentRunner"]
     Runner --> Enrich["Enrichment:<br/>CveAnnotator → PocAggregator<br/>→ ExploitRunner (in-scope only)"]
     Enrich --> Report["Reporting:<br/>JSON / Markdown /<br/>SqliteReport (findings.db)"]
-    Report --> Present["Datasette (drederick serve)<br/>+ KnowledgeBase<br/>(memory/findings.json)"]
+    Report --> Present["Datasette (drederick serve)<br/>Drederick.Web (drederick web)<br/>Avalonia (Drederick.UI)<br/>+ KnowledgeBase<br/>(memory/findings.json)"]
 ```
 
 Scope enforcement lives **inside every tool**, not at the CLI boundary.
@@ -385,9 +418,23 @@ Shipped and in the tree today:
 
 Still planned, tracked in follow-up PRs:
 
-- `src/Drederick.Web` ASP.NET Core host + SignalR live feed.
-- `web/` Vite + React + TypeScript + Tailwind point-and-click UI.
-- One-time token auth for the web host.
 - Bundled wordlist + pinned NSE-script list.
-- Integration tests against `vulhub` (env-gated) + Playwright UI smoke tests.
+- Integration tests against `vulhub` (env-gated).
 - Self-contained `dotnet publish` with embedded web assets.
+
+Shipped in v0.3.0 (see [`CHANGELOG.md`](CHANGELOG.md)):
+
+- Full-auto offensive subsystem (`ExploitRunner`, `MsfRcRunner`,
+  `NucleiRunner`, `PasswordSprayTool`, `MultiStageExploitRunner`,
+  `SessionManager`, `SessionPivotProber`, `PostExLinux`, `PostExWindows`,
+  `AutopilotRunner`, `LlmExploitTools`).
+- Jeopardy CTF solver subsystem (`ChallengeSolver`, `SolverSwarm`,
+  `CtfdClient`, `SandboxManager`, `FlagSubmitCoordinator`, Copilot +
+  Azure OpenAI + llama.cpp clients, `LlmProviderFactory`, `ctf-solve` /
+  `ctf-msg` subcommands).
+- `src/Drederick.Web` ASP.NET Core host + SignalR hub + React SPA
+  (`web/`) + Playwright E2E suite.
+- `HybridAgentRunner` (`--agent=hybrid`): LLM-first orchestration with
+  deterministic fallback on any operational failure.
+- `--llm-provider={copilot,azure,llamacpp}` backend picker for
+  `ctf-solve` and `drederick doctor --category=jeopardy`.

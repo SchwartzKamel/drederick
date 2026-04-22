@@ -82,6 +82,12 @@ What each piece does:
   See [Prerequisites](#prereqs) for how to mint one.
 - `--report-dir` — where `report.json`, `report.md`, and `audit.jsonl`
   land. Defaults to `out/ctf-report/`.
+- `--llm-provider {copilot|azure|llamacpp}` — which LLM backend the
+  swarm races. Defaults to `copilot`. Azure OpenAI and llama.cpp are
+  wired through [`LlmProviderFactory`](../src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs);
+  per-provider flags (`--azure-endpoint`, `--azure-deployment`,
+  `--llamacpp-url`, `--llamacpp-model`) are documented in
+  [`LLM_SETUP.md#ctf-solve-cli-recipes`](LLM_SETUP.md#ctf-solve-cli-recipes).
 
 **What "in scope" means for a Jeopardy CTF.** The CTFd host is the
 obvious one. Many events also spin up per-challenge boxes
@@ -205,9 +211,10 @@ Pass `--models` as a comma-separated list. Default roster:
 claude-opus-4.7, gpt-5.4, gemini-3.1-pro
 ```
 
-Recommended roster (leans on Copilot's multi-model access; same
-`--models` syntax works once the Azure / llama.cpp backends are wired
-through the `ctf-solve` factory — see [LLM_SETUP.md](LLM_SETUP.md)):
+Recommended roster (leans on Copilot's multi-model access; the same
+`--models` syntax works against Azure deployments and llama.cpp models
+too — pick the backend with `--llm-provider` and supply the per-provider
+config flags. Full recipes in [`LLM_SETUP.md`](LLM_SETUP.md#ctf-solve-cli-recipes)):
 
 | Model | Why it's on the card |
 | ----- | -------------------- |
