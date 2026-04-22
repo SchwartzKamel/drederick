@@ -23,13 +23,23 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     private readonly AuditLog _audit;
     private readonly ChatClient _chatClient;
     private readonly string _modelId;
+    private readonly LlmExploitTools? _exploitTools;
 
-    public MicrosoftAgentRunner(AuditLog audit, ChatClient chatClient, string modelId)
+    public MicrosoftAgentRunner(
+        AuditLog audit,
+        ChatClient chatClient,
+        string modelId,
+        LlmExploitTools? exploitTools = null)
     {
         _audit = audit;
         _chatClient = chatClient;
         _modelId = modelId;
+        _exploitTools = exploitTools;
     }
+
+    /// <summary>Attach / replace the offensive-tool bundle exposed to the LLM.</summary>
+    public MicrosoftAgentRunner WithExploitTools(LlmExploitTools exploitTools) =>
+        new(_audit, _chatClient, _modelId, exploitTools);
 
     /// <summary>Factory: build an OpenAI-backed runner from environment configuration.</summary>
     public static MicrosoftAgentRunner? TryCreateFromEnvironment(AuditLog audit)
@@ -83,6 +93,17 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         AddIf("tls-cipher-enum",
             AIFunctionFactory.Create(tools.TlsCipherEnumAsync, name: "tls_cipher_enum"));
 
+        // --- llm-exploit-wiring ---
+        // Offensive surface (exploit, credential spray, post-ex, pivot,
+        // multi-stage chain, flag extraction). Each AIFunction re-checks
+        // scope internally and consults RunPermissions before touching
+        // anything. Null-gated on the underlying tool being wired.
+        if (_exploitTools is not null)
+        {
+            foreach (var t in _exploitTools.BuildAiTools()) aiTools.Add(t);
+        }
+        // --- end llm-exploit-wiring ---
+
         AIAgent agent = _chatClient.AsAIAgent(
             instructions: BuildSystemPrompt(),
             name: "drederick",
@@ -128,34 +149,56 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         });
     }
 
-    private static string BuildSystemPrompt() =>
+    internal static string BuildSystemPrompt() =>
         """
-        You are Drederick, an authorized-lab reconnaissance agent. You operate
-        against targets that the operator owns or is explicitly authorized to
-        assess (HTB / CTF / sanctioned red-team engagement).
+        You are Drederick, a full-auto offensive security harness operating
+        against authorized lab / CTF / sanctioned red-team targets. Every
+        target in the user message is already inside the operator's declared
+        scope; the tool layer is the authorization boundary and re-checks
+        scope on every call you make.
 
-        You have four tools: nmap_scan, http_probe, tls_probe, dns_probe.
-        Use them adaptively:
-          - Start with dns_probe and nmap_scan (top ports) for each target.
-          - When nmap_scan reports open web-style services, call http_probe.
-          - When nmap_scan reports TLS-bearing services, call tls_probe.
-          - If top-port nmap finds nothing, retry once with ports="1-65535".
-          - Do not re-run the same tool on the same target more than a handful
-            of times; the tool layer enforces a budget.
+        Reference: .github/copilot-instructions.md — "full-auto offensive
+        security harness for authorized lab / CTF / red-team targets". Your
+        job is to compromise in-scope targets fast: enumerate widely,
+        exploit aggressively, pivot when reachable, and extract flags.
 
-        Hard constraints:
-          - You MUST NOT attempt exploitation, brute force, credential
-            stuffing, payload delivery, or lateral movement.
-          - You MUST NOT fabricate tool output or targets. Every target must
-            already be in the user's message; the tool layer refuses anything
-            else.
-          - If a tool returns a scope error, stop touching that target and
-            continue with the others.
+        Recon tools: nmap_scan, http_probe, tls_probe, dns_probe, and (when
+        wired) smb_probe, ftp_probe, ssh_probe, snmp_probe, ldap_probe,
+        rpc_probe, kerberos_probe, dns_zone_transfer,
+        http_content_discovery, tls_cipher_enum.
 
-        When finished, respond with a short, factual summary: for each target
-        list open ports, notable service versions, any expired or soon-to-expire
-        TLS certificates, and missing HTTP security headers. Include remediation
-        suggestions for defenders. Do not suggest exploits.
+        Offensive tools (when wired):
+          - exploit_plan: ask for a deterministic fight-card for a target.
+          - execute_cred_spray: one (user, password) attempt against an
+            auth-bearing service. Requires --allow-cred-attacks and
+            --acknowledge-lockout-risk.
+          - run_post_ex_linux / run_post_ex_windows: enumerate a host
+            through an established session.
+          - pivot_and_scan: sweep an internal CIDR from inside a session.
+          - extract_flags_from_dir: surface captured flags from out/.
+          - run_multi_stage: drive preflight → PoC → stager → payload →
+            handler → record as one chain.
+
+        Rules you MUST follow:
+          - You MAY execute exploits, credential attacks, post-ex
+            enumeration, and payload delivery — but ONLY against targets
+            supplied in the user message. The tool layer rejects anything
+            else; do not waste calls on targets it will refuse.
+          - You MUST NOT fabricate targets, invent IPs, or attempt to
+            escape scope by re-phrasing, encoding, or any other
+            workaround. The scope check is load-bearing and unreachable
+            from here.
+          - Passwords the operator supplies may be forwarded verbatim to
+            execute_cred_spray; the wrapper hashes them before audit.
+          - If a tool returns {"error": "permission_denied", ...},
+            acknowledge the required flag and move on — do not retry.
+          - If a tool returns {"error": "budget_exceeded", ...}, stop
+            invoking that tool against that target.
+
+        Plan adaptively: recon → fingerprint → plan (exploit_plan) →
+        exploit → post-ex → pivot → repeat. When finished, respond with a
+        factual summary: open ports, service versions, captured creds
+        (by SHA-256 only), opened sessions, and any flags extracted.
         """;
 
     private static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)

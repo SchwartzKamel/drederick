@@ -1,0 +1,2 @@
+SMB         10.10.10.5      445    VICTIM01         [*] Windows 10.0 Build 19041 x64 (name:VICTIM01) (domain:CORP) (signing:False) (SMBv1:False)
+SMB         10.10.10.5      445    VICTIM01         [+] CORP\admin:Password1! (Pwn3d!)

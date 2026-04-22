@@ -36,11 +36,13 @@ public class CredentialStoreTests
 
         var goodRef = new CredentialRef
         {
-            User = "root", PasswordSha256 = CredentialStore.Sha256Hex("toor"),
+            User = "root",
+            PasswordSha256 = CredentialStore.Sha256Hex("toor"),
         };
         var badRef = new CredentialRef
         {
-            User = "root", PasswordSha256 = CredentialStore.Sha256Hex("different"),
+            User = "root",
+            PasswordSha256 = CredentialStore.Sha256Hex("different"),
         };
         Assert.Equal("toor", store.TryGetSecret(goodRef));
         Assert.Null(store.TryGetSecret(badRef));

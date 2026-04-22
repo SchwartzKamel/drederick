@@ -397,6 +397,39 @@ audit.Record("session.manager.ready", new Dictionary<string, object?>
 });
 _ = sessionManager;  // reserved for autopilot / UI integration
 // --- end session-manager-wiring ---
+
+// --- llm-exploit-wiring ---
+// Expose the offensive surface (exploit planner, cred spray, post-ex,
+// pivot, multi-stage chain, flag extraction) to the LLM runner as
+// AIFunctions. Each underlying tool is already scope-checked and
+// permission-gated; LlmExploitTools is belt + braces plus budget + audit
+// for LLM-driven invocations.
+var llmExploitCreds = new CredentialStore(audit);
+var llmExploitPlanner = new ExploitationPlanner(audit, opts.OutputDir);
+var llmExploitFlags = new FlagExtractor(audit);
+var llmExploitSessionShell = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh";
+var llmExploitPivot = new SessionPivotProber(scope, audit, new DefaultProcessRunner(), llmExploitSessionShell, kb);
+var llmExploitTools = new LlmExploitTools(
+    scope: scope,
+    audit: audit,
+    permissions: permissions,
+    outputRoot: opts.OutputDir,
+    planner: llmExploitPlanner,
+    kb: kb,
+    creds: llmExploitCreds,
+    spray: spray,
+    linux: postExLinux,
+    windows: postExWindows,
+    pivot: llmExploitPivot,
+    sessions: sessionManager,
+    flags: llmExploitFlags,
+    multiStage: multiStage);
+audit.Record("llm.exploit_tools.ready", new Dictionary<string, object?>
+{
+    ["count"] = llmExploitTools.BuildAiTools().Count,
+});
+// --- end llm-exploit-wiring ---
+
 if (!opts.Quiet)
 {
     // Live progress: one-liner per tool invocation on stderr so stdout stays
@@ -417,7 +450,7 @@ if (opts.UseAgent)
     }
     else
     {
-        runner = agentRunner;
+        runner = agentRunner.WithExploitTools(llmExploitTools);
     }
 }
 else

@@ -1,0 +1,1 @@
+SMB         10.10.10.5      445    VICTIM01         [-] CORP\operator:wrong STATUS_LOGON_FAILURE

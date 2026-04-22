@@ -229,11 +229,17 @@ public sealed class AutopilotRunner
         sw.Stop();
         _audit.Record("autopilot.action.skip", new Dictionary<string, object?>
         {
-            ["id"] = a.Id, ["tool"] = a.Tool, ["target"] = a.Target, ["reason"] = reason,
+            ["id"] = a.Id,
+            ["tool"] = a.Tool,
+            ["target"] = a.Target,
+            ["reason"] = reason,
         });
         return new ExploitActionResult
         {
-            Action = a, Skipped = true, SkipReason = reason, DurationMs = sw.ElapsedMilliseconds,
+            Action = a,
+            Skipped = true,
+            SkipReason = reason,
+            DurationMs = sw.ElapsedMilliseconds,
         };
     }
 
@@ -242,11 +248,17 @@ public sealed class AutopilotRunner
         sw.Stop();
         _audit.Record("autopilot.action.fail", new Dictionary<string, object?>
         {
-            ["id"] = a.Id, ["tool"] = a.Tool, ["target"] = a.Target, ["error"] = error,
+            ["id"] = a.Id,
+            ["tool"] = a.Tool,
+            ["target"] = a.Target,
+            ["error"] = error,
         });
         return new ExploitActionResult
         {
-            Action = a, Succeeded = false, Error = error, DurationMs = sw.ElapsedMilliseconds,
+            Action = a,
+            Succeeded = false,
+            Error = error,
+            DurationMs = sw.ElapsedMilliseconds,
         };
     }
 }
