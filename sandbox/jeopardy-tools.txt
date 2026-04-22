@@ -1,0 +1,121 @@
+# Jeopardy CTF sandbox toolchain (mirror of sandbox/Dockerfile.jeopardy-sandbox).
+# Keep alphabetized within each category. Update Dockerfile and this file in
+# lockstep. Informed by verialabs/ctf-agent sandbox-tools.txt but retargeted
+# to ubuntu:24.04 (python 3.12).
+
+## Base
+bash-completion
+build-essential
+bsdmainutils
+cmake
+curl
+fd-find
+file
+git
+hexyl
+ipython3
+jq
+less
+make
+python3 (3.12)
+python3-dev
+python3-pip
+python3-venv
+ripgrep
+screen
+sudo-less (no sudo installed)
+tmux
+tree
+vim
+wget
+
+## Binary / reverse
+binwalk
+foremost
+gdb
+gdb-multiarch
+ltrace
+nm
+objdump
+patchelf
+pwndbg
+peda
+radare2
+readelf
+strace
+strings
+upx-ucl
+xxd
+
+## Pwn / exploit dev
+angr (pip)
+capstone (pip)
+keystone-engine (pip)
+libc-database
+one_gadget
+pwntools (pip)
+ropper (pip)
+ROPgadget (pip)
+seccomp-tools
+unicorn (pip)
+
+## Crypto
+cado-nfs
+factordb-pycli (pip)
+fermat-factor
+gmpy2 (pip)
+openssl
+pycryptodome (pip)
+primefac (pip)
+RsaCtfTool (pip/git)
+sagemath
+sympy (pip)
+z3-solver (pip)
+
+## Forensics
+exiftool
+foremost
+hachoir (pip)
+photorec
+scalpel
+sleuthkit  # fls, icat, mmls, fsstat, tsk_recover
+volatility3 (pip)
+
+## Stego
+exifprobe
+imagemagick
+pngcheck
+stegseek
+steghide
+stegsolve (jar)
+tesseract-ocr
+zsteg (gem)
+
+## Web
+ffuf
+flask (pip)
+gobuster
+httpx (pip)
+nmap
+playwright (pip, chromium)
+python3-requests
+sqlmap
+wfuzz
+
+## Network
+dnsutils
+netcat-traditional  # /usr/bin/nc
+socat
+tcpdump
+tshark
+
+## Misc / ML helpers
+ffmpeg
+numpy (pip)
+pillow (pip)
+scipy (pip)
+sox
+torch-cpu (pip)  # pytorch cpu wheel
+
+## Healthcheck
+/healthcheck.sh   # imports pwn, angr, Crypto, volatility3 + r2 -v
