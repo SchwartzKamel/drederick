@@ -1,0 +1,5 @@
+# E2E test scope — deliberately narrow lab ranges.
+# Every "in-scope" test target in constants.ts falls within these prefixes.
+# Every "out-of-scope" test target is outside.
+10.0.0.0/24
+192.168.56.0/24

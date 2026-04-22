@@ -64,3 +64,11 @@ web/dist/
 src/Drederick.Web/wwwroot/*
 !src/Drederick.Web/wwwroot/.gitkeep
 web/tsconfig.tsbuildinfo
+
+# --- e2e artifacts ---
+web/test-results/
+web/playwright-report/
+web/playwright/.cache/
+web/e2e/.tmp-out/
+# --- end e2e artifacts ---
+web/e2e/.lib/

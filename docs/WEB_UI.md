@@ -260,3 +260,66 @@ cover.
   Offensive page hands off to.
 - [`LLM_SETUP.md`](LLM_SETUP.md) — wiring the models the Runs /
   Jeopardy pages orchestrate.
+
+<a id="running-e2e"></a>
+## Running E2E
+
+End-to-end tests live in `web/e2e/` and drive the real backend — the
+`drederick-web` ASP.NET process serving the built SPA from `wwwroot/`.
+Playwright spawns the backend itself via its `webServer` config, so
+there is nothing to start by hand.
+
+### Setup
+
+```bash
+cd web
+pnpm install
+pnpm e2e:install      # one-time: Chromium + system deps for Playwright
+```
+
+### Run
+
+```bash
+cd web
+pnpm build            # build the SPA into ../src/Drederick.Web/wwwroot
+pnpm e2e              # run all specs headless against a fresh backend
+pnpm e2e:ui           # Playwright UI mode for interactive debugging
+```
+
+From the repo root you can also use `make e2e` (builds web, runs
+tests). First-time contributors want `make e2e-install` once.
+
+### What it covers
+
+- **Shell smoke** — SPA boots, sidebar renders the 8 sections, Tatum
+  billing line surfaces, health endpoint green.
+- **On-voice copy** — every route renders a Tatumism so empty states
+  stay on-voice.
+- **Findings invariants** — `no_database` graceful handling; loot
+  projection never leaks plaintext (canary string); exploit-run rows
+  expose `stdout_sha256` only.
+- **Runs scope enforcement** — out-of-scope targets rejected by
+  `/api/runs`.
+- **Scope read-only** — `/scope` exposes no edit surface, issues no
+  write requests, and the scope file's mtime is unchanged after
+  visiting the page and running the validator.
+- **Doctor read-only** — no install/fix/apply buttons.
+- **Audit redaction** — canary plaintext seeded into `audit.jsonl`
+  never reaches the DOM.
+
+A handful of tests are currently marked `test.fixme` with a clear
+reason pointing at the specific SPA component or backend seed hook
+that needs to land before the scenario can be asserted cleanly. These
+are breadcrumbs — not silent skips — and will flip to real assertions
+as those hooks arrive.
+
+### Artefacts
+
+- `web/playwright-report/` — HTML report (viewable via
+  `pnpm exec playwright show-report`).
+- `web/test-results/` — trace/video/screenshot attachments on failure.
+- `web/e2e/.tmp-out/` — per-run findings.db + audit.jsonl the test
+  backend writes to. Safe to delete.
+
+All of these paths are in `.gitignore` under the `# --- e2e artifacts ---`
+anchor.

@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --max-warnings=0",
-    "generate:api": "openapi-typescript http://127.0.0.1:7070/openapi/v1.json -o src/api/schema.d.ts"
+    "generate:api": "openapi-typescript http://127.0.0.1:7070/openapi/v1.json -o src/api/schema.d.ts",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@microsoft/signalr": "^8.0.7",
@@ -31,6 +34,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.48.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "better-sqlite3": "^11.5.0",
     "@tanstack/router-devtools": "^1.81.9",
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
@@ -52,7 +58,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "better-sqlite3"
     ]
   }
 }

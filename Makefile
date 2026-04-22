@@ -269,3 +269,13 @@ web-dev: ## Run the SPA dev server (http://localhost:5173)
 
 web-build: ## Build the SPA into src/Drederick.Web/wwwroot
 	@cd web && pnpm build
+
+# --- e2e targets ---
+.PHONY: e2e e2e-install
+e2e-install: ## Install Playwright browsers (chromium) for E2E tests
+	@cd web && pnpm install && pnpm exec playwright install --with-deps chromium
+
+e2e: ## Run Playwright E2E tests against a freshly-built backend + SPA
+	@cd web && pnpm build
+	@cd web && pnpm e2e
+# --- end e2e targets ---
