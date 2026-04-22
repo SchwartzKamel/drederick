@@ -295,7 +295,28 @@ foreach (var htbHost in opts.HtbHosts)
 }
 // END ANCHOR: vpn-preflight
 
-var nmap = new NmapTool(scope, audit, labMode: opts.LabMode);
+// --- run permissions -------------------------------------------------------
+// Built up front so both the recon toolbox (NSE category selection) and the
+// exploit toolbox can share the same opt-in record.
+//
+// Default posture: in lab/CTF mode (the default), every exploit category
+// EXCEPT --allow-dos is ON by default, matching the "maximum capability inside
+// scope" directive. Credential attacks additionally require the explicit
+// lockout-risk acknowledgement. Strict mode (--no-lab) flips everything OFF
+// and forces the operator to opt into each category individually.
+//
+// Explicit flags always win: passing --allow-dos in lab mode enables DoS;
+// passing --no-lab disables every category, and the operator can re-enable
+// specific ones with --allow-exec-pocs / --allow-cred-attacks / etc.
+var permissions = new RunPermissions(
+    allowExecPocs: opts.AllowExecPocs || opts.LabMode,
+    allowCredAttacks: opts.AllowCredAttacks || opts.LabMode,
+    allowPayloads: opts.AllowPayloads || opts.LabMode,
+    allowDestructive: opts.AllowDestructive || opts.LabMode,
+    allowDos: opts.AllowDos,
+    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk);
+
+var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions);
 var http = new HttpProbeTool(scope, audit);
 var tls = new TlsProbeTool(scope, audit);
 var dns = new DnsProbeTool(scope, audit);
@@ -322,18 +343,8 @@ toolbox.SeedFromKnowledgeBase(kb, targets);
 // --- exploit tools ---
 // Offensive weapons are registered here. Every tool re-checks scope AND the
 // per-run opt-in category on its own entry point — the toolbox is a registry,
-// not the authorization boundary. Default posture is OFF for every category
-// even inside lab mode; the operator must positively opt in with
-// --allow-exec-pocs / --allow-cred-attacks / --allow-payloads /
-// --allow-destructive / --allow-dos (and --acknowledge-lockout-risk for
-// credential attacks).
-var permissions = new RunPermissions(
-    allowExecPocs: opts.AllowExecPocs,
-    allowCredAttacks: opts.AllowCredAttacks,
-    allowPayloads: opts.AllowPayloads,
-    allowDestructive: opts.AllowDestructive,
-    allowDos: opts.AllowDos,
-    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk);
+// not the authorization boundary. Permissions are built above (shared with
+// the recon toolbox for NSE category selection).
 var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
 var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
 var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);

@@ -577,23 +577,34 @@ public sealed class CommandLineOptions
           --no-lab             Opt out of lab mode. Strictest posture: scope cap /16 (v4) /
                                /48 (v6), NSE limited to safe+default, no cheatsheet.
 
-        EXPLOIT OPT-INS (default OFF — authorization boundary):
+        EXPLOIT OPT-INS:
+          By default in LAB MODE, every exploit category EXCEPT --allow-dos is
+          ON (matching the maximum-capability-inside-scope directive). In
+          strict mode (--no-lab), all categories default OFF and the flags
+          below opt them back in individually. Credential attacks always
+          additionally require --acknowledge-lockout-risk.
+
           --allow-exec-pocs    Permit execution of cached PoCs / module-driven exploits
-                               (nuclei, metasploit). Every host in argv is re-validated
-                               against the scope allow-list before spawn.
+                               (nuclei, metasploit auxiliary + exploit modules, cached
+                               Exploit-DB PoCs). Also unlocks the aggressive NSE
+                               categories (intrusive, vuln, exploit). Every host in
+                               argv is re-validated against the scope allow-list
+                               before spawn.
           --allow-cred-attacks Permit credential attacks (spraying, targeted brute,
                                AS-REP roast, kerberoast). Plaintext passwords are never
-                               logged; SHA-256 only.
+                               logged; SHA-256 only. Also unlocks NSE auth scripts.
           --acknowledge-lockout-risk
                                Required in addition to --allow-cred-attacks. Attests that
                                the operator understands account-lockout impact.
-          --allow-payloads     Permit payload generation, staging, and delivery.
-                               (Deferred to Phase 2 — flag accepted but no tool yet binds
-                                this category.)
+          --allow-payloads     Permit payload generation, staging, delivery, and
+                               driving post/* Metasploit modules. Unlocks PAYLOAD /
+                               CMD / LHOST / SRVHOST options in msfconsole RC files;
+                               every callback address is still re-validated against
+                               the scope allow-list before spawn.
           --allow-destructive  Permit modules/scripts flagged destructive (filesystem
                                mutation, reboot, wipe).
           --allow-dos          Permit NSE dos/malware categories and intentional
-                               denial-of-service.
+                               denial-of-service. OFF by default even in lab mode.
 
           -h, --help           Show this help.
 

@@ -1,15 +1,27 @@
 using System.Diagnostics;
 using System.Xml.Linq;
 using Drederick.Audit;
+using Drederick.Exploit;
 using Drederick.Scope;
 
 namespace Drederick.Recon;
 
 /// <summary>
-/// Wrapper around the <c>nmap</c> binary. Uses service/version detection and
-/// the <c>safe</c> + <c>default</c> NSE categories only. Exploit, brute, and
-/// vuln scripts are explicitly excluded; this tool performs discovery and
-/// fingerprinting, not exploitation.
+/// Wrapper around the <c>nmap</c> binary. Service/version detection plus NSE
+/// categories chosen according to the active <see cref="RunPermissions"/>:
+///
+///   • Strict mode (no lab) without any opt-ins: <c>safe,default</c>.
+///   • Lab mode without opt-ins: adds <c>discovery,version</c>.
+///   • Lab mode OR <see cref="ExploitCategory.CredAttacks"/> opted in:
+///     adds <c>auth</c>.
+///   • <see cref="ExploitCategory.ExecPocs"/> opted in: adds
+///     <c>intrusive,vuln,exploit</c>.
+///   • <see cref="ExploitCategory.Dos"/> opted in: adds <c>dos,malware</c>.
+///
+/// Scope is re-checked on entry; the target argument is validated through
+/// <see cref="Scope.Scope.Require"/>. Port-spec argv is rejected unless it
+/// matches a strict digit/dash/comma regex — see
+/// <see cref="RejectUnsafePortSpec"/>.
 /// </summary>
 public sealed class NmapTool : IReconTool
 {
@@ -23,6 +35,7 @@ public sealed class NmapTool : IReconTool
     private readonly AuditLog _audit;
     private readonly string _nmapPath;
     private readonly bool _labMode;
+    private readonly RunPermissions _permissions;
 
     // Strict (non-lab) NSE categories. Safe + default only.
     // safe    : scripts that do not attempt anything unsafe against the target
@@ -30,7 +43,6 @@ public sealed class NmapTool : IReconTool
     private const string NseCategoriesStrict = "safe,default";
 
     // Lab/CTF NSE categories. Adds discovery + version for richer enumeration.
-    // Still explicitly excludes exploit, intrusive, brute, vuln, dos, malware.
     // discovery : active discovery of networks/services
     // version   : version-detection helper scripts
     private const string NseCategoriesLab = "safe,default,discovery,version";
@@ -45,15 +57,61 @@ public sealed class NmapTool : IReconTool
         "-T4", "--min-rate", "1000",
     ];
 
-    public NmapTool(Scope.Scope scope, AuditLog audit, string? nmapPath = null, bool labMode = true)
+    public NmapTool(
+        Scope.Scope scope,
+        AuditLog audit,
+        string? nmapPath = null,
+        bool labMode = true,
+        RunPermissions? permissions = null)
     {
         _scope = scope;
         _audit = audit;
         _nmapPath = nmapPath ?? "nmap";
         _labMode = labMode;
+        _permissions = permissions ?? RunPermissions.None;
     }
 
-    public string NseCategories => _labMode ? NseCategoriesLab : NseCategoriesStrict;
+    public string NseCategories => BuildNseCategories(_labMode, _permissions);
+
+    internal static string BuildNseCategories(bool labMode, RunPermissions permissions)
+    {
+        // Start from the lab/strict baseline.
+        var cats = new List<string>(
+            (labMode ? NseCategoriesLab : NseCategoriesStrict).Split(',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        // Lab mode or credential attacks → enable `auth` scripts (SMB null
+        // sessions, FTP anon, SNMP community checks, HTTP default logins).
+        if (labMode || permissions.AllowCredAttacks)
+        {
+            AddIfMissing(cats, "auth");
+        }
+
+        // ExecPocs → unlock the aggressive enumeration + exploit NSE set.
+        // intrusive : scripts that may be detected/logged by the target
+        // vuln      : vulnerability detection scripts
+        // exploit   : active exploitation scripts
+        if (permissions.AllowExecPocs)
+        {
+            AddIfMissing(cats, "intrusive");
+            AddIfMissing(cats, "vuln");
+            AddIfMissing(cats, "exploit");
+        }
+
+        // Dos → unlock denial-of-service and malware-hunting scripts.
+        if (permissions.AllowDos)
+        {
+            AddIfMissing(cats, "dos");
+            AddIfMissing(cats, "malware");
+        }
+
+        return string.Join(",", cats);
+    }
+
+    private static void AddIfMissing(List<string> cats, string cat)
+    {
+        if (!cats.Contains(cat, StringComparer.OrdinalIgnoreCase)) cats.Add(cat);
+    }
 
     public async Task<NmapResult> ScanAsync(
         string target,
