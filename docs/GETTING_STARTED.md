@@ -74,6 +74,17 @@ drederick doctor --install
 
 Drederick will use your system package manager (apt, brew, yum, etc.) to install them. It **never** re-executes as root—you'll be prompted for each tool.
 
+### One-shot setup wizard
+
+If you'd rather walk through tooling, credentials, and scope-file creation in a single guided pass, use the interactive wizard:
+
+```bash
+drederick init          # verifies tools, offers credential + scope setup
+drederick init --yes    # non-interactive; accepts defaults
+```
+
+`--skip-creds` and `--skip-scope` opt out of individual steps. See `drederick --help` for the full subcommand list (`doctor`, `init`, `serve`, `analyze`, `note`, `web`, `ctf-solve`, `ctf-msg`).
+
 ### Why Each Tool?
 
 - **nmap** — Network scanning and service enumeration
@@ -135,10 +146,11 @@ drederick --scope ~/scope.txt --target 10.0.0.1 --out ~/results
 - `--out ~/results` — Output directory (default: `./out/`)
 
 In lab mode (default) this runs recon **and** exploitation inside scope
-— cached PoCs, credential attacks (with lockout-aware throttling), and
-payload staging are all on. DoS / malware categories require explicit
-`--allow-dos`. In strict mode (`--no-lab`) every offensive category is
-off until you pass the matching `--allow-*` flag. See
+— cached PoCs (proof-of-concept exploits matched to annotated CVEs),
+credential attacks (with lockout-aware throttling), and payload staging
+are all on. DoS / malware categories require explicit `--allow-dos`.
+In strict mode (`--no-lab`) every offensive category is off until you
+pass the matching `--allow-*` flag. See
 [SCOPE_AND_LEGAL.md](SCOPE_AND_LEGAL.md) for the per-category opt-in
 contract.
 
@@ -165,8 +177,9 @@ Lab mode is the **default**. The only extra flag worth adding on HTB is
 drederick --scope ~/scope.txt --target 10.10.10.X --require-vpn --out ~/results
 ```
 
-- Lab mode: scope cap `/8` (v4), NSE categories broadened, cheatsheet
-  generated, exploitation categories except DoS enabled by default.
+- Lab mode: scope cap `/8` (v4), Nmap Scripting Engine (NSE) categories
+  broadened, cheatsheet generated, exploitation categories except DoS
+  enabled by default.
 - `--require-vpn` — Abort if you're not on a `tun*`/`tap*` interface
   resolving to HTB's published ranges.
 - Pass `--no-lab` for strict mode (scope cap `/16`, every offensive
@@ -207,15 +220,12 @@ This launches a web dashboard at `http://127.0.0.1:8001` where you can:
 
 ### Export Results
 
-View findings as JSON:
-```bash
-drederick serve --out ~/results --json
-```
-
-Or query the database directly with sqlite3:
+Query the database directly with sqlite3 for CSV export:
 ```bash
 sqlite3 ~/results/findings.db ".mode csv" "SELECT * FROM findings;" > results.csv
 ```
+
+Or open `~/results/report.json` for machine-readable consolidated output.
 
 See [docs/DB_SCHEMA.md](DB_SCHEMA.md) for database structure.
 

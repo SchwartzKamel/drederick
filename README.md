@@ -67,14 +67,16 @@ and drops it at `~/.local/bin/drederick`. Override via environment:
 
 ```bash
 # Pin a version
-curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.3.0 bash
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.3.1 bash
 
 # System-wide install (requires sudo)
 curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | sudo PREFIX=/usr/local/bin bash
 ```
 
-Supported: `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`. Windows users:
-download the `.zip` from the [Releases page](https://github.com/SchwartzKamel/drederick/releases).
+Supported platforms: `linux-x64`, `linux-arm64` (Kali / Parrot / Debian /
+Ubuntu operator workstations). The installer refuses non-Linux hosts;
+macOS and Windows are not distributed as binaries. Contributors on
+other platforms can still build from source via `make quickstart`.
 
 Then:
 
@@ -254,11 +256,11 @@ DREDERICK_SKIP_CVE=1 $DRED --scope scope.yaml --target 10.10.10.5 --out out/
 # Jeopardy CTF mode — swarm multiple LLMs across every challenge.
 # Flags are submitted automatically; plaintext flag is never logged.
 $DRED ctf-solve --scope scope.yaml --ctfd https://ctf.example.org \
-    --models gpt-5,claude-4-opus,gemini-3 --out out/
+    --models claude-opus-4.7,gpt-5.4,gemini-3.1-pro --out out/
 
 # Mid-run operator hint into a live ctf-solve session.
-$DRED ctf-msg --kind hint --challenge "web/baby-sqli" \
-    --text "try sqlmap with --os-shell against /api/login"
+$DRED ctf-msg --kind hint --chal "babyweb" \
+    --body "try sqlmap with --os-shell against /api/login"
 
 # Launch the Avalonia point-and-click operator console. Scope and targets
 # can be composed entirely inside the GUI — no scope file on disk required.
@@ -422,6 +424,15 @@ Still planned, tracked in follow-up PRs:
 - Integration tests against `vulhub` (env-gated).
 - Self-contained `dotnet publish` with embedded web assets.
 
+Shipped in v0.3.1 (see [`CHANGELOG.md`](CHANGELOG.md)):
+
+- `HybridAgentRunner` (`--agent=hybrid`): LLM-first orchestration with
+  deterministic fallback on any operational failure (no key, network,
+  auth, rate-limit, transient SDK error). `ScopeException` always
+  propagates — never swallowed.
+- `LlmProviderFactory` + `--llm-provider={copilot,azure,llamacpp}` backend
+  picker for `ctf-solve` and `drederick doctor --category=jeopardy`.
+
 Shipped in v0.3.0 (see [`CHANGELOG.md`](CHANGELOG.md)):
 
 - Full-auto offensive subsystem (`ExploitRunner`, `MsfRcRunner`,
@@ -430,11 +441,7 @@ Shipped in v0.3.0 (see [`CHANGELOG.md`](CHANGELOG.md)):
   `AutopilotRunner`, `LlmExploitTools`).
 - Jeopardy CTF solver subsystem (`ChallengeSolver`, `SolverSwarm`,
   `CtfdClient`, `SandboxManager`, `FlagSubmitCoordinator`, Copilot +
-  Azure OpenAI + llama.cpp clients, `LlmProviderFactory`, `ctf-solve` /
-  `ctf-msg` subcommands).
+  Azure OpenAI + llama.cpp clients, `ctf-solve` / `ctf-msg`
+  subcommands).
 - `src/Drederick.Web` ASP.NET Core host + SignalR hub + React SPA
   (`web/`) + Playwright E2E suite.
-- `HybridAgentRunner` (`--agent=hybrid`): LLM-first orchestration with
-  deterministic fallback on any operational failure.
-- `--llm-provider={copilot,azure,llamacpp}` backend picker for
-  `ctf-solve` and `drederick doctor --category=jeopardy`.
