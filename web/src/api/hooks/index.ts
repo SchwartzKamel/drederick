@@ -4,3 +4,4 @@ export * from "./useJeopardy";
 export * from "./useDoctor";
 export * from "./useScope";
 export * from "./useAudit";
+export * from "./useNotes";

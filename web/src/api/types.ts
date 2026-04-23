@@ -173,6 +173,37 @@ export type FindingsSummary = {
 };
 
 // ---------------------------------------------------------------------------
+// notes
+// ---------------------------------------------------------------------------
+
+/**
+ * Note row as returned by `/api/notes`. The backend maps internal
+ * NotesRepository fields to this shape: `host_id` → `host`,
+ * `tags` → `tag`, `content` → `body`. See
+ * `src/Drederick.Web/Endpoints/NotesEndpoints.cs`.
+ */
+export type Note = {
+  id: number;
+  host: string | null;
+  tag: string | null;
+  title: string;
+  body: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotesListResponse = {
+  notes: Note[];
+};
+
+export type CreateNoteRequest = {
+  host?: string | null;
+  tag?: string | null;
+  body: string;
+  title?: string | null;
+};
+
+// ---------------------------------------------------------------------------
 // runs
 // ---------------------------------------------------------------------------
 

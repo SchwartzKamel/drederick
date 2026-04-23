@@ -1,22 +1,12 @@
-import { Notebook } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/EmptyState";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotesList } from "./NotesList";
-import { NoteCard } from "./NoteCard";
+import { NoteCreateForm } from "./NoteCreateForm";
 
 /**
- * Notes surface.
- *
- * Backend state (verified during Phase 3b):
- *   - No NotesEndpoints.cs in src/Drederick.Web/Endpoints/
- *   - No useNotes.ts in web/src/api/hooks/
- *   - NoteCommand.cs is CLI-only, writes to a SQLite notes DB
- *     (typically alongside findings.db under {out}/).
- *
- * When a backend agent lands `/api/notes`, replace this file's body
- * with a filterable list (host / kind), rendering NoteCard per row and
- * a click-through modal. Keep the surface read-only — notes are
- * CLI-authored. See the zone brief for Phase 3b.
+ * Operator notebook page. Real data — `/api/notes` backs the list
+ * and create form. The CLI path (`drederick note`) writes to the same
+ * table in `findings.db`, so jottings from either path show up here.
  */
 export function NotesPage() {
   return (
@@ -30,21 +20,21 @@ export function NotesPage() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           <p>
-            Notes surface is coming. Use <code className="font-mono">drederick note</code>{" "}
-            in the meantime — the governing body reads the database the
-            same way the SPA will.
+            Notes persist to <code className="font-mono">findings.db</code>.
+            Drop a line here, or stay in the terminal with{" "}
+            <code className="font-mono">drederick note add</code>. The
+            governing body reads the same table either way.
           </p>
         </CardContent>
       </Card>
 
-      <NotesList />
-      <NoteCard />
+      <ErrorBoundary>
+        <NoteCreateForm />
+      </ErrorBoundary>
 
-      <EmptyState
-        kind="no_notes"
-        icon={<Notebook className="h-6 w-6" aria-hidden />}
-        title="No notes from the corner yet."
-      />
+      <ErrorBoundary>
+        <NotesList />
+      </ErrorBoundary>
     </div>
   );
 }

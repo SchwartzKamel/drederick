@@ -1,71 +1,116 @@
-import { useState } from "react";
-import { Check, Copy, Terminal } from "lucide-react";
+import { Notebook, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { tatumisms } from "@/lib/tatumisms";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/EmptyState";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { isNoDatabase } from "@/api/types";
+import { useDeleteNote, useNotes } from "@/api/hooks/useNotes";
+import { toast } from "@/lib/toast";
 
 /**
- * Displayed when the notes REST endpoint is absent. Offers a copyable
- * CLI one-liner so the operator can populate the notebook from the
- * terminal. When `NotesEndpoints.cs` lands, swap this file for a real
- * list rendering and delete the hint card.
+ * Renders the operator's notebook. Talks to `/api/notes`; when
+ * findings.db is absent the empty-state card surfaces instead. Each
+ * note shows host/tag metadata and the body verbatim — notes are
+ * operator prose, not loot, so no redaction happens here.
  */
 export function NotesList() {
-  const [copied, setCopied] = useState(false);
-  const hint =
-    "drederick note --host <h> --kind observation --body 'lo-fi'";
+  const { data, isLoading, isError, error } = useNotes();
+  const del = useDeleteNote();
 
-  const onCopy = async () => {
+  if (isLoading) {
+    return <LoadingSkeleton rows={3} columns={1} cellClassName="h-20" />;
+  }
+  if (isError) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-mono text-sm">Notebook unavailable</CardTitle>
+          <CardDescription>
+            {(error as Error)?.message ?? "Unknown error loading notes."}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+  if (!data || isNoDatabase(data)) {
+    return (
+      <EmptyState
+        kind="no_notes"
+        icon={<Notebook className="h-6 w-6" aria-hidden />}
+      />
+    );
+  }
+
+  const notes = data.notes;
+  if (notes.length === 0) {
+    return (
+      <EmptyState
+        kind="no_notes"
+        icon={<Notebook className="h-6 w-6" aria-hidden />}
+      />
+    );
+  }
+
+  const onDelete = async (id: number) => {
     try {
-      await navigator.clipboard.writeText(hint);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard unavailable — silent
+      await del.mutateAsync(id);
+      toast.success("Note stricken from the record.");
+    } catch (e) {
+      toast.error("Could not delete note.", {
+        description: e instanceof Error ? e.message : undefined,
+      });
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-mono text-sm">
-          Jot from the terminal
-        </CardTitle>
-        <CardDescription>
-          Notes land in <code className="font-mono">findings.db</code>. This
-          view is read-only by design — the notebook is written in the
-          corner, not in the browser.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2">
-          <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground">
-            {hint}
-          </code>
-          <button
-            type="button"
-            onClick={onCopy}
-            className={cn(
-              "inline-flex h-7 shrink-0 items-center gap-1 rounded border border-border bg-background px-2 text-xs",
-              "hover:bg-accent",
-            )}
-            aria-label={copied ? tatumisms.actions.copied : tatumisms.actions.copy}
-          >
-            {copied ? (
-              <>
-                <Check className="h-3 w-3" aria-hidden />
-                <span>{tatumisms.actions.copied}</span>
-              </>
-            ) : (
-              <>
-                <Copy className="h-3 w-3" aria-hidden />
-                <span>{tatumisms.actions.copy}</span>
-              </>
-            )}
-          </button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-2">
+      {notes.map((n) => (
+        <Card key={n.id} data-testid="note-card">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="font-mono text-sm">
+                #{n.id} — {n.title}
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                {n.host ? (
+                  <Badge variant="outline" className="font-mono text-[0.65rem]">
+                    {n.host}
+                  </Badge>
+                ) : null}
+                {n.tag ? (
+                  <Badge variant="outline" className="font-mono text-[0.65rem]">
+                    {n.tag}
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+            <CardDescription className="font-mono text-[0.65rem]">
+              {n.created_at}
+            </CardDescription>
+          </CardHeader>
+          {n.body ? (
+            <CardContent className="space-y-2">
+              <pre className="whitespace-pre-wrap font-mono text-xs text-foreground">
+                {n.body}
+              </pre>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDelete(n.id)}
+                  aria-label={`Delete note ${n.id}`}
+                  data-testid={`delete-note-${n.id}`}
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden />
+                  <span className="ml-1 text-xs">Delete</span>
+                </Button>
+              </div>
+            </CardContent>
+          ) : null}
+        </Card>
+      ))}
+    </div>
   );
 }

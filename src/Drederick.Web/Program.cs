@@ -78,6 +78,12 @@ app.MapJeopardyEndpoints();
 // while still sitting alongside other /api/* routes.
 app.MapFindingsEndpoints();
 
+// --- notes-endpoint-map ---
+// REST surface over the operator-authored notes table in findings.db.
+// Mapped alongside the other /api/* routes so it sits in front of the
+// SPA fallback.
+app.MapNotesEndpoints();
+
 // --- signalr-hub-map ---
 // Registered after WebRunner.ConfigureAndBuild has wired the fallback SPA
 // route. Endpoint routing resolves explicit endpoint patterns (hub) before
