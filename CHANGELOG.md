@@ -33,6 +33,74 @@ below this changelog via the release PR.
 
 ### Removed
 
+## [0.3.1] — 2026-04-23
+
+> _Drederick Tatum: "Believe me, my god, if I could turn back the clock on
+> my mother's stair-pushing, I would certainly reconsider it."_
+>
+> Same-night polish on the v0.3.0 ring card. The LLM cornerman gets a
+> spare when the main one is out, a provider factory so the CLI can pick
+> its own trainer, and a lockdown test suite that leaves zero daylight on
+> the scope invariant for AI-exposed tools.
+
+### Added
+
+- `HybridAgentRunner` — LLM-first agent wrapper with deterministic fallback
+  (`src/Drederick/Agent/HybridAgentRunner.cs`). Non-scope exceptions trigger
+  fallback with `hybrid.llm_fallback` audit event; `ScopeException` always
+  propagates — the LLM-absent-or-broken path does not widen the blast radius.
+  New CLI flag: `--agent=hybrid|llm|adaptive`.
+- `LlmProviderFactory` — single entry point for constructing `CopilotLlmClient`,
+  `AzureOpenAiLlmClient`, or `LlamaCppLlmClient` from CLI flags or environment
+  (`src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs`). New CLI flags on
+  `ctf-solve` (and `doctor`):
+  - `--llm-provider=copilot|azure|llamacpp` (default: `copilot`)
+  - `--azure-endpoint=<url>`, `--azure-api-version=<v>`,
+    `--azure-deployment=modelId=deploymentName` (repeatable)
+  - `--llamacpp-url=<url>`, `--llamacpp-model=modelId=modelName` (repeatable)
+- `JeopardyDoctorChecks` is now provider-aware. `jeopardy.llm.token` verifies
+  the configured provider's credentials (Copilot token, Azure endpoint +
+  key / Entra, llama.cpp URL) instead of assuming Copilot. `jeopardy.llm.reachable`
+  probes the configured endpoint.
+- **LLM scope lockdown test suite.** Every `AIFunction` exposed to the
+  `MicrosoftAgentRunner` now has a dedicated test asserting it refuses
+  out-of-scope targets before any side effect. Covered via
+  `tests/Drederick.Tests/Agent/LlmExploitToolsTests.cs` (+6 cases) and
+  `tests/Drederick.Tests/Jeopardy/Llm/LlmFallbackIntegrationTests.cs` (new file).
+  Audit evidence: `@invariant-id:llm-cannot-escape-scope` has teeth.
+
+### Changed
+
+- `MicrosoftAgentRunner` constructor now throws `ArgumentNullException` on
+  null `chatClient` / `modelId` / `audit` instead of deferring to an NRE
+  inside `agent.RunAsync`. Misuse is a clean, auditable failure mode.
+
+### Fixed
+
+- CI: `Doctor_NeverInstalls_FromWeb` converted to `async Task` to satisfy
+  `xUnit1031` on .NET SDK 10.0.203 (`dotnet format --verify-no-changes`).
+  v0.3.0 shipped with red CI on the last three commits because of this;
+  subsequent commits on `main` are all green.
+- Docs had several stale "planned" / "future" / "being wired" statements
+  for work that actually shipped in v0.3.0 (Web UI Phases 2–4, Azure
+  OpenAI, llama.cpp, provider switching). Full audit pass synced eleven
+  files against the current code reality and added coverage for the new
+  `HybridAgentRunner` and `LlmProviderFactory` across README, ARCHITECTURE,
+  LLM_SETUP, JEOPARDY, TROUBLESHOOTING, COMPARISON, and AGENTS.
+- `docs/SCOPE_AND_LEGAL.md` invariants table was missing the
+  `no-exfiltration` and `scope-file-read-only` rows that were already
+  present in the `AGENTS.md` mirror. Synced.
+
+### Security / invariants
+
+- No P0 scope-escape bug surfaced during the LLM lockdown audit — every
+  `AIFunction` in `LlmExploitTools` already routed through `_scope.Require`
+  before any side effect. The new tests make that a permanent contract.
+- LLM provider secrets (Copilot token, Azure key, llama.cpp URL config)
+  continue to be redacted via the shared `TokenRedactor`. The new factory
+  does not expand the set of places secrets can be logged; the factory
+  itself prints only presence / absence, never values.
+
 ## [0.3.0] — 2026-04-22
 
 > _Drederick Tatum: "I'm heavyweight champ, Drederick Tatum."_
