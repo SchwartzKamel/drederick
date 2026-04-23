@@ -22,5 +22,34 @@ export default defineConfig({
   build: {
     outDir: "../src/Drederick.Web/wwwroot",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("@microsoft/signalr")) return "signalr";
+          if (id.includes("@tanstack/")) return "query";
+          if (
+            id.includes("@radix-ui/") ||
+            id.includes("lucide-react") ||
+            id.includes("class-variance-authority") ||
+            id.includes("tailwind-merge") ||
+            id.includes("clsx") ||
+            id.includes("sonner") ||
+            id.includes("tailwindcss-animate")
+          ) {
+            return "ui";
+          }
+          if (
+            id.includes("/react-dom/") ||
+            id.includes("/react/") ||
+            id.includes("/scheduler/") ||
+            id.includes("react/jsx-runtime")
+          ) {
+            return "react-core";
+          }
+          return undefined;
+        },
+      },
+    },
   },
 });
