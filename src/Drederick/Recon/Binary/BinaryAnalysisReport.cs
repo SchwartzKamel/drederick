@@ -55,6 +55,13 @@ public sealed class BinaryAnalysisReport
     /// </summary>
     [JsonPropertyName("findings")]
     public List<BinaryFinding> Findings { get; set; } = new();
+
+    /// <summary>
+    /// Optional magika pre-pass verdict. Null when magika is not installed or
+    /// its output could not be parsed. See <see cref="MagikaDetector"/>.
+    /// </summary>
+    [JsonPropertyName("magika")]
+    public MagikaVerdict? Magika { get; set; }
 }
 
 /// <summary>

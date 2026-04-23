@@ -254,6 +254,20 @@ public static class InstallRecipes
                 return PipxBootstrapRecipe(tool, "wfuzz", pm,
                     "wfuzz via pipx; bootstrap pipx from the system package manager.");
 
+            case "magika":
+                // Primary: pipx (Google ships magika as a Python package, and
+                // pipx keeps it isolated). Fallback: cargo install (Rust CLI
+                // binary, fastest startup). No system packages ship magika on
+                // any distro as of 2026-04 — apt/dnf/pacman/zypper are unused.
+                if (hasPipx)
+                    return new InstallRecipe(tool, "pipx install magika", NeedsSudo: false,
+                        "magika via pipx (primary path; Google's ML file-type detector).",
+                        FallbackCommand: "cargo install magika",
+                        FallbackNeedsSudo: false,
+                        FallbackRationale: "fallback: cargo install magika (Rust CLI; requires a Rust toolchain).");
+                return PipxBootstrapRecipe(tool, "magika", pm,
+                    "magika via pipx; bootstrap pipx from the system package manager. Alternate path: `cargo install magika`.");
+
             case "python2":
                 // Brew still has a real py2 package; use it.
                 if (pm == PackageManager.Brew)

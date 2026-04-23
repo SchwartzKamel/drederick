@@ -39,6 +39,7 @@ public sealed class DoctorRunner
         "evil-winrm",
         "enum4linux-ng",
         "wfuzz",
+        "magika",
     };
 
     // Tools that are strictly required for drederick's recon core.
@@ -72,6 +73,7 @@ public sealed class DoctorRunner
             ["evil-winrm"] = new("evil-winrm", Array.Empty<string>(), new[] { "--version", "-h" }),
             ["enum4linux-ng"] = new("enum4linux-ng", Array.Empty<string>(), new[] { "--help" }),
             ["wfuzz"] = new("wfuzz", Array.Empty<string>(), new[] { "--version" }),
+            ["magika"] = new("magika", Array.Empty<string>(), new[] { "--version" }),
         };
 
     /// <summary>

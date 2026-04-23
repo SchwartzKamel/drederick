@@ -72,6 +72,21 @@ if (opts.DoctorSubcommand)
     }
     // --- end jeopardy-doctor-wiring ---
 
+    // --- recon-doctor-wiring ---
+    // When --category=recon is passed, run the recon-category check suite
+    // (currently magika availability). Mirrors jeopardy-doctor-wiring above.
+    if (string.Equals(opts.DoctorCategory, Drederick.Doctor.ReconDoctorChecks.CategoryName, StringComparison.OrdinalIgnoreCase))
+    {
+        var reconResults = await Drederick.Doctor.ReconDoctorChecks.RunAllAsync(
+            docAudit,
+            new Drederick.Doctor.DefaultProcessRunner(),
+            install: opts.DoctorInstall,
+            assumeYes: opts.AssumeYes,
+            Console.In, Console.Out, CancellationToken.None);
+        return reconResults.Any(r => r.Status == Drederick.Doctor.DoctorCheckStatus.Fail) ? 1 : 0;
+    }
+    // --- end recon-doctor-wiring ---
+
     var doctor = new DoctorRunner(docAudit);
     var tools = doctor.Detect();
     var pm = PackageManagerDetection.Detect(new PathToolLocator());

@@ -235,6 +235,32 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 - **Dispatch trigger:** HTTPS / TLS-bearing service detected by nmap
   (auto-paired with `tls` probe).
 
+## 15. `MagikaDetector` (binary pre-pass) {#binary-magika}
+
+- **Purpose:** Fast ML-based file-type classification; used as a
+  pre-pass inside `BinaryAnalyzer` (see
+  [`MAGIKA.md`](MAGIKA.md)) and planned as a category-hint feed for the
+  CTF `ChallengeSolver`.
+- **Subprocess:** `magika --jsonl <file>` (optional tool — warns, never
+  fails, when missing). Install: `pipx install magika` (primary) or
+  `cargo install magika` (fallback).
+- **Scope / path validation:** path must be absolute and resolve under
+  the current working directory; literal `..` segments are rejected
+  before spawn. Out-of-workspace paths fall through to the non-magika
+  path (analysis still runs).
+- **Audit:** `magika.detect.start` / `.finish` events record the file
+  path and a SHA-256 digest of the path string. File contents are
+  never logged. `magika.detect.unavailable` fires at most once per
+  detector instance.
+- **Result:** `BinaryAnalysisReport.Magika → MagikaVerdict { Label,
+  Description, Group, MimeType, Extension, Confidence, IsText,
+  RawJson }`. When magika disagrees with `file` on whether the
+  artifact is an executable (e.g. magika says `zip` for a file `file`
+  reports as ELF), a warning finding is emitted.
+- **Doctor check:** `recon.magika.available`
+  ([`MagikaToolCheck`](../src/Drederick/Doctor/MagikaToolCheck.cs)).
+  Wired via `drederick doctor --category=recon`.
+
 ## Reporting {#reporting}
 
 ### `JsonReport`

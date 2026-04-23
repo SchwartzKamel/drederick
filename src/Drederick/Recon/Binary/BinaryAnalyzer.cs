@@ -20,6 +20,7 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
 
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
+    private readonly MagikaDetector? _magika;
     private readonly string? _readelfPath;
     private readonly string? _nmPath;
     private readonly string? _objdumpPath;
@@ -27,9 +28,15 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
     private readonly string? _filePath;
 
     public BinaryAnalyzer(Scope.Scope scope, AuditLog audit)
+        : this(scope, audit, new MagikaDetector(audit))
+    {
+    }
+
+    public BinaryAnalyzer(Scope.Scope scope, AuditLog audit, MagikaDetector? magika)
     {
         _scope = scope;
         _audit = audit;
+        _magika = magika;
         _readelfPath = WhichTool("readelf");
         _nmPath = WhichTool("nm");
         _objdumpPath = WhichTool("objdump");
@@ -60,6 +67,23 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
 
         try
         {
+            // Magika pre-pass (first step, non-fatal): gives a fast, ML-based
+            // verdict that downstream steps can cross-check against `file`.
+            if (_magika is not null)
+            {
+                try
+                {
+                    report.Magika = await _magika.DetectAsync(filePath, cancellationToken);
+                }
+                catch (ArgumentException)
+                {
+                    // Path validation rejected the input — magika is a hint
+                    // only, and the rest of the analyzer accepts any path,
+                    // so swallow and continue without a verdict.
+                    report.Magika = null;
+                }
+            }
+
             // Extract metadata
             report.Metadata = await ExtractMetadataAsync(filePath, cancellationToken);
 
@@ -80,6 +104,36 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
 
             // Generate findings based on security analysis
             report.Findings.AddRange(GenerateSecurityFindings(report.Security));
+
+            // Magika vs `file` cross-check: warn loudly when magika thinks
+            // the artifact is NOT actually an executable (e.g. a zip that
+            // claims to be ELF, a polyglot, a text script).
+            if (report.Magika is not null && !string.IsNullOrEmpty(report.Metadata.Platform))
+            {
+                var magikaGroup = report.Magika.Group ?? string.Empty;
+                var magikaLabel = report.Magika.Label ?? string.Empty;
+                var execGroups = new[] { "executable", "code" };
+                var execLabels = new[] { "elf", "pe", "pebin", "macho", "coff", "wasm", "dyld" };
+                bool looksExec =
+                    execGroups.Any(g => magikaGroup.Equals(g, StringComparison.OrdinalIgnoreCase)) ||
+                    execLabels.Any(l => magikaLabel.Equals(l, StringComparison.OrdinalIgnoreCase));
+                if (!looksExec && report.Magika.Confidence >= 0.5)
+                {
+                    report.Findings.Add(new BinaryFinding
+                    {
+                        Severity = FindingSeverity.Warning,
+                        Category = FindingCategory.Metadata,
+                        Title = "Magika disagrees with binary classification",
+                        Description =
+                            $"`file` reports {report.Metadata.Platform} ({report.Metadata.FileType}) " +
+                            $"but magika classifies this artifact as '{magikaLabel}' " +
+                            $"(group '{magikaGroup}', confidence {report.Magika.Confidence:F2}). " +
+                            "This is a strong hint of a disguised, polyglot, or mislabeled artifact — " +
+                            "common in CTF reversing challenges and malware droppers.",
+                        Remediation = "Inspect the file header bytes manually; consider sandboxed detonation rather than native execution.",
+                    });
+                }
+            }
 
             _audit.Record("binary-analyzer.finish", new Dictionary<string, object?>
             {
