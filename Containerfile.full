@@ -1,81 +1,150 @@
-# Drederick - Full-auto offensive harness with COMPLETE toolset
-# Multi-stage: build drederick, then full runtime
-# Build: docker build -t drederick:latest . OR podman build -t drederick:latest .
+# Drederick - Full operator harness, optimized multi-stage build (23/23 tools)
+# Build: docker build -t drederick:latest -f Containerfile.full .
+#        OR podman build -t drederick:latest -f Containerfile.full .
 # Run:   docker run --rm -v "$PWD/scope.yaml:/scope.yaml" -v "$PWD/out:/out" drederick --scope /scope.yaml --target 127.0.0.1 --out /out
-# Runs as root - full offensive capability inside scope
+# Runs as root - full offensive capability inside scope.
 
-FROM debian:bookworm-slim AS builder
+# ============================================================
+# Stage 1: drederick binary
+# ============================================================
+FROM debian:bookworm-slim AS drederick-bin
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
+    cd /tmp && \
+    curl -fsSL -O https://github.com/SchwartzKamel/drederick/releases/download/v0.3.1/drederick-0.3.1-linux-x64.tar.gz && \
+    tar xzf drederick-0.3.1-linux-x64.tar.gz && \
+    chmod +x drederick
+
+# ============================================================
+# Stage 2: Go tools (static binaries — nuclei, gobuster, kerbrute)
+# ============================================================
+FROM debian:bookworm-slim AS go-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  curl ca-certificates && \
-  cd /tmp && \
-  curl -fsSL -O https://github.com/SchwartzKamel/drederick/releases/download/v0.3.1/drederick-0.3.1-linux-x64.tar.gz && \
-  tar xzf drederick-0.3.1-linux-x64.tar.gz && \
-  chmod +x drederick
+    curl ca-certificates git && \
+    curl -fsSL "https://go.dev/dl/go1.23.4.linux-amd64.tar.gz" -o /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz
 
-FROM debian:bookworm
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV CGO_ENABLED=0
+
+RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
+    go install github.com/OJ/gobuster/v3@latest && \
+    go install github.com/ropnop/kerbrute@latest
+
+# ============================================================
+# Stage 3: Python tools (pipx isolated venvs)
+# ============================================================
+FROM debian:bookworm-slim AS pipx-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv python3-dev pipx \
+    git build-essential libssl-dev libffi-dev libkrb5-dev \
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+RUN pipx install impacket && \
+    (pipx install netexec || pipx install git+https://github.com/Pennyw0rth/NetExec) && \
+    (pipx install enum4linux-ng || pipx install git+https://github.com/cddmp/enum4linux-ng) && \
+    pipx install datasette
+
+# ============================================================
+# Stage 4: Ruby tools (gems)
+# ============================================================
+FROM debian:bookworm-slim AS ruby-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ruby ruby-dev build-essential libssl-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    gem install --no-document evil-winrm
+
+# ============================================================
+# Stage 5: Source-only artifacts (searchsploit, responder, seclists, pypy2)
+# ============================================================
+FROM debian:bookworm-slim AS source-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates bzip2 && \
+    rm -rf /var/lib/apt/lists/*
+
+# searchsploit — exploit-db offline CVE → exploit lookup
+RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb && \
+    rm -rf /opt/exploitdb/.git
+
+# Responder — LLMNR/NBT-NS/MDNS poisoner
+RUN git clone --depth 1 https://github.com/lgandx/Responder.git /opt/responder && \
+    rm -rf /opt/responder/.git
+
+# SecLists — wordlist corpus
+RUN git clone --depth 1 https://github.com/danielmiessler/SecLists.git /opt/seclists && \
+    rm -rf /opt/seclists/.git
+
+# PyPy2 portable for python2 compatibility
+RUN curl -fsSL "https://downloads.python.org/pypy/pypy2.7-v7.3.17-linux64.tar.bz2" -o /tmp/pypy.tar.bz2 && \
+    mkdir -p /opt && tar -xjf /tmp/pypy.tar.bz2 -C /opt && \
+    rm /tmp/pypy.tar.bz2
+
+# ============================================================
+# Stage 6: Final runtime — only runtime deps, no build toolchains
+# ============================================================
+FROM debian:bookworm-slim
 
 LABEL org.opencontainers.image.title="drederick"
-LABEL org.opencontainers.image.description="Full-auto offensive security harness — full toolset"
+LABEL org.opencontainers.image.description="Full-auto offensive harness — full toolset (23/23), optimized"
 LABEL org.opencontainers.image.source="https://github.com/SchwartzKamel/drederick"
 LABEL org.opencontainers.image.version="0.3.1"
 
-# Full offensive toolchain from Debian repos
+# Make pipx + go binaries accessible
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Runtime-only packages (no build toolchains, no source/dev headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  # Core utilities
-  curl wget git jq ca-certificates \
-  # Recon & enumeration
-  nmap dnsrecon whois netcat-openbsd dnsutils \
-  # Languages for tool runtime
-  python3 python3-pip python3-venv python3-dev pipx \
-  ruby ruby-dev \
-  golang-go \
-  # Cracking
-  hashcat john \
-  # Web/service enumeration
-  ffuf wfuzz sqlmap dirb \
-  # Build essentials for pip/gem packages
-  build-essential libssl-dev libffi-dev libkrb5-dev \
-  && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    # Core utilities
+    curl wget jq ca-certificates git \
+    # Network recon (runtime only)
+    nmap dnsrecon whois netcat-openbsd dnsutils \
+    # Language runtimes (no -dev packages)
+    python3 python3-netifaces python3-impacket \
+    ruby \
+    # Cracking
+    hashcat john \
+    # Web/service enumeration (apt versions, no compilers)
+    ffuf wfuzz sqlmap dirb \
+    # Runtime libs only (no -dev)
+    libssl3 libffi8 libkrb5-3 libgssapi-krb5-2 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install searchsploit (exploitdb) from source — not in Debian Bookworm repos
-RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb && \
-    ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit
+# Copy artifacts from build stages
+COPY --from=drederick-bin /tmp/drederick /usr/local/bin/drederick
+COPY --from=go-builder /go/bin/nuclei /usr/local/bin/nuclei
+COPY --from=go-builder /go/bin/gobuster /usr/local/bin/gobuster
+COPY --from=go-builder /go/bin/kerbrute /usr/local/bin/kerbrute
+COPY --from=pipx-builder /root/.local /root/.local
+COPY --from=ruby-builder /var/lib/gems /var/lib/gems
+COPY --from=ruby-builder /usr/local/bin/evil-winrm /usr/local/bin/evil-winrm
+COPY --from=source-builder /opt/exploitdb /opt/exploitdb
+COPY --from=source-builder /opt/responder /opt/responder
+COPY --from=source-builder /opt/seclists /opt/seclists
+COPY --from=source-builder /opt/pypy2.7-v7.3.17-linux64 /opt/pypy2
 
-# Install Python offensive tools via pipx (already installed above)
-RUN pipx install impacket 2>/dev/null || true && \
-    pipx install netexec 2>/dev/null || true && \
-    pipx install enum4linux-ng 2>/dev/null || true && \
-    pipx ensurepath 2>/dev/null || true
-
-# Install Ruby tools
-RUN gem install --no-document evil-winrm 2>/dev/null || true
-
-# Install Go tools (nuclei, gobuster, kerbrute)
-RUN GOPATH=/opt/go go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest 2>/dev/null && \
-    GOPATH=/opt/go go install github.com/OJ/gobuster/v3@latest 2>/dev/null && \
-    GOPATH=/opt/go go install github.com/ropnop/kerbrute@latest 2>/dev/null && \
-    cp -r /opt/go/bin/* /usr/local/bin/ 2>/dev/null || true && \
-    rm -rf /opt/go/src /opt/go/pkg
-
-# Install Datasette (for findings.db browser)
-RUN pipx install datasette 2>/dev/null || true
-
-# Copy drederick binary
-COPY --from=builder /tmp/drederick /usr/local/bin/drederick
+# Wire up symlinks
+RUN ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit && \
+    ln -sf /opt/seclists /usr/share/seclists && \
+    ln -sf /opt/pypy2/bin/pypy /usr/local/bin/python2 && \
+    printf '#!/bin/sh\nexec python3 /opt/responder/Responder.py "$@"\n' > /usr/local/bin/responder && \
+    chmod +x /usr/local/bin/responder
 
 # Setup directories
 RUN mkdir -p /out /work && chmod 777 /out
 
-# Working directory
 WORKDIR /work
 
-# Run as root for full capability (this is the offensive use case — scope is the gate)
-# ENTRYPOINT supports all subcommands
 ENTRYPOINT ["drederick"]
 CMD ["doctor"]
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=2 \
   CMD drederick doctor > /dev/null 2>&1 || exit 1
 
