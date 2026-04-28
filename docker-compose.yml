@@ -1,0 +1,42 @@
+version: '3.9'
+
+services:
+  drederick:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: drederick:latest
+    container_name: drederick
+    
+    # Mount scope file + output directory
+    volumes:
+      - ./scope.yaml:/work/scope.yaml:ro
+      - ./out:/out
+      - ./memory:/work/memory
+    
+    # Run as operator user (non-root) by default; override with --user root if needed
+    user: "1000:1000"
+    
+    # Entrypoint: drederick binary
+    entrypoint: [ "drederick" ]
+    
+    # Default command: show help. Override with: docker-compose run drederick --scope /work/scope.yaml --target 127.0.0.1 --out /out
+    command: []
+    
+    # Safer: readonly root filesystem (comment out if you need writable /tmp)
+    read_only: true
+    
+    # Temp directories that must be writable
+    tmpfs:
+      - /tmp
+      - /run
+    
+    # Resource limits (adjust for your lab)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
