@@ -1,0 +1,10 @@
+# Drederick container symlinks for convenience.
+# 
+# - Containerfile        → Containerfile.full (default; symlinked for `docker build .`)
+# - Containerfile.full   → Full operator toolset (~1-2 GB)
+# - Containerfile.minimal → Lean dev/binary smoke test (~50 MB)
+#
+# Use cases:
+#   docker build -t drederick:minimal -f Containerfile.minimal .  # Fast CI / binary smoke test
+#   docker build -t drederick:full -f Containerfile.full .         # Full operator runtime
+#   docker build -t drederick . OR podman build -t drederick .     # defaults to full

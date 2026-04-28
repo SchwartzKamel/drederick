@@ -1,0 +1,42 @@
+# Drederick - MINIMAL build (dev testing)
+# Verifies the drederick binary loads and runs. ~50 MB final image.
+# Build: docker build -t drederick:minimal -f Containerfile.minimal .
+#        OR podman build -t drederick:minimal -f Containerfile.minimal .
+# Run:   docker run --rm drederick:minimal doctor
+
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  curl ca-certificates && \
+  cd /tmp && \
+  curl -fsSL -O https://github.com/SchwartzKamel/drederick/releases/download/v0.3.1/drederick-0.3.1-linux-x64.tar.gz && \
+  tar xzf drederick-0.3.1-linux-x64.tar.gz && \
+  chmod +x drederick
+
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="drederick-minimal"
+LABEL org.opencontainers.image.description="Minimal drederick — for dev testing and binary smoke tests"
+LABEL org.opencontainers.image.source="https://github.com/SchwartzKamel/drederick"
+LABEL org.opencontainers.image.version="0.3.1"
+
+# Minimal runtime: just enough to verify the binary works
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy drederick binary
+COPY --from=builder /tmp/drederick /usr/local/bin/drederick
+
+# Setup
+RUN mkdir -p /out && chmod 777 /out
+
+WORKDIR /work
+
+# Runs as root (default in container)
+ENTRYPOINT ["drederick"]
+CMD ["doctor"]
+
+# Quick health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=2 \
+  CMD drederick doctor > /dev/null 2>&1 || exit 1
