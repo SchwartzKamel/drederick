@@ -329,3 +329,20 @@ Follow `docs/DEVELOPING.md` §"Adding a new `IReconTool`" /
 `.editorconfig` governs formatting: 4-space indent for C#, 2-space for
 `csproj/props/json/yaml/md`, LF line endings, final newline, trim
 trailing whitespace. Run `dotnet format` before committing.
+
+## Fuzzing
+
+Ten `IFuzzTool` implementations live under `src/Drederick/Recon/Fuzz/`,
+registered through `FuzzToolbox`. Each tool calls `_scope.Require(...)`
+as its first network statement and writes start/finish/error events
+to `audit.jsonl` with argv digests. `protocol-fuzz` is the only fuzzer
+that additionally checks `RunPermissions.AllowDestructive`.
+
+`AdaptiveRunner.ScheduleFuzzAsync(targets, recon, fuzz, ct)` is the
+auto-scheduling entry point — `DrederickHost` calls it after the
+recon pass when `RunOptions.EnableFuzz=true`. It dispatches
+`header-fuzz`, `web-param-fuzz`, `api-endpoint-fuzz`, and (when the
+service banner mentions GraphQL) `graphql-fuzz` against discovered
+HTTP services.
+
+Reference: [`docs/FUZZING.md`](../docs/FUZZING.md).

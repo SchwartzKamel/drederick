@@ -1,0 +1,35 @@
+                \   \        \         \          \                    \
+   \______________|\__|\__|\__|\__|\__________________|-|
+   |                                                   | |
+   |  JSON Web Token Fuzzer (ticarpi/jwt_tool)        | |
+   |  https://github.com/ticarpi/jwt_tool              | |
+   |                                                   | |
+   |__________________________________________________|_|
+    \____________________________________________________|
+
+Loaded token from command line
+Decoded header: {"typ":"JWT","alg":"HS256"}
+Decoded payload: {"sub":"1234567890","name":"John Doe","iat":1516239022}
+
+[*] Running All Tests mode...
+
+[+] alg=none Test
+    [+] None alg accepted! Server accepted token with alg=none
+    [!] VULNERABILITY FOUND: Algorithm None bypass successful
+
+[*] Weak HMAC Secret Test
+    [-] No weak secret found in wordlist
+
+[*] KID Injection Tests
+    [-] No KID header present
+
+[*] RSA Key Confusion Test
+    [-] Token not using RS256
+
+[*] JKU Injection Test
+    [-] No JKU header present
+
+[*] X5U Injection Test
+    [-] No X5U header present
+
+Scan complete.

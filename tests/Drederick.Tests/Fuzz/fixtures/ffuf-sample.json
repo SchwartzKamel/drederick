@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "input": {
+        "FUZZ": "admin.target.com"
+      },
+      "status": 200,
+      "length": 1024,
+      "words": 150,
+      "lines": 45
+    },
+    {
+      "input": {
+        "FUZZ": "staging.target.com"
+      },
+      "status": 302,
+      "length": 512,
+      "redirectlocation": "https://staging.target.com/login"
+    },
+    {
+      "input": {
+        "FUZZ": "dev.target.com"
+      },
+      "status": 401,
+      "length": 256
+    }
+  ],
+  "config": {
+    "url": "http://10.10.10.100/",
+    "method": "GET",
+    "headers": {
+      "Host": "FUZZ.target.com"
+    }
+  }
+}

@@ -213,6 +213,32 @@ public sealed class DrederickHost
 
         Emit(progress, ScanEventKind.RunnerFinish, toolCallsTotal: toolbox.ToolCallsTotal);
 
+        // --- fuzz pass (opt-in) ---
+        // Schedules HTTP-driven fuzz tools (header, web-param, api, graphql)
+        // against any HTTP services the recon pass discovered. The fuzz
+        // toolbox is constructed with default-deny destructive permissions
+        // so ProtocolFuzzTool will refuse to spawn boofuzz subprocesses
+        // unless the operator separately opts into RunPermissions.
+        // Off by default — fuzzers depend on external binaries (arjun, ffuf,
+        // kr, etc.) that may not be installed; flip via RunOptions.EnableFuzz
+        // once `drederick doctor` confirms the toolchain.
+        if (options.EnableFuzz && runner is AdaptiveRunner adaptive)
+        {
+            try
+            {
+                var fuzzbox = BuildFuzzToolbox(scope, audit, Drederick.Exploit.RunPermissions.None);
+                Emit(progress, ScanEventKind.Info, message: "fuzz pass starting");
+                await adaptive.ScheduleFuzzAsync(targets, toolbox, fuzzbox, ct).ConfigureAwait(false);
+                Emit(progress, ScanEventKind.Info, message: $"fuzz pass complete ({fuzzbox.ToolCallsTotal} call(s))");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                audit.Record("fuzz.error", new Dictionary<string, object?> { ["error"] = ex.Message });
+                Emit(progress, ScanEventKind.Error, message: $"fuzz pass error: {ex.Message}");
+            }
+        }
+
         var allFindings = targets
             .Select(t => toolbox.Findings.TryGetValue(t, out var f) ? f : null)
             .Where(f => f is not null)
@@ -329,6 +355,35 @@ public sealed class DrederickHost
                 dnsAxfr, httpContentDiscovery, tlsCipherEnum,
             },
             audit);
+    }
+
+    // --- fuzz tools ---
+    /// <summary>
+    /// Constructs the full <see cref="Drederick.Recon.Fuzz.FuzzToolbox"/>
+    /// with all 10 fuzz tools registered. Each tool re-checks scope
+    /// internally; <see cref="Drederick.Recon.Fuzz.ProtocolFuzzTool"/>
+    /// additionally consults <see cref="Drederick.Exploit.RunPermissions"/>
+    /// (destructive opt-in) before any subprocess spawn.
+    /// </summary>
+    private static Drederick.Recon.Fuzz.FuzzToolbox BuildFuzzToolbox(
+        Drederick.Scope.Scope scope,
+        AuditLog audit,
+        Drederick.Exploit.RunPermissions permissions)
+    {
+        var tools = new Drederick.Recon.Fuzz.IFuzzTool[]
+        {
+            new Drederick.Recon.Fuzz.WebParamFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.VhostFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.SubdomainFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.ApiEndpointFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.GraphqlFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.JwtFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.HeaderFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.ProtocolFuzzTool(scope, audit, permissions),
+            new Drederick.Recon.Fuzz.FileFormatFuzzTool(scope, audit),
+            new Drederick.Recon.Fuzz.LlmPayloadFuzzTool(scope, audit),
+        };
+        return new Drederick.Recon.Fuzz.FuzzToolbox(tools, audit);
     }
 
     private static void Emit(

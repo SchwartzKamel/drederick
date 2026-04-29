@@ -67,6 +67,7 @@ related:
 | [`CREDENTIALS.md`](CREDENTIALS.md) | humans + agents | Credential-attack subsystem: `CredRunner`, spray/brute/AS-REP/kerberoast/PtH, lockout throttling, secret-hashing rules. | both |
 | [`LLM_SETUP.md`](LLM_SETUP.md) | humans | Wiring OpenAI for `--agent`; combining with `--autopilot`; provider recipes; safety. | human |
 | [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) | humans | After the session opens: `SessionManager`, `PostExLinux` / `PostExWindows`, pivot probes, flag extraction, multi-stage chain. | human |
+| [`FUZZING.md`](FUZZING.md) | humans + agents | Fuzz subsystem: 10 `IFuzzTool`s (web-param, vhost, subdomain, api-endpoint, graphql, jwt, header, protocol, file-format, llm-payload), `FuzzToolbox` budgets, AdaptiveRunner scheduling. | both |
 | [`JEOPARDY.md`](JEOPARDY.md) | humans | Jeopardy CTF mode: `ctf-solve` swarm, `ctf-msg` operator hints, sandbox image, budget/scope rails. | human |
 | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) | humans + agents | Symptom-to-fix: doctor detection, scope refusals, Datasette launch, NVD cache, PoC cache. | both |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | humans | Contributor workflow: branch, test, PR etiquette. | human |

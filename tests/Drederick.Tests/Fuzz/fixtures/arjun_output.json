@@ -1,0 +1,7 @@
+{
+  "http://example.com/api": [
+    {"name": "id", "confirmed": true},
+    {"name": "user", "confirmed": true},
+    {"name": "token", "confirmed": false}
+  ]
+}

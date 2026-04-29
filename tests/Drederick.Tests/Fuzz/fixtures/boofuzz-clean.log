@@ -1,0 +1,12 @@
+[2024-01-15 10:30:15] Boofuzz session starting
+[2024-01-15 10:30:15] Target: 192.168.1.100:445
+[2024-01-15 10:30:16] Test Case: 1 / 1000
+[2024-01-15 10:30:16] Sending malformed SMB negotiate...
+[2024-01-15 10:30:16] Response received (200 bytes)
+[2024-01-15 10:30:17] Test Case: 2 / 1000
+[2024-01-15 10:30:17] Sending malformed SMB negotiate...
+[2024-01-15 10:30:17] Response received (200 bytes)
+[2024-01-15 10:30:18] Test Case: 3 / 1000
+[2024-01-15 10:30:18] Sending malformed SMB negotiate...
+[2024-01-15 10:30:18] Response received (200 bytes)
+[2024-01-15 10:30:19] Session completed: 3 test cases, 0 crashes

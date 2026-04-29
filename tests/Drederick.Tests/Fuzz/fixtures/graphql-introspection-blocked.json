@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "message": "GraphQL introspection is not allowed",
+      "extensions": {
+        "code": "GRAPHQL_VALIDATION_FAILED"
+      }
+    }
+  ]
+}

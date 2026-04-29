@@ -1,0 +1,26 @@
+[
+  {
+    "title": "Alias Overloading",
+    "severity": "HIGH",
+    "description": "Server allows alias overloading which can bypass rate limits",
+    "impact": "Attackers can send batched queries with aliases to exfiltrate data or DoS the server"
+  },
+  {
+    "title": "Batch Query Support",
+    "severity": "MEDIUM",
+    "description": "Server supports batched queries without proper rate limiting",
+    "impact": "May lead to resource exhaustion attacks"
+  },
+  {
+    "title": "Field Suggestions",
+    "severity": "LOW",
+    "description": "Server provides field suggestions in error messages",
+    "impact": "Information disclosure that aids attackers in schema discovery"
+  },
+  {
+    "title": "Missing CSRF Protection",
+    "severity": "HIGH",
+    "description": "GraphQL endpoint does not enforce CSRF tokens",
+    "impact": "Attackers can perform state-changing mutations via CSRF"
+  }
+]

@@ -368,3 +368,19 @@ scopes overlap, coordinate via issue comments — do not racewrite.
 8. [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md) — after the
    bell: session dispatch, Linux/Windows enumeration, pivot discovery,
    flag extraction.
+
+<a id="fuzzing"></a>
+## Fuzzing
+
+The fuzzing subsystem (`src/Drederick/Recon/Fuzz/`) ships 10 `IFuzzTool`
+implementations registered via `FuzzToolbox`. Every tool re-checks scope
+internally (`@invariant-id:scope-in-every-tool`); `protocol-fuzz` also
+requires `RunPermissions.AllowDestructive`. See
+[`docs/FUZZING.md`](docs/FUZZING.md) for the full reference.
+
+Tools: `web-param-fuzz`, `vhost-fuzz`, `subdomain-fuzz`,
+`api-endpoint-fuzz`, `graphql-fuzz`, `jwt-fuzz`, `header-fuzz`,
+`protocol-fuzz`, `file-format-fuzz`, `llm-payload-fuzz`.
+
+`AdaptiveRunner.ScheduleFuzzAsync` auto-dispatches HTTP-driven fuzzers
+against discovered HTTP services when `RunOptions.EnableFuzz=true`.

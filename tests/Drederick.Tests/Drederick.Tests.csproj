@@ -13,4 +13,21 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Drederick\Drederick.csproj" />
   </ItemGroup>
+
+  <!-- Copy fuzz fixtures into the test output dir so tests that load them
+       via a relative "tests/Drederick.Tests/Fuzz/fixtures/..." path resolve
+       (cwd at test time is the bin/.../net10.0/ directory). The Link keeps
+       the same source-tree-relative layout so the literal paths work.
+       Also copied directly under Fuzz/fixtures/ for tests that combine
+       AppContext.BaseDirectory + "Fuzz/fixtures/..." . -->
+  <ItemGroup>
+    <None Include="Fuzz\fixtures\**\*">
+      <Link>tests\Drederick.Tests\Fuzz\fixtures\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Fuzz\fixtures\**\*">
+      <Link>Fuzz\fixtures\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

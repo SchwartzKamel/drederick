@@ -40,6 +40,14 @@ public sealed class DoctorRunner
         "enum4linux-ng",
         "wfuzz",
         "magika",
+        // Fuzzing tools (Recon/Fuzz/* subsystem):
+        "arjun",
+        "x8",
+        "kr",
+        "graphql-cop",
+        "jwt_tool",
+        "radamsa",
+        "boofuzz",
     };
 
     // Tools that are strictly required for drederick's recon core.
@@ -74,6 +82,16 @@ public sealed class DoctorRunner
             ["enum4linux-ng"] = new("enum4linux-ng", Array.Empty<string>(), new[] { "--help" }),
             ["wfuzz"] = new("wfuzz", Array.Empty<string>(), new[] { "--version" }),
             ["magika"] = new("magika", Array.Empty<string>(), new[] { "--version" }),
+            // Fuzzing tools:
+            ["arjun"] = new("arjun", Array.Empty<string>(), new[] { "--help" }),
+            ["x8"] = new("x8", Array.Empty<string>(), new[] { "--version" }),
+            ["kr"] = new("kr", new[] { "kiterunner" }, new[] { "--version" }),
+            ["graphql-cop"] = new("graphql-cop", Array.Empty<string>(), new[] { "--help" }),
+            ["jwt_tool"] = new("jwt_tool", new[] { "jwt_tool.py" }, new[] { "-h" }),
+            ["radamsa"] = new("radamsa", Array.Empty<string>(), new[] { "--version" }),
+            // boofuzz is a Python module, not a binary; Detect() handles it
+            // specially by invoking `python3 -c "import boofuzz"`.
+            ["boofuzz"] = new("boofuzz", Array.Empty<string>(), Array.Empty<string>()),
         };
 
     /// <summary>
@@ -122,6 +140,29 @@ public sealed class DoctorRunner
                     {
                         path = dir;
                         break;
+                    }
+                }
+            }
+            else if (t == "boofuzz")
+            {
+                // boofuzz is a Python module — detect via `python3 -c "import boofuzz"`.
+                var python = _locator.Which("python3");
+                if (python is not null)
+                {
+                    try
+                    {
+                        var (exit, stdout, stderr) = _runner.Run(
+                            python, "-c \"import boofuzz, sys; print(getattr(boofuzz, '__version__', 'installed'))\"", timeoutSeconds: 5);
+                        if (exit == 0)
+                        {
+                            path = python;
+                            var combined = (!string.IsNullOrWhiteSpace(stdout) ? stdout : stderr) ?? string.Empty;
+                            version = combined.Trim();
+                        }
+                    }
+                    catch
+                    {
+                        // not installed
                     }
                 }
             }

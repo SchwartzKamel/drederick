@@ -1,6 +1,7 @@
 using Drederick.Audit;
 using Drederick.Memory;
 using Drederick.Recon;
+using Drederick.Recon.Fuzz;
 
 namespace Drederick.Agent;
 
@@ -252,5 +253,102 @@ public sealed class AdaptiveRunner : IReconAgentRunner
                 ["error"] = ex.Message,
             });
         }
+    }
+
+    /// <summary>
+    /// Schedules HTTP-driven fuzz tools (header, web-param, vhost, api,
+    /// graphql) against any HTTP services discovered during the recon pass.
+    /// Additive helper — does not modify the existing
+    /// <see cref="RunAsync(IReadOnlyList{string}, ReconToolbox, KnowledgeBase, CancellationToken)"/>
+    /// contract. Callers (typically <c>DrederickHost</c>) invoke it AFTER
+    /// the main runner finishes, when they want a fuzz pass.
+    ///
+    /// <para>Conservative scheduling rules (each tool re-checks scope
+    /// internally, so the worst-case from a misroute is a
+    /// <see cref="Drederick.Scope.ScopeException"/>):</para>
+    /// <list type="bullet">
+    ///   <item><description>HTTP service discovered → header-fuzz, web-param-fuzz, vhost-fuzz</description></item>
+    ///   <item><description>Path looks API-ish (<c>/api</c>, <c>/v1</c>) → api-endpoint-fuzz</description></item>
+    ///   <item><description>GraphQL endpoint detected → graphql-fuzz</description></item>
+    /// </list>
+    ///
+    /// <para>JWT, Subdomain, Protocol, FileFormat, and LlmPayload fuzzers
+    /// require operator-supplied input (token, apex domain, capture file,
+    /// upload form, anchor URL) and are not auto-scheduled here. They remain
+    /// available via direct <see cref="FuzzToolbox.GetByName"/> lookup or
+    /// LLM tool calls.</para>
+    /// </summary>
+    public async Task ScheduleFuzzAsync(
+        IReadOnlyList<string> targets,
+        ReconToolbox tools,
+        FuzzToolbox fuzz,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(targets);
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(fuzz);
+
+        _audit.Record("runner.fuzz.start", new Dictionary<string, object?>
+        {
+            ["targets"] = targets,
+            ["registered_tools"] = fuzz.Tools.Select(t => t.Name).ToArray(),
+        });
+
+        var header = fuzz.GetByName("header-fuzz") as HeaderFuzzTool;
+        var webparam = fuzz.GetByName("web-param-fuzz") as WebParamFuzzTool;
+        var api = fuzz.GetByName("api-endpoint-fuzz") as ApiEndpointFuzzTool;
+        var graphql = fuzz.GetByName("graphql-fuzz") as GraphqlFuzzTool;
+
+        foreach (var target in targets)
+        {
+            if (ct.IsCancellationRequested) break;
+            if (!tools.Findings.TryGetValue(target, out var f) || f.Nmap is null) continue;
+
+            foreach (var p in f.Nmap.OpenPorts)
+            {
+                var svc = (p.Service ?? "").ToLowerInvariant();
+                var isTls = svc.Contains("https") || svc.Contains("ssl") || p.Port is 443 or 8443 or 9443;
+                var isHttp = isTls || svc.Contains("http") || p.Port is 80 or 8080 or 8000 or 8008 or 8888 or 3000 or 5000;
+                if (!isHttp) continue;
+
+                var scheme = isTls ? "https" : "http";
+                var url = $"{scheme}://{target}:{p.Port}/";
+
+                async Task Try(string toolName, Func<Task> action)
+                {
+                    try
+                    {
+                        fuzz.RecordCall(toolName, target);
+                        await action().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _audit.Record("runner.fuzz.error", new Dictionary<string, object?>
+                        {
+                            ["tool"] = toolName,
+                            ["target"] = target,
+                            ["url"] = url,
+                            ["error"] = ex.Message,
+                        });
+                    }
+                }
+
+                if (header is not null) await Try("header-fuzz", () => header.ProbeAsync(url, options: null, ct: ct));
+                if (webparam is not null) await Try("web-param-fuzz", () => webparam.ProbeAsync(url, options: null, ct: ct));
+                // VhostFuzzTool requires an operator-supplied apex domain, so it
+                // cannot be auto-scheduled from IP-based recon. Surface via LLM
+                // tool calls or direct GetByName lookup instead.
+                if (api is not null) await Try("api-endpoint-fuzz", () => api.ProbeAsync(url, options: null, ct: ct));
+                if (graphql is not null && (svc.Contains("graphql") || url.Contains("graphql", StringComparison.OrdinalIgnoreCase)))
+                {
+                    await Try("graphql-fuzz", () => graphql.ProbeAsync(url, options: null, ct: ct));
+                }
+            }
+        }
+
+        _audit.Record("runner.fuzz.finish", new Dictionary<string, object?>
+        {
+            ["fuzz_calls_total"] = fuzz.ToolCallsTotal,
+        });
     }
 }

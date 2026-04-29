@@ -1,0 +1,4 @@
+{"request":{"method":"GET","url":"http://example.com/api/v1/users"},"response":{"statusCode":200,"bodyLength":1234}}
+{"request":{"method":"POST","url":"http://example.com/api/v1/login"},"response":{"statusCode":200,"bodyLength":567}}
+{"request":{"method":"GET","url":"http://example.com/api/v2/products"},"response":{"statusCode":200,"bodyLength":8901}}
+{"request":{"method":"DELETE","url":"http://example.com/api/v1/users/123"},"response":{"statusCode":204,"bodyLength":0}}

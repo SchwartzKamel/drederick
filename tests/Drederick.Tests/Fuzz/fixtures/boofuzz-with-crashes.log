@@ -1,0 +1,21 @@
+[2024-01-15 11:45:22] Boofuzz session starting
+[2024-01-15 11:45:22] Target: 10.10.10.50:445
+[2024-01-15 11:45:23] Test Case: 1 / 1000
+[2024-01-15 11:45:23] Sending malformed SMB negotiate...
+[2024-01-15 11:45:23] Response received (200 bytes)
+[2024-01-15 11:45:24] Test Case: 2 / 1000
+[2024-01-15 11:45:24] Sending malformed SMB negotiate...
+[2024-01-15 11:45:25] CRASH DETECTED: target unresponsive
+[2024-01-15 11:45:26] Test Case: 3 / 1000
+[2024-01-15 11:45:26] Sending malformed SMB negotiate...
+[2024-01-15 11:45:28] Connection refused
+[2024-01-15 11:45:29] Test Case: 4 / 1000
+[2024-01-15 11:45:29] Sending malformed SMB negotiate...
+[2024-01-15 11:45:32] HANG DETECTED: timeout waiting for response
+[2024-01-15 11:45:33] Test Case: 5 / 1000
+[2024-01-15 11:45:33] Sending malformed SMB negotiate...
+[2024-01-15 11:45:34] Anomaly: unexpected response size (5000 bytes)
+[2024-01-15 11:45:35] Test Case: 6 / 1000
+[2024-01-15 11:45:35] Sending malformed SMB negotiate...
+[2024-01-15 11:45:36] CRASH: segmentation fault detected on target
+[2024-01-15 11:45:37] Session completed: 6 test cases, 2 crashes, 1 hang

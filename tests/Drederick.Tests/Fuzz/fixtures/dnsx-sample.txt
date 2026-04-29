@@ -1,0 +1,5 @@
+admin.target.com
+staging.target.com
+dev.target.com
+api.target.com
+www.target.com

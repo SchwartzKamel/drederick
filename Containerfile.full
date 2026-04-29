@@ -1,8 +1,13 @@
-# Drederick - Full operator harness, optimized multi-stage build (23/23 tools)
+# Drederick - Full operator harness, optimized multi-stage build (30/30 tools)
 # Build: docker build -t drederick:latest -f Containerfile.full .
 #        OR podman build -t drederick:latest -f Containerfile.full .
 # Run:   docker run --rm -v "$PWD/scope.yaml:/scope.yaml" -v "$PWD/out:/out" drederick --scope /scope.yaml --target 127.0.0.1 --out /out
 # Runs as root - full offensive capability inside scope.
+#
+# Fuzz toolchain (added v0.4): arjun, x8, kr (kiterunner), graphql-cop,
+# jwt_tool, radamsa, boofuzz. radamsa is built from source because it is
+# not packaged in Debian Bookworm. x8 is built via cargo in a dedicated
+# rust-builder stage.
 
 # ============================================================
 # Stage 1: drederick binary
@@ -31,7 +36,8 @@ ENV CGO_ENABLED=0
 
 RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
     go install github.com/OJ/gobuster/v3@latest && \
-    go install github.com/ropnop/kerbrute@latest
+    go install github.com/ropnop/kerbrute@latest && \
+    go install github.com/assetnote/kiterunner/cmd/kr@latest
 
 # ============================================================
 # Stage 3: Python tools (pipx isolated venvs)
@@ -49,7 +55,21 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN pipx install impacket && \
     (pipx install netexec || pipx install git+https://github.com/Pennyw0rth/NetExec) && \
     (pipx install enum4linux-ng || pipx install git+https://github.com/cddmp/enum4linux-ng) && \
-    pipx install datasette
+    pipx install datasette && \
+    pipx install arjun && \
+    pipx install boofuzz && \
+    pipx install graphql-cop && \
+    (pipx install jwt_tool || pipx install git+https://github.com/ticarpi/jwt_tool)
+
+# ============================================================
+# Stage 3b: Rust tools (x8 — HTTP parameter fuzzer)
+# ============================================================
+FROM rust:slim AS rust-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    cargo install x8
 
 # ============================================================
 # Stage 4: Ruby tools (gems)
@@ -87,6 +107,18 @@ RUN curl -fsSL "https://downloads.python.org/pypy/pypy2.7-v7.3.17-linux64.tar.bz
     mkdir -p /opt && tar -xjf /tmp/pypy.tar.bz2 -C /opt && \
     rm /tmp/pypy.tar.bz2
 
+# radamsa — generic blackbox fuzzer (not in Debian Bookworm repos; build from source)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc make && \
+    git clone --depth 1 https://gitlab.com/akihe/radamsa.git /tmp/radamsa && \
+    cd /tmp/radamsa && make && make install PREFIX=/opt/radamsa && \
+    rm -rf /tmp/radamsa /var/lib/apt/lists/*
+
+# kiterunner default routes wordlist (best-effort; build continues if it 404s)
+RUN mkdir -p /opt/kiterunner && \
+    curl -fsSL "https://github.com/assetnote/kiterunner/releases/download/v1.0.2/routes-large.kite" \
+      -o /opt/kiterunner/routes.kite || true
+
 # ============================================================
 # Stage 6: Final runtime — only runtime deps, no build toolchains
 # ============================================================
@@ -122,6 +154,8 @@ COPY --from=drederick-bin /tmp/drederick /usr/local/bin/drederick
 COPY --from=go-builder /go/bin/nuclei /usr/local/bin/nuclei
 COPY --from=go-builder /go/bin/gobuster /usr/local/bin/gobuster
 COPY --from=go-builder /go/bin/kerbrute /usr/local/bin/kerbrute
+COPY --from=go-builder /go/bin/kr /usr/local/bin/kr
+COPY --from=rust-builder /usr/local/cargo/bin/x8 /usr/local/bin/x8
 COPY --from=pipx-builder /root/.local /root/.local
 COPY --from=ruby-builder /var/lib/gems /var/lib/gems
 COPY --from=ruby-builder /usr/local/bin/evil-winrm /usr/local/bin/evil-winrm
@@ -129,11 +163,14 @@ COPY --from=source-builder /opt/exploitdb /opt/exploitdb
 COPY --from=source-builder /opt/responder /opt/responder
 COPY --from=source-builder /opt/seclists /opt/seclists
 COPY --from=source-builder /opt/pypy2.7-v7.3.17-linux64 /opt/pypy2
+COPY --from=source-builder /opt/radamsa /opt/radamsa
+COPY --from=source-builder /opt/kiterunner /opt/kiterunner
 
 # Wire up symlinks
 RUN ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit && \
     ln -sf /opt/seclists /usr/share/seclists && \
     ln -sf /opt/pypy2/bin/pypy /usr/local/bin/python2 && \
+    ln -sf /opt/radamsa/bin/radamsa /usr/local/bin/radamsa && \
     printf '#!/bin/sh\nexec python3 /opt/responder/Responder.py "$@"\n' > /usr/local/bin/responder && \
     chmod +x /usr/local/bin/responder
 

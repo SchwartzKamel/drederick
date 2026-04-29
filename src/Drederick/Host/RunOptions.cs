@@ -26,4 +26,5 @@ public sealed record RunOptions(
     bool AggregatePocRefs = true,
     bool FetchPocSource = true,
     bool VpnPreflight = true,
-    bool RequireVpn = false);
+    bool RequireVpn = false,
+    bool EnableFuzz = false);
