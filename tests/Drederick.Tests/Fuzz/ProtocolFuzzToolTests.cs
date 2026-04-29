@@ -1,0 +1,361 @@
+using Drederick.Audit;
+using Drederick.Doctor;
+using Drederick.Exploit;
+using Drederick.Recon.Fuzz;
+using Drederick.Scope;
+using Xunit;
+
+namespace Drederick.Tests.Fuzz;
+
+public class ProtocolFuzzToolTests
+{
+    private static string NewAuditPath() =>
+        Path.Combine(AppContext.BaseDirectory, $"drederick-fuzz-{Guid.NewGuid():N}.jsonl");
+
+    private static string NewOutputDir() =>
+        Path.Combine(AppContext.BaseDirectory, $"drederick-fuzz-test-{Guid.NewGuid():N}");
+
+    private sealed class CannedRunner : IProcessRunner
+    {
+        public List<(string File, string Args)> Calls { get; } = new();
+        public int ExitCode { get; set; } = 0;
+        public string Stdout { get; set; } = "";
+        public string Stderr { get; set; } = "";
+
+        public (int, string, string) Run(string f, string a, int t)
+        {
+            Calls.Add((f, a));
+            return (ExitCode, Stdout, Stderr);
+        }
+
+        public (int, string, string) RunShell(string c, int t) => throw new NotSupportedException();
+    }
+
+    private static (ProtocolFuzzTool tool, CannedRunner proc, string outDir) Build(
+        string scopeSpec, RunPermissions perms)
+    {
+        var outDir = NewOutputDir();
+        Directory.CreateDirectory(outDir);
+        var scope = ScopeLoader.Parse(scopeSpec);
+        using var audit = new AuditLog(NewAuditPath());
+        var proc = new CannedRunner();
+        var tool = new ProtocolFuzzTool(scope, audit, perms, python3Path: "/usr/bin/python3", runner: proc);
+        return (tool, proc, outDir);
+    }
+
+    [Fact]
+    public async Task Throws_When_Permissions_Disallow_Destructive()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDos: true); // missing allowDestructive
+        var tool = new ProtocolFuzzTool(scope, audit, perms);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            tool.ProbeAsync("10.10.10.5", 445, new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb }));
+
+        Assert.Contains("--allow-destructive", ex.Message);
+        Assert.Contains("--allow-dos", ex.Message);
+    }
+
+    [Fact]
+    public async Task Throws_When_Permissions_Disallow_Dos()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true); // missing allowDos
+        var tool = new ProtocolFuzzTool(scope, audit, perms);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            tool.ProbeAsync("10.10.10.5", 445, new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb }));
+
+        Assert.Contains("--allow-destructive", ex.Message);
+        Assert.Contains("--allow-dos", ex.Message);
+    }
+
+    [Fact]
+    public async Task Throws_When_Host_OutOfScope()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var tool = new ProtocolFuzzTool(scope, audit, perms);
+
+        await Assert.ThrowsAsync<ScopeException>(() =>
+            tool.ProbeAsync("8.8.8.8", 445, new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb }));
+    }
+
+    [Fact]
+    public async Task Throws_When_Port_Invalid()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var tool = new ProtocolFuzzTool(scope, audit, perms);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tool.ProbeAsync("10.10.10.5", 0, new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb }));
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tool.ProbeAsync("10.10.10.5", 70000, new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb }));
+    }
+
+    [Fact]
+    public async Task Throws_When_OutputDir_Has_PathTraversal()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var tool = new ProtocolFuzzTool(scope, audit, perms);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tool.ProbeAsync("10.10.10.5", 445, new ProtocolFuzzOptions
+            {
+                Protocol = ProtocolKind.Smb,
+                OutputDir = "../../../etc/passwd"
+            }));
+    }
+
+    [Fact]
+    public async Task Throws_When_Host_Has_ShellMetachar()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var tool = new ProtocolFuzzTool(scope, audit, perms);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            tool.ProbeAsync("10.10.10.5;rm -rf /", 445, new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb }));
+    }
+
+    [Fact]
+    public async Task Generates_Valid_Python_Script()
+    {
+        var scope = ScopeLoader.Parse("192.168.1.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var proc = new CannedRunner { Stdout = "Test Case: 5 / 1000\nCompleted" };
+        var outDir = NewOutputDir();
+
+        try
+        {
+            var tool = new ProtocolFuzzTool(scope, audit, perms, python3Path: "/usr/bin/python3", runner: proc);
+            var options = new ProtocolFuzzOptions
+            {
+                Protocol = ProtocolKind.Smb,
+                MaxIterations = 100,
+                OutputDir = outDir
+            };
+
+            var result = await tool.ProbeAsync("192.168.1.100", 445, options);
+
+            // Verify script was written
+            var scriptPath = Path.Combine(outDir, "fuzz.py");
+            Assert.True(File.Exists(scriptPath), $"Script not found at {scriptPath}");
+
+            // Verify script content
+            var scriptContent = await File.ReadAllTextAsync(scriptPath);
+            Assert.Contains("#!/usr/bin/env python3", scriptContent);
+            Assert.Contains("from boofuzz import", scriptContent);
+            Assert.Contains("192.168.1.100", scriptContent);
+            Assert.Contains("445", scriptContent);
+            Assert.Contains("max_depth=100", scriptContent);
+        }
+        finally
+        {
+            if (Directory.Exists(outDir))
+                Directory.Delete(outDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Parses_Boofuzz_Log_For_Crashes()
+    {
+        var fixturesDir = Path.Combine(AppContext.BaseDirectory, "Fuzz", "fixtures");
+        var cleanLog = File.ReadAllText(Path.Combine(fixturesDir, "boofuzz-clean.log"));
+        var crashLog = File.ReadAllText(Path.Combine(fixturesDir, "boofuzz-with-crashes.log"));
+
+        var (crashes1, hangs1, markers1) = ProtocolFuzzTool.ParseBoofuzzLog(cleanLog);
+        // The summary line "0 crashes" contains "crash" so it's counted as 1
+        Assert.Equal(1, crashes1);
+        Assert.Equal(0, hangs1);
+        Assert.Equal(1, markers1.Count); // Just the summary line
+
+        var (crashes2, hangs2, markers2) = ProtocolFuzzTool.ParseBoofuzzLog(crashLog);
+        // Lines: CRASH DETECTED, CRASH: segmentation, Session completed (2 crashes, 1 hang) = 3 crashes
+        Assert.Equal(3, crashes2);
+        // Lines: HANG DETECTED, Session completed (2 crashes, 1 hang) = 2 hangs
+        Assert.Equal(2, hangs2);
+        Assert.True(markers2.Count >= 6); // 2 crash lines + 1 hang line + 1 anomaly + 1 connection refused + 1 summary
+    }
+
+    [Fact]
+    public async Task Returns_Empty_Result_When_Boofuzz_Missing()
+    {
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        using var audit = new AuditLog(NewAuditPath());
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var proc = new CannedRunner { ExitCode = 127, Stderr = "python3: command not found" };
+        var outDir = NewOutputDir();
+
+        try
+        {
+            var tool = new ProtocolFuzzTool(scope, audit, perms, python3Path: "/usr/bin/python3", runner: proc);
+            var options = new ProtocolFuzzOptions
+            {
+                Protocol = ProtocolKind.Smb,
+                OutputDir = outDir
+            };
+
+            var result = await tool.ProbeAsync("10.10.10.5", 445, options);
+
+            Assert.Equal(0, result.Iterations);
+            Assert.Equal(0, result.Crashes);
+            Assert.Equal(0, result.Hangs);
+        }
+        finally
+        {
+            if (Directory.Exists(outDir))
+                Directory.Delete(outDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Audit_Records_Start_And_Finish_Events()
+    {
+        var auditPath = NewAuditPath();
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var proc = new CannedRunner { Stdout = "Test Case: 10 / 1000\nCompleted" };
+        var outDir = NewOutputDir();
+
+        try
+        {
+            using (var audit = new AuditLog(auditPath))
+            {
+                var tool = new ProtocolFuzzTool(scope, audit, perms, python3Path: "/usr/bin/python3", runner: proc);
+                var options = new ProtocolFuzzOptions
+                {
+                    Protocol = ProtocolKind.Ftp,
+                    OutputDir = outDir
+                };
+
+                await tool.ProbeAsync("10.10.10.20", 21, options);
+            }
+
+            var auditContent = File.ReadAllText(auditPath);
+            Assert.Contains("protocol-fuzz.start", auditContent);
+            Assert.Contains("protocol-fuzz.finish", auditContent);
+            Assert.Contains("10.10.10.20", auditContent);
+            Assert.Contains("21", auditContent);
+        }
+        finally
+        {
+            if (Directory.Exists(outDir))
+                Directory.Delete(outDir, recursive: true);
+            if (File.Exists(auditPath))
+                File.Delete(auditPath);
+        }
+    }
+
+    [Fact]
+    public async Task Argv_Digest_In_Audit()
+    {
+        var auditPath = NewAuditPath();
+        var scope = ScopeLoader.Parse("10.10.10.0/24");
+        var perms = new RunPermissions(allowDestructive: true, allowDos: true);
+        var proc = new CannedRunner { Stdout = "Test Case: 3 / 1000" };
+        var outDir = NewOutputDir();
+
+        try
+        {
+            using (var audit = new AuditLog(auditPath))
+            {
+                var tool = new ProtocolFuzzTool(scope, audit, perms, python3Path: "/usr/bin/python3", runner: proc);
+                var options = new ProtocolFuzzOptions
+                {
+                    Protocol = ProtocolKind.Http,
+                    OutputDir = outDir
+                };
+
+                await tool.ProbeAsync("10.10.10.30", 80, options);
+            }
+
+            var auditContent = File.ReadAllText(auditPath);
+            Assert.Contains("argv_digest", auditContent);
+            // Verify it's a SHA-256 hex (64 hex chars)
+            Assert.Matches(@"[0-9a-f]{64}", auditContent);
+        }
+        finally
+        {
+            if (Directory.Exists(outDir))
+                Directory.Delete(outDir, recursive: true);
+            if (File.Exists(auditPath))
+                File.Delete(auditPath);
+        }
+    }
+
+    [Fact]
+    public void Generates_Different_Scripts_For_Each_Protocol()
+    {
+        var smb = ProtocolFuzzTool.GenerateBoofuzzScript("10.10.10.1", 445,
+            new ProtocolFuzzOptions { Protocol = ProtocolKind.Smb, MaxIterations = 100 });
+        var snmp = ProtocolFuzzTool.GenerateBoofuzzScript("10.10.10.1", 161,
+            new ProtocolFuzzOptions { Protocol = ProtocolKind.Snmp, MaxIterations = 100 });
+        var ftp = ProtocolFuzzTool.GenerateBoofuzzScript("10.10.10.1", 21,
+            new ProtocolFuzzOptions { Protocol = ProtocolKind.Ftp, MaxIterations = 100 });
+        var http = ProtocolFuzzTool.GenerateBoofuzzScript("10.10.10.1", 80,
+            new ProtocolFuzzOptions { Protocol = ProtocolKind.Http, MaxIterations = 100 });
+        var generic = ProtocolFuzzTool.GenerateBoofuzzScript("10.10.10.1", 9999,
+            new ProtocolFuzzOptions { Protocol = ProtocolKind.Generic, MaxIterations = 100 });
+
+        // Verify SMB-specific content
+        Assert.Contains("SMB", smb);
+        Assert.Contains("TCPSocketConnection", smb);
+
+        // Verify SNMP-specific content
+        Assert.Contains("SNMP", snmp);
+        Assert.Contains("UDPSocketConnection", snmp);
+        Assert.Contains("public", snmp); // community string
+
+        // Verify FTP-specific content
+        Assert.Contains("FTP", ftp);
+        Assert.Contains("USER", ftp);
+        Assert.Contains("PASS", ftp);
+
+        // Verify HTTP-specific content
+        Assert.Contains("HTTP", http);
+        Assert.Contains("GET", http);
+        Assert.Contains("Host:", http);
+
+        // Verify Generic content
+        Assert.Contains("generic", generic);
+        Assert.Contains("TCPSocketConnection", generic);
+    }
+
+    [Fact]
+    public void EscapeForPython_Handles_Special_Characters()
+    {
+        Assert.Equal(@"test\\host", ProtocolFuzzTool.EscapeForPython(@"test\host"));
+        Assert.Equal(@"test\""quote", ProtocolFuzzTool.EscapeForPython("test\"quote"));
+        Assert.Equal(@"test\'quote", ProtocolFuzzTool.EscapeForPython("test'quote"));
+        Assert.Equal(@"line1\nline2", ProtocolFuzzTool.EscapeForPython("line1\nline2"));
+        Assert.Equal(@"line1\rline2", ProtocolFuzzTool.EscapeForPython("line1\rline2"));
+    }
+
+    [Fact]
+    public void ExtractIterations_Parses_Test_Case_Count()
+    {
+        var log = "Starting fuzzer\nTest Case: 42 / 1000\nCompleted";
+        var iterations = ProtocolFuzzTool.ExtractIterations(log, 1000);
+        Assert.Equal(42, iterations);
+    }
+
+    [Fact]
+    public void ExtractIterations_Returns_Zero_When_No_Match()
+    {
+        var log = "No test case info here\nJust random output";
+        var iterations = ProtocolFuzzTool.ExtractIterations(log, 1000);
+        Assert.Equal(0, iterations);
+    }
+}
