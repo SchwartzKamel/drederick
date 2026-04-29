@@ -18,6 +18,8 @@ related:
   - COMPARISON.md
   - LLM_SETUP.md
   - POST_EXPLOITATION.md
+  - EMPIRE.md
+  - C2_INTEGRATION.md
   - JEOPARDY.md
   - CREDENTIALS.md
   - GETTING_STARTED.md
@@ -66,7 +68,9 @@ related:
 | [`GETTING_STARTED.md`](GETTING_STARTED.md) | humans | End-to-end first-run walkthrough. | human |
 | [`CREDENTIALS.md`](CREDENTIALS.md) | humans + agents | Credential-attack subsystem: `CredRunner`, spray/brute/AS-REP/kerberoast/PtH, lockout throttling, secret-hashing rules. | both |
 | [`LLM_SETUP.md`](LLM_SETUP.md) | humans | Wiring OpenAI for `--agent`; combining with `--autopilot`; provider recipes; safety. | human |
-| [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) | humans | After the session opens: `SessionManager`, `PostExLinux` / `PostExWindows`, pivot probes, flag extraction, multi-stage chain. | human |
+| [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) | humans | After the session opens: `SessionManager`, `PostExLinux` / `PostExWindows`, pivot probes, Empire C2 agent dispatch, flag extraction, multi-stage chain. | human |
+| [`EMPIRE.md`](EMPIRE.md) | operators | Empire C2 integration: agent types, platform-specific payload generation (PowerShell, Python, Bash), privilege escalation + lateral movement modules, operational patterns, troubleshooting. | human |
+| [`C2_INTEGRATION.md`](C2_INTEGRATION.md) | contributors | C2 subsystem architecture: `EmpireAgentStager` / `EmpireModuleExecutor` / `EmpireApiClient` contracts, thread-safety, audit invariants, extension points for new C2 frameworks. | both |
 | [`FUZZING.md`](FUZZING.md) | humans + agents | Fuzz subsystem: 10 `IFuzzTool`s (web-param, vhost, subdomain, api-endpoint, graphql, jwt, header, protocol, file-format, llm-payload), `FuzzToolbox` budgets, AdaptiveRunner scheduling. | both |
 | [`JEOPARDY.md`](JEOPARDY.md) | humans | Jeopardy CTF mode: `ctf-solve` swarm, `ctf-msg` operator hints, sandbox image, budget/scope rails. | human |
 | [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) | humans + agents | Symptom-to-fix: doctor detection, scope refusals, Datasette launch, NVD cache, PoC cache. | both |

@@ -10,6 +10,8 @@ related:
   - docs/README.md
   - docs/SCOPE_AND_LEGAL.md
   - docs/ARCHITECTURE.md
+  - docs/POST_EXPLOITATION.md
+  - docs/EMPIRE.md
 ---
 -->
 
@@ -160,9 +162,12 @@ triage workflow.
 - **Full-auto offensive subsystem.** `ExploitRunner` (cached PoC spawn),
   `MsfRcRunner` (msfconsole `-r`), `NucleiRunner`, `PasswordSprayTool`,
   `MultiStageExploitRunner`, `SessionManager` + `SessionPivotProber`,
-  `PostExLinux` / `PostExWindows`. Each call is scope-validated on every
+  `PostExLinux` / `PostExWindows`, and **Empire C2 integration**
+  (`EmpireAgentStager`, `EmpireModuleExecutor` for agent delivery and
+  multi-module post-exploitation). Each call is scope-validated on every
   host in argv (pivots, LHOST/RHOSTS, session callbacks). See
-  [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md).
+  [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md) and
+  [`docs/EMPIRE.md`](docs/EMPIRE.md).
 - **Autopilot.** `drederick --autopilot` chains recon → exploit → loot →
   session → replan up to `--autopilot-max-iterations`. Deterministic
   (no LLM required); see [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md).

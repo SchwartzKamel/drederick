@@ -10,6 +10,8 @@ related:
   - ARCHITECTURE.md
   - MODULES.md
   - POST_EXPLOITATION.md
+  - EMPIRE.md
+  - C2_INTEGRATION.md
   - LLM_SETUP.md
 ---
 

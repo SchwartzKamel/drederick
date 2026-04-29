@@ -7,6 +7,9 @@ last_audited: 2026-04
 related:
   - ARCHITECTURE.md
   - MODULES.md
+  - POST_EXPLOITATION.md
+  - EMPIRE.md
+  - C2_INTEGRATION.md
   - SCOPE_AND_LEGAL.md
   - DB_SCHEMA.md
   - ../AGENTS.md
@@ -137,10 +140,14 @@ useful per-tool parameters. `ReconToolbox` dispatches by concrete type
 ## Adding an exploit / credential / payload tool
 
 Offensive tools live under `src/Drederick/Exploit/` and implement
-[`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs). Unlike
-recon (which is read-only and scope-gated only), exploit tools are
-gated by **two** boundaries: `Scope.Scope` (authorization — what
-targets you may touch at all) and
+[`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs),
+[`ICredTool`](../src/Drederick/Exploit/ICredTool.cs), or
+[`IPayloadTool`](../src/Drederick/Exploit/IPayloadTool.cs). Payload
+tools (like `EmpireAgentStager`) generate raw bytecode or scripts for
+delivery; exploit and cred tools execute actions. Unlike recon (which is
+read-only and scope-gated only), these tools are gated by **two**
+boundaries: `Scope.Scope` (authorization — what targets you may touch at
+all) and
 [`RunPermissions`](../src/Drederick/Exploit/RunPermissions.cs) (what
 category of blast radius is opted into this run, mapped to CLI flags
 `--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` /

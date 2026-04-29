@@ -14,6 +14,8 @@ related:
   - docs/MODULES.md
   - docs/DB_SCHEMA.md
   - docs/POST_EXPLOITATION.md
+  - docs/EMPIRE.md
+  - docs/C2_INTEGRATION.md
   - docs/JEOPARDY.md
   - docs/COMPARISON.md
   - docs/CREDENTIALS.md

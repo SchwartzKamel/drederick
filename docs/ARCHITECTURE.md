@@ -8,6 +8,8 @@ related:
   - SCOPE_AND_LEGAL.md
   - MODULES.md
   - POST_EXPLOITATION.md
+  - EMPIRE.md
+  - C2_INTEGRATION.md
   - JEOPARDY.md
   - DEVELOPING.md
   - DATASETTE.md

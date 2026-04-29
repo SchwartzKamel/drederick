@@ -7,6 +7,8 @@ last_audited: 2026-04
 related:
   - ARCHITECTURE.md
   - POST_EXPLOITATION.md
+  - EMPIRE.md
+  - C2_INTEGRATION.md
   - JEOPARDY.md
   - DEVELOPING.md
   - SCOPE_AND_LEGAL.md
@@ -334,6 +336,8 @@ gate. Summary:
 | `NucleiRunner` | `--allow-exec-pocs` |
 | `PasswordSprayTool` | `--allow-cred-attacks` + `--acknowledge-lockout-risk` |
 | `MultiStageExploitRunner` | `--allow-exec-pocs` + `--allow-payloads` |
+| `EmpireAgentStager` (agent payload generation) | `--allow-payloads` |
+| `EmpireModuleExecutor` (privesc/lateral movement) | `--allow-payloads` (+ `--allow-cred-attacks` for credential reuse) |
 | `PostExLinux` / `PostExWindows` | (via session opened by exploit tools) |
 | `SessionPivotProber` | (post-ex; pivot CIDRs re-checked per-IP) |
 

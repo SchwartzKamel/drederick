@@ -25,6 +25,21 @@ below this changelog via the release PR.
 
 ### Added
 
+- **Empire C2 integration** (`src/Drederick/Exploit/Empire/`) — BC-SECURITY/Empire
+  post-exploitation framework integration for agent delivery and multi-module
+  orchestration. New components:
+  - `EmpireAgentStager` (implements `IPayloadTool`): generates platform-specific
+    payloads (PowerShell, Python, Bash) for scope-validated targets.
+  - `EmpireModuleExecutor` (implements `IExploitTool`): executes privilege
+    escalation and lateral movement modules with scope re-validation on pivots.
+  - `EmpireApiClient`: HTTP wrapper for Empire v3 API endpoints.
+  - `SessionAgentMapper`: thread-safe registry mapping agent IDs to targets.
+  - `IPayloadTool` interface abstraction for payload generation tools.
+- `docs/EMPIRE.md` — operational guide for Empire integration: agent types,
+  platform-specific workflows, module matrix, patterns, troubleshooting.
+- `docs/C2_INTEGRATION.md` — architecture and extension guide for C2 subsystems:
+  contracts, thread-safety, audit invariants, extension points for new frameworks.
+
 ### Changed
 
 ### Fixed

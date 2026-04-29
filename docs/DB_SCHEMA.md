@@ -6,6 +6,8 @@ stability: stable
 last_audited: 2026-04
 related:
   - DATASETTE.md
+  - EMPIRE.md
+  - C2_INTEGRATION.md
   - ARCHITECTURE.md
   - ../AGENTS.md
   - ../src/Drederick/Reporting/SqliteReport.cs
