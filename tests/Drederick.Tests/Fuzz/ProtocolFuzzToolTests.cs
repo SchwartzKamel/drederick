@@ -179,7 +179,7 @@ public class ProtocolFuzzToolTests
         // The summary line "0 crashes" contains "crash" so it's counted as 1
         Assert.Equal(1, crashes1);
         Assert.Equal(0, hangs1);
-        Assert.Equal(1, markers1.Count); // Just the summary line
+        Assert.Single(markers1); // Just the summary line
 
         var (crashes2, hangs2, markers2) = ProtocolFuzzTool.ParseBoofuzzLog(crashLog);
         // Lines: CRASH DETECTED, CRASH: segmentation, Session completed (2 crashes, 1 hang) = 3 crashes

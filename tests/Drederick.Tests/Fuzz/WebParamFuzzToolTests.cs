@@ -53,7 +53,7 @@ public sealed class WebParamFuzzToolTests
     }
 
     [Fact]
-    public void Rejects_CustomWordlist_With_PathTraversal()
+    public async Task Rejects_CustomWordlist_With_PathTraversal()
     {
         // Arrange
         var scope = CreateTestScope("10.0.0.0/8");
@@ -65,16 +65,16 @@ public sealed class WebParamFuzzToolTests
         };
 
         // Act & Assert
-        var ex = Assert.ThrowsAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
             await tool.ProbeAsync("http://10.0.0.1/api", options);
-        }).Result;
+        });
 
         Assert.Contains("path traversal", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Rejects_CustomWordlist_With_ShellMetachar()
+    public async Task Rejects_CustomWordlist_With_ShellMetachar()
     {
         // Arrange
         var scope = CreateTestScope("10.0.0.0/8");
@@ -86,10 +86,10 @@ public sealed class WebParamFuzzToolTests
         };
 
         // Act & Assert
-        var ex = Assert.ThrowsAsync<ArgumentException>(async () =>
+        var ex = await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
             await tool.ProbeAsync("http://10.0.0.1/api", options);
-        }).Result;
+        });
 
         Assert.Contains("shell metacharacters", ex.Message, StringComparison.OrdinalIgnoreCase);
     }

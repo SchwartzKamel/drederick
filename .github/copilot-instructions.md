@@ -346,3 +346,28 @@ service banner mentions GraphQL) `graphql-fuzz` against discovered
 HTTP services.
 
 Reference: [`docs/FUZZING.md`](../docs/FUZZING.md).
+
+## Empire C2 Integration
+
+Drederick integrates with [BC-SECURITY/Empire](https://github.com/BC-SECURITY/Empire/)
+for post-exploitation agent delivery and multi-module orchestration. The subsystem
+consists of:
+
+- **`EmpireAgentStager`** (`src/Drederick/Exploit/Empire/`): Platform-aware payload
+  generation (PowerShell, Python, Bash). Implements `IPayloadTool`.
+- **`EmpireModuleExecutor`**: Privilege escalation + lateral movement module dispatch.
+  Implements `IExploitTool`.
+- **`EmpireModuleLibrary`**: Module fingerprint matcher (SeImpersonate → Potato, UAC
+  bypass, sudo privesc, etc.).
+- **`SessionAgentMapper`**: Thread-safe registry mapping agent_id → (target, platform,
+  opened_at). Uses `ReaderWriterLockSlim` for concurrent enumeration.
+- **`EmpireApiClient`**: HTTP client wrapper for Empire v3 API endpoints.
+
+Every public method validates targets via `_scope.Require(target)` as its first
+statement. Lateral movement re-checks scope on pivot targets.
+
+Audit trail records every stager generation and module execution (success/error,
+duration_ms, output_digest). No plaintext secrets are logged; SHA-256 digests only.
+
+Reference: [`docs/EMPIRE.md`](../docs/EMPIRE.md) (operational guide),
+[`docs/C2_INTEGRATION.md`](../docs/C2_INTEGRATION.md) (architecture/extension).

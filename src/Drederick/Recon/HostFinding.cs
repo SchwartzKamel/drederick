@@ -21,6 +21,7 @@ public sealed class HostFinding
     [JsonPropertyName("dns_zone_transfer")] public List<DnsZoneTransferResult> DnsZoneTransfer { get; set; } = new();
     [JsonPropertyName("http_content_discovery")] public List<HttpContentDiscoveryResult> HttpContentDiscovery { get; set; } = new();
     [JsonPropertyName("tls_cipher_enum")] public List<TlsCipherEnumResult> TlsCipherEnum { get; set; } = new();
+    [JsonPropertyName("empire_module_results")] public List<EmpireModuleResultRecord>? EmpireModuleResults { get; set; }
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
 }
 
@@ -191,4 +192,12 @@ public sealed class TlsCipherVersion
 {
     [JsonPropertyName("ciphers")] public List<string> Ciphers { get; set; } = new();
     [JsonPropertyName("grade")] public string? Grade { get; set; }
+}
+
+public sealed class EmpireModuleResultRecord
+{
+    [JsonPropertyName("module_name")] public string ModuleName { get; set; } = "";
+    [JsonPropertyName("output")] public string? Output { get; set; }
+    [JsonPropertyName("executed_at")] public string? ExecutedAt { get; set; }
+    [JsonPropertyName("success")] public bool Success { get; set; }
 }

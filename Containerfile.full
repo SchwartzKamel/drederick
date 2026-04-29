@@ -59,7 +59,12 @@ RUN pipx install impacket && \
     pipx install arjun && \
     pipx install boofuzz && \
     pipx install graphql-cop && \
-    (pipx install jwt_tool || pipx install git+https://github.com/ticarpi/jwt_tool)
+    (pipx install jwt_tool || pipx install git+https://github.com/ticarpi/jwt_tool) && \
+    # Empire C2 framework — install from source with deps
+    git clone https://github.com/BC-SECURITY/Empire.git /opt/empire && \
+    cd /opt/empire && \
+    pip install -q paramiko pycryptodome requests && \
+    chmod +x empire/server/server.py
 
 # ============================================================
 # Stage 3b: Rust tools (x8 — HTTP parameter fuzzer)
@@ -157,6 +162,7 @@ COPY --from=go-builder /go/bin/kerbrute /usr/local/bin/kerbrute
 COPY --from=go-builder /go/bin/kr /usr/local/bin/kr
 COPY --from=rust-builder /usr/local/cargo/bin/x8 /usr/local/bin/x8
 COPY --from=pipx-builder /root/.local /root/.local
+COPY --from=pipx-builder /opt/empire /opt/empire
 COPY --from=ruby-builder /var/lib/gems /var/lib/gems
 COPY --from=ruby-builder /usr/local/bin/evil-winrm /usr/local/bin/evil-winrm
 COPY --from=source-builder /opt/exploitdb /opt/exploitdb

@@ -197,7 +197,12 @@ public class PipelineSmokeTests : IDisposable
             //    fixture, so the stub HTTP fetcher is never called.
             var cacheDir = Path.Combine(_workDir, "nvd-cache");
             Directory.CreateDirectory(cacheDir);
-            File.Copy(FindFixturePath("nvd-mini.json.gz"), Path.Combine(cacheDir, "nvdcve-2.0-2011.json.gz"));
+            var nvdFile = Path.Combine(cacheDir, "nvdcve-2.0-2011.json.gz");
+            File.Copy(FindFixturePath("nvd-mini.json.gz"), nvdFile);
+            // File.Copy preserves the source mtime; refresh the cache file's
+            // last-write-time to "now" so NvdCache treats it as fresh and
+            // skips the network refresh path.
+            File.SetLastWriteTimeUtc(nvdFile, DateTime.UtcNow);
             var fetcher = new StubFetcher();
             var nvdCache = new NvdCache(cacheDir: cacheDir, fetcher: fetcher);
             var annotator = new CveAnnotator(nvdCache);

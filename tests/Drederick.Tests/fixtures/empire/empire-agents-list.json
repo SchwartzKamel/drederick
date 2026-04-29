@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "session_id": "ABCD1234",
+      "hostname": "target.local",
+      "username": "CORP\\admin",
+      "os_details": "Windows 10 Enterprise (Build 19045)",
+      "listener": "default",
+      "high_integrity": true,
+      "language": "powershell",
+      "language_version": "5.1",
+      "last_seen": "2026-04-29T19:45:00Z",
+      "archived": false
+    },
+    {
+      "session_id": "EFGH5678",
+      "hostname": "linux.internal",
+      "username": "root",
+      "os_details": "Ubuntu 22.04 LTS",
+      "listener": "default",
+      "high_integrity": true,
+      "language": "python",
+      "language_version": "3.10",
+      "last_seen": "2026-04-29T19:44:30Z",
+      "archived": false
+    }
+  ]
+}

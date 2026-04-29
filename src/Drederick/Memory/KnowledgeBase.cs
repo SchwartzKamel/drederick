@@ -134,4 +134,28 @@ public sealed class KnowledgeBase
         var parts = openPorts.Select(p => $"{p.Port}/{p.Service ?? "?"}");
         return $"prior scan at {f.Finished}: " + string.Join(", ", parts);
     }
+
+    /// <summary>Record the successful execution of an Empire module on a target.</summary>
+    public void RecordEmpireModuleSuccess(string host, string moduleName, string output)
+    {
+        lock (_gate)
+        {
+            if (!Hosts.TryGetValue(host, out var finding))
+            {
+                finding = new HostFinding { Target = host };
+                Hosts[host] = finding;
+            }
+
+            if (finding.EmpireModuleResults == null)
+                finding.EmpireModuleResults = new();
+
+            finding.EmpireModuleResults.Add(new()
+            {
+                ModuleName = moduleName,
+                Output = output,
+                ExecutedAt = DateTimeOffset.UtcNow.ToString("o"),
+                Success = true
+            });
+        }
+    }
 }

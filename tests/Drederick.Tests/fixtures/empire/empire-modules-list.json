@@ -1,0 +1,64 @@
+{
+  "modules": [
+    {
+      "name": "privesc/windows/potato",
+      "description": "Potato privilege escalation (SeImpersonate)",
+      "author": "Stephen Breen",
+      "comments": ["Works on Windows Server 2016+ with SeImpersonate"],
+      "language": "powershell",
+      "needs_admin": false,
+      "opsec_safe": true,
+      "options": {},
+      "background": true,
+      "output_ext": "txt"
+    },
+    {
+      "name": "privesc/windows/uac_bypass",
+      "description": "UAC bypass via token duplication",
+      "author": "Empire Team",
+      "comments": ["Bypasses UAC by creating elevated process"],
+      "language": "powershell",
+      "needs_admin": false,
+      "opsec_safe": false,
+      "options": {},
+      "background": true,
+      "output_ext": "txt"
+    },
+    {
+      "name": "privesc/linux/sudo_nopasswd",
+      "description": "Sudo NOPASSWD exploitation",
+      "author": "Empire Team",
+      "comments": ["Executes commands via unprotected sudo"],
+      "language": "python",
+      "needs_admin": false,
+      "opsec_safe": true,
+      "options": {},
+      "background": false,
+      "output_ext": "txt"
+    },
+    {
+      "name": "lateral/windows/psexec",
+      "description": "PsExec lateral movement via SMB",
+      "author": "Empire Team",
+      "comments": ["Uses credentials for lateral movement"],
+      "language": "powershell",
+      "needs_admin": true,
+      "opsec_safe": false,
+      "options": {},
+      "background": false,
+      "output_ext": "txt"
+    },
+    {
+      "name": "lateral/linux/sshpass",
+      "description": "SSH password spray via sshpass",
+      "author": "Empire Team",
+      "comments": ["Horizontal movement over SSH"],
+      "language": "python",
+      "needs_admin": false,
+      "opsec_safe": false,
+      "options": {},
+      "background": false,
+      "output_ext": "txt"
+    }
+  ]
+}

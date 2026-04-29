@@ -6,6 +6,7 @@ using Drederick.Cli;
 using Drederick.Doctor;
 using Drederick.Enrichment;
 using Drederick.Exploit;
+using Drederick.Exploit.Empire;
 using Drederick.Memory;
 using Drederick.Ops;
 using Drederick.Recon;
@@ -521,6 +522,12 @@ var toolbox = new ReconToolbox(
     audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);
 
+// --- empire c2 ---
+// Empire C2 integration for post-exploitation orchestration.
+var sessionAgentMapper = new SessionAgentMapper();
+var empireModuleLibrary = new EmpireModuleLibrary(audit);
+// --- end empire c2 ---
+
 // --- exploit tools ---
 // Offensive weapons are registered here. Every tool re-checks scope AND the
 // per-run opt-in category on its own entry point — the toolbox is a registry,
@@ -530,8 +537,13 @@ var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
 var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
 var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);
 var spray = new PasswordSprayTool(scope, audit, permissions, exploitRunner);
+
+// Empire tools
+var empireStager = new EmpireAgentStager(scope, audit);
+var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary);
+
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray },
+    new IExploitTool[] { nuclei, msf, spray, empireExecutor },
     audit);
 audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
 {

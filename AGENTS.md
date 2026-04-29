@@ -114,6 +114,10 @@ surgical edits, identify the owning concept first.
 | `src/Drederick/Recon/HostFinding.cs` | Typed recon result shapes. | recon-results |
 | `src/Drederick/Exploit/` | `IExploitTool` / `ExploitRunner` / `MsfDriver` / `CredRunner` / `PayloadStager` + `ExploitToolbox`. | exploit-tools |
 | `src/Drederick/Exploit/ExploitResult.cs` | Typed exploit / cred / payload / session result shapes. | exploit-results |
+| `src/Drederick/Exploit/Empire/` | Empire C2 integration: `EmpireApiClient`, `EmpireAgentStager`, `EmpireModuleExecutor`, `EmpireModuleLibrary`, `SessionAgentMapper`. | empire-c2 |
+| `src/Drederick/Exploit/IPayloadTool.cs` | Interface abstraction for payload generation tools (stagers, reverse shells, agents). | exploit-tools |
+| `docs/EMPIRE.md` | Empire C2 operational guide: agent types, deployment, modules, troubleshooting. | empire-c2 |
+| `docs/C2_INTEGRATION.md` | Architecture, thread-safety, audit invariants, and extension points for C2 frameworks. | empire-c2 |
 | `src/Drederick/Agent/AdaptiveRunner.cs` | Deterministic rule-based planner (recon + exploit). | orchestration |
 | `src/Drederick/Agent/MicrosoftAgentRunner.cs` | LLM-driven planner (Microsoft Agent Framework). | orchestration-llm |
 | `src/Drederick/Agent/HostWorkerPool.cs` | Bounded `Channel<ScanJob>` pool. | concurrency |
@@ -326,7 +330,8 @@ each other's zones. Current canonical zones:
 | `release-pipeline`  | `.github/workflows/release.yml` |
 | `docs-audit-index`  | `docs/README.md`, `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `docs/COMPARISON.md` |
 | `recon-*`           | `src/Drederick/Recon/**` |
-| `exploit-*`         | `src/Drederick/Exploit/**` |
+| `exploit-*`         | `src/Drederick/Exploit/**` (except empire-c2 subdirectory) |
+| `empire-c2`         | `src/Drederick/Exploit/Empire/**`, `docs/EMPIRE.md`, `docs/C2_INTEGRATION.md` |
 | `enrichment-*`      | `src/Drederick/Enrichment/**` |
 | `scope-policy`      | `src/Drederick/Scope/**` |
 | `ui-shell`          | `src/Drederick.UI/**`, `tests/Drederick.UI.Tests/**`, `src/Drederick/Host/**` |
@@ -334,8 +339,6 @@ each other's zones. Current canonical zones:
 | `ops`               | `src/Drederick/Ops/**` |
 | `bundling`          | `src/Drederick/Bundling/**` |
 | `jeopardy-*`        | `src/Drederick/Jeopardy/**` (sub-zones per subdirectory: `jeopardy-ctfd`, `jeopardy-llm`, `jeopardy-sandbox`, `jeopardy-solver`, `jeopardy-swarm`, `jeopardy-coordinator`, `jeopardy-bus`, `jeopardy-budget`, `jeopardy-detection`, `jeopardy-prompts`, `jeopardy-cli`, `jeopardy-submit`, `jeopardy-ops`) |
-| `docs-audit-index`    | (see above — narrowed zone) |
-
 | `docs-audit-reference`| `docs/SCOPE_AND_LEGAL.md`, `docs/DEVELOPING.md`, `docs/MODULES.md`, `docs/DB_SCHEMA.md`, `docs/ARCHITECTURE.md` |
 | `docs-audit-*`        | per-doc zones under `docs/**` (one owner per file during concurrent audits) |
 
