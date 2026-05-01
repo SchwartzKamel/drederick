@@ -106,15 +106,68 @@
 
 ---
 
+## High Gaps (continued)
+
+### GAP-010: LLM Hybrid Runner Silent Fallback
+- **Exposed by:** jobtwo-2026-05-01
+- **Severity:** high
+- **Impact:** `--agent=hybrid --llm-provider copilot` had zero visible effect on exploit planning — autopilot still only generated password sprays
+- **Status:** open
+- **Description:** The hybrid runner is supposed to try the LLM first and fall back to deterministic on operational failure. On JobTwo, it either silently fell back without logging, or the LLM runner never engaged. No audit trail shows LLM prompts/responses. The result was identical to a pure deterministic run: 39 password sprays, 0 exploit actions.
+- **Suggested fix:** Add observable logging when the LLM runner engages/falls back. Record LLM prompts and responses in audit.jsonl. If the LLM runner is silently failing (no API key, auth error), surface this prominently in the report.
+- **Resolution:**
+
+---
+
+## Medium Gaps (continued)
+
+### GAP-011: SMTP User and Config Enumeration
+- **Exposed by:** jobtwo-2026-05-01
+- **Severity:** medium
+- **Impact:** hMailServer on port 25 was fingerprinted but never probed for users, relay, or config disclosure
+- **Status:** open
+- **Description:** SMTP services should be probed with VRFY/EXPN/RCPT TO for user enumeration. hMailServer specifically stores config files with encrypted credentials — the scanner should attempt to discover config file paths and read accessible configs.
+- **Suggested fix:** Add an SMTP enumeration scanner: VRFY/EXPN user enumeration, relay testing, banner analysis. For known SMTP products (hMailServer, Postfix, etc.), check for config file disclosure paths.
+- **Resolution:**
+
+### GAP-012: NFS Share Enumeration
+- **Exposed by:** jobtwo-2026-05-01
+- **Severity:** medium
+- **Impact:** Port 2049 (NFS/rpcbind) was open but never enumerated for mountable shares
+- **Status:** open
+- **Description:** NFS shares can expose sensitive files (home directories, config files, credentials). drederick detected rpcbind but didn't run showmount or attempt NFS share enumeration.
+- **Suggested fix:** Add NFS enumeration: `showmount -e`, attempt mount of world-readable shares, list contents, flag credentials/keys/configs.
+- **Resolution:**
+
+### GAP-013: Web Content Discovery
+- **Exposed by:** jobtwo-2026-05-01
+- **Severity:** medium
+- **Impact:** Ports 80/443 returned 404 default pages but no directory brute-force was attempted
+- **Status:** open
+- **Description:** The `--content-discovery` flag exists but is off by default. Even when HTTP services return 404 on root, directory brute-forcing may reveal hidden paths (admin panels, API endpoints, backup files).
+- **Suggested fix:** Consider auto-enabling content discovery when HTTP services return 404/403 on root — this often indicates hidden paths. Use a small focused wordlist for speed.
+- **Resolution:**
+
+### GAP-014: SSL Cert Hostname Auto-Addition
+- **Exposed by:** jobtwo-2026-05-01
+- **Severity:** low
+- **Impact:** SSL cert CN=www.job2.vl and SAN=job2.vl were discovered but not added to /etc/hosts for vhost-based recon
+- **Status:** open
+- **Description:** When TLS certificates reveal hostnames, those hostnames should be added to /etc/hosts (or DNS resolution) and re-scanned for virtual host content that differs from IP-based access.
+- **Suggested fix:** Auto-extract hostnames from SSL certs and add to /etc/hosts. Re-run HTTP recon against those hostnames. Flag when vhost content differs from IP-based content.
+- **Resolution:**
+
+---
+
 ## Statistics
 
 | Severity | Total | Open | In Progress | Resolved | Workaround |
 |----------|-------|------|-------------|----------|------------|
 | Critical | 3     | 1    | 0           | 0        | 2 workaround |
-| High     | 3     | 3    | 0           | 0        | |
-| Medium   | 2     | 2    | 0           | 0        | |
-| Low      | 1     | 1    | 0           | 0        | |
-| **Total**| **9** | **7**| **0**       | **0**    | **2 workaround** |
+| High     | 4     | 4    | 0           | 0        | |
+| Medium   | 5     | 5    | 0           | 0        | |
+| Low      | 2     | 2    | 0           | 0        | |
+| **Total**| **14**| **12**| **0**      | **0**    | **2 workaround** |
 
 ---
 
@@ -122,3 +175,4 @@
 
 - **2026-04-30:** Initial gaps from HTB Lame engagement (GAP-001 through GAP-009)
 - **2026-04-30:** GAP-001 and GAP-002 → workaround (Copilot fills as human-in-the-loop; lame-2026-04-30-rematch WIN)
+- **2026-05-01:** New gaps from HTB JobTwo engagement (GAP-010 through GAP-014) — hard Windows box exposed enumeration and LLM runner gaps
