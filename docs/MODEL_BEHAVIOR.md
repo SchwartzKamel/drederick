@@ -70,7 +70,7 @@ will be willing or competent on offensive tasks.
 | Surface | Durable behavior |
 | ------- | ---------------- |
 | Core `--agent` providers | Copilot SDK, Azure OpenAI, and legacy OpenAI are the supported provider surface. llama.cpp is not used for core `--agent` because tool/function calling is unreliable for local models. |
-| Copilot SDK model selection | The Copilot SDK runner checks `/models`, audits model decisions, and defaults to `claude-haiku-4.5`. `DREDERICK_MODEL` can request another model, but it must pass availability and tool/function-call compliance. |
+| Copilot SDK model selection | The Copilot SDK runner checks `/models`, audits model decisions, and defaults to `claude-sonnet-4.6`. `DREDERICK_MODEL` can request another model, but it must pass availability and tool/function-call compliance. |
 | `CopilotModelCompliance` | Measures availability, policy metadata, and tool-call support. It does not prove offsec willingness, exploit-planning quality, or price-to-performance. |
 | Non-compliant Copilot model | A Copilot model-compliance refusal propagates. `--agent=hybrid` must not hide it behind deterministic fallback. |
 | Hybrid fallback | Hybrid falls back only on operational/provider failures: missing key, network failure, auth failure, rate limit, or transient SDK/provider errors. `ScopeException`, cancellation, and Copilot model-compliance failures propagate. |
@@ -162,7 +162,7 @@ surfaces and fight history; always re-measure on fresh runs.
 | Scenario | First route | Escalate when | Record |
 | -------- | ----------- | ------------- | ------ |
 | Exact known fingerprint with a stable exploit path | Deterministic mapping plus `ExploitRunner`/`MsfRcRunner`/`NucleiRunner` as applicable. | Tool args are ambiguous, exploit preconditions conflict, or the first run fails for a non-operational reason. | Mapping id, confidence, tool invoked, exit code, session/loot counts. |
-| Low-cost argument synthesis | Copilot default `claude-haiku-4.5` or another cheap tool-compliant model. | The model loops, refuses, misses tools, or cannot rank chains. | Latency, tokens, cost, tool calls, refusal/loop reason. |
+| Low-cost argument synthesis | Copilot default `claude-sonnet-4.6` or another cheap tool-compliant model. | The model loops, refuses, misses tools, or cannot rank chains. | Latency, tokens, cost, tool calls, refusal/loop reason. |
 | Complex multi-stage chain | Strong reasoning model or operator-managed Azure deployment with tool calling. | Cost exceeds budget or deterministic evidence narrows to a known module. | Chain length, first-session time, valid-action rate, budget consumed. |
 | Parallel fleet or benchmark | Cheap model mix with bounded concurrency; Jeopardy-style race where supported. | A class of targets remains unsolved after deterministic and cheap routes. | Per-model win/loss/refusal, canceled losers, aggregate and per-solver cost. |
 | Offline Jeopardy solving | llama.cpp only when the configured model can solve without tools or declares `SupportsTools=true`. | Tool use is required and `SupportsTools=false`. | Model config, stripped-tool status, success/failure. |
@@ -210,7 +210,7 @@ descriptions, hybrid fallback, Jeopardy swarm behavior, or cost reports:
 | ----- | ----------- |
 | Read the tape | Read this guide, `LLM_SETUP.md`, `../.github/fight-history/INDEX.md`, and the latest model benchmark before editing. |
 | Preserve provider facts | Core `--agent` is Copilot SDK / Azure / OpenAI. llama.cpp remains Jeopardy-only unless reliable tool calling is implemented and tested. |
-| Preserve Copilot compliance | Keep `/models` checks, the `claude-haiku-4.5` default, compliance audit records, and hard propagation of non-compliant Copilot model refusals. |
+| Preserve Copilot compliance | Keep `/models` checks, the `claude-sonnet-4.6` default, compliance audit records, and hard propagation of non-compliant Copilot model refusals. |
 | Preserve hybrid semantics | Fallback only for operational/provider failures; propagate scope failures, cancellation, and Copilot model-compliance refusals. |
 | Preserve boundaries | Do not move security trust to model prompts or permission approval. Every tool still owns scope, permissions, argv validation, budgets, and audit. |
 | Fix prompt drift | Do not frame the agent as only producing a remediation-focused summary. It may summarize, but the authorized mission includes exploit planning, sessions, loot accounting, and post-ex actions inside scope. |

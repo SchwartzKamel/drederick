@@ -15,7 +15,7 @@ namespace Drederick.Agent;
 /// </summary>
 public sealed class CopilotSdkAgentRunner : IReconAgentRunner
 {
-    internal const string DefaultModelId = "claude-haiku-4.5";
+    internal const string DefaultModelId = "claude-sonnet-4.6";
 
     private readonly AuditLog _audit;
     private readonly string _githubToken;

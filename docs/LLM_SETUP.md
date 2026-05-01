@@ -54,7 +54,7 @@ escape hatch for Jeopardy only; raw OpenAI is deprioritized.
 
 | Rank | Provider | Use case | Auth | Config env | Models | Pros | Cons |
 | ---- | -------- | -------- | ---- | ---------- | ------ | ---- | ---- |
-| 1 | **Copilot SDK / Copilot API** | `--agent` recon through the official `GitHub.Copilot.SDK`; Jeopardy solver swarm through the Copilot chat API. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → authenticated `gh` CLI; `DREDERICK_MODEL` for `--agent` override; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com`, Jeopardy/raw API only) | `--agent` uses Copilot `/models` metadata and only runs available tool/function-call compliant models; preferred default is `claude-haiku-4.5`. Jeopardy can use any Copilot-exposed chat model in `--models`. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
+| 1 | **Copilot SDK / Copilot API** | `--agent` recon through the official `GitHub.Copilot.SDK`; Jeopardy solver swarm through the Copilot chat API. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → authenticated `gh` CLI; `DREDERICK_MODEL` for `--agent` override; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com`, Jeopardy/raw API only) | `--agent` uses Copilot `/models` metadata and only runs available tool/function-call compliant models; preferred default is `claude-sonnet-4.6`. Jeopardy can use any Copilot-exposed chat model in `--models`. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
 | 1 | **Azure OpenAI** | Enterprise-governed deployments; auditable, per-tenant keys; Entra ID flows. | api-key **or** Entra ID bearer | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` **or** `AZURE_OPENAI_BEARER_TOKEN`, `AZURE_OPENAI_API_VERSION` (default `2024-10-21`), `AZURE_OPENAI_DEPLOYMENT_MAP` | Whatever tool-calling deployments you manage in the resource — GPT-4o, GPT-4.1, o-series, etc. | Tenant-scoped, audit-friendly, data-residency controls, integrates with `az login`. | You own the deployments and must pick models that support tool calling. `modelId → deploymentName` mapping has to be correct. |
 | 3 | **llama.cpp** | Offline / airgapped operations; lab hardware with GPUs; "no phone-home" policy. | none or static bearer | `LLAMACPP_URL` (default `http://127.0.0.1:8080`), `LLAMACPP_BEARER_TOKEN` (optional) | Any GGUF you can load. | Local, free, private. Works on the plane. | Tool-calling quality is model-dependent; most local models lack function calling and the client strips tools from those requests. |
 | 4 | OpenAI (raw) | Legacy fallback for `--agent` recon runner. | `OPENAI_API_KEY` | `OPENAI_API_KEY`, `DREDERICK_MODEL` (default `gpt-4o-mini`) | OpenAI models with tool-calling support. | Simple. | Deprioritized — use Copilot or Azure via `--llm-provider`. |
@@ -106,7 +106,7 @@ drederick ctf-solve --ctfd https://ctf.example/ --token $CTF_TOKEN \
   --llm-provider=azure \
   --azure-endpoint=https://foo.openai.azure.com \
   --azure-deployment=gpt-5.4=gpt5-prod \
-  --azure-deployment=claude-haiku-4.5=haiku-prod
+  --azure-deployment=claude-sonnet-4.6=sonnet-prod
 
 # Azure OpenAI (Entra bearer token pre-fetched via az cli)
 export AZURE_OPENAI_BEARER_TOKEN=$(az account get-access-token \
@@ -188,7 +188,7 @@ drederick ctf-solve \
 | `GH_TOKEN` | *(none)* | Second choice — what `gh auth token` emits. |
 | `GITHUB_TOKEN` | *(none)* | Last choice. If it looks like a classic/fine-grained PAT and no Copilot token is present, the client **falls back to the GitHub Models endpoint** (`https://models.inference.ai.azure.com/v1`) instead of Copilot's endpoint. |
 | authenticated `gh` CLI | *(none)* | Used after env vars. Run `gh auth login --web`; Drederick will also launch that flow on demand in an interactive terminal. |
-| `DREDERICK_MODEL` | `claude-haiku-4.5` for `--agent` | Optional Copilot SDK runner override. The selected model must appear in `GET https://api.githubcopilot.com/models` and advertise tool/function-call support. |
+| `DREDERICK_MODEL` | `claude-sonnet-4.6` for `--agent` | Optional Copilot SDK runner override. The selected model must appear in `GET https://api.githubcopilot.com/models` and advertise tool/function-call support. |
 | `COPILOT_INTEGRATION_ID` | `drederick-cli` | Required `Copilot-Integration-Id` header. |
 | `COPILOT_ENDPOINT` | `https://api.githubcopilot.com` | Base URL override for the Jeopardy/raw Copilot API client (rarely needed). |
 
@@ -198,10 +198,10 @@ For `--agent --llm-provider=copilot`, the SDK runner discovers Copilot
 model metadata from `https://api.githubcopilot.com/models` (no `/v1`)
 and only runs a selected model when it is both available to the token
 and compliant with Drederick's tool/function-call loop. The preferred
-default is `claude-haiku-4.5`; override it only when needed:
+default is `claude-sonnet-4.6`; override it only when needed:
 
 ```bash
-export DREDERICK_MODEL=claude-haiku-4.5
+export DREDERICK_MODEL=claude-sonnet-4.6
 ```
 
 If an explicit `DREDERICK_MODEL` is unavailable or non-compliant, both
@@ -380,7 +380,7 @@ with provider-specific `IChatClient` adapters.
 
 Model compliance is load-bearing here: Copilot chooses only
 `/models` entries that are available and tool/function-call compliant
-(preferred default `claude-haiku-4.5`, override with `DREDERICK_MODEL`).
+(preferred default `claude-sonnet-4.6`, override with `DREDERICK_MODEL`).
 Azure/OpenAI deployments are operator-managed and must support tool
 calling.
 

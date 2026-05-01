@@ -398,11 +398,11 @@ then rethrown.
 2. For Copilot model selection, the SDK runner checks
    `https://api.githubcopilot.com/models` (no `/v1`) and only runs models
    that are available to your token and tool/function-call compliant.
-   Preferred default is `claude-haiku-4.5`; override with
+   Preferred default is `claude-sonnet-4.6`; override with
    `DREDERICK_MODEL` only when the replacement is also compliant:
 
     ```bash
-    export DREDERICK_MODEL=claude-haiku-4.5
+    export DREDERICK_MODEL=claude-sonnet-4.6
     ```
 
    If an explicit model is missing or non-compliant, both pure `--agent`
