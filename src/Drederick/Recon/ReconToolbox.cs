@@ -29,6 +29,7 @@ public sealed class ReconToolbox
     private readonly TlsCipherEnumTool? _tlsCipherEnum;
     private readonly NativeScannerTool? _nativeScanner;
     private readonly NativeDnsTool? _nativeDns;
+    private readonly Drederick.Enrichment.FingerprintStack.FingerprintStackTool? _fingerprintStack;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -72,6 +73,7 @@ public sealed class ReconToolbox
         _tlsCipherEnum = materialized.OfType<TlsCipherEnumTool>().SingleOrDefault();
         _nativeScanner = materialized.OfType<NativeScannerTool>().SingleOrDefault();
         _nativeDns = materialized.OfType<NativeDnsTool>().SingleOrDefault();
+        _fingerprintStack = materialized.OfType<Drederick.Enrichment.FingerprintStack.FingerprintStackTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -408,6 +410,25 @@ public sealed class ReconToolbox
         var r = await tool.QueryAsync(target, queryType, ct).ConfigureAwait(false);
         GetOrCreate(target).NativeDns.Add(r);
         return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+
+    [Description("Multi-signal host fingerprinter: combines banner / TLS certificate / HTTP headers / " +
+                 "favicon SHA-256 into ranked (vendor, product, version) candidates with confidence " +
+                 "scores and CPE 2.3 strings. Operates on existing recon signals already collected " +
+                 "for the target; optionally fetches /favicon.ico over a scope-checked HTTP probe. " +
+                 "Returns a JSON list of FingerprintReports (one per port).")]
+    public async Task<string> FingerprintStackAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        CancellationToken ct = default)
+    {
+        var tool = _fingerprintStack
+            ?? throw new InvalidOperationException("FingerprintStackTool is not registered.");
+        Charge(target, "fingerprint-stack");
+        var finding = GetOrCreate(target);
+        var reports = await tool.FingerprintHostAsync(target, finding, ct).ConfigureAwait(false);
+        finding.Fingerprint.AddRange(reports);
+        return System.Text.Json.JsonSerializer.Serialize(reports);
     }
 
 

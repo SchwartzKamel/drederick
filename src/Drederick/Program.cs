@@ -515,6 +515,7 @@ var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
 // --- recon tools ---
 var nativeScanner = new NativeScannerTool(scope, audit);
 var nativeDns = new NativeDnsTool(scope, audit);
+var fingerprintStack = new Drederick.Enrichment.FingerprintStack.FingerprintStackTool(scope, audit);
 var toolbox = new ReconToolbox(
     new IReconTool[]
     {
@@ -522,6 +523,7 @@ var toolbox = new ReconToolbox(
         smb, ftp, ssh, snmp, ldap, rpc, kerberos,
         dnsAxfr, httpContentDiscovery, tlsCipherEnum,
         nativeScanner, nativeDns,
+        fingerprintStack,
     },
     audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);

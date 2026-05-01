@@ -24,6 +24,7 @@ public sealed class HostFinding
     [JsonPropertyName("tls_cipher_enum")] public List<TlsCipherEnumResult> TlsCipherEnum { get; set; } = new();
     [JsonPropertyName("empire_module_results")] public List<EmpireModuleResultRecord>? EmpireModuleResults { get; set; }
     [JsonPropertyName("native_scan")] public NativeScanResult? NativeScan { get; set; }
+    [JsonPropertyName("fingerprint")] public List<Drederick.Enrichment.FingerprintStack.FingerprintReport> Fingerprint { get; set; } = new();
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
 }
 
