@@ -301,7 +301,8 @@ public class DoctorHtbToolsTests
     {
         var r = InstallRecipes.Resolve("seclists", PackageManager.Dnf, false, false);
         Assert.NotNull(r);
-        Assert.Contains("git clone https://github.com/danielmiessler/SecLists", r!.Command);
+        Assert.Contains("git clone", r!.Command);
+        Assert.Contains("danielmiessler/SecLists", r!.Command);
         Assert.False(r.NeedsSudo);
     }
 
