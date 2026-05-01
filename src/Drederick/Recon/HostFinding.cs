@@ -158,6 +158,56 @@ public sealed class KerberosResult
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
 
+/// <summary>
+/// Result of a delegation enumeration sweep against a Domain Controller.
+/// All four AD delegation primitives are surfaced as separate buckets so
+/// downstream planners can pick the right follow-up:
+/// <list type="bullet">
+///   <item>Unconstrained → S4U2Self isn't possible, but a forced auth
+///   (e.g. PetitPotam) of a privileged account against the host yields
+///   a TGT for that account.</item>
+///   <item>Constrained / Constrained-with-protocol-transition → S4U2Self
+///   + S4U2Proxy chain to impersonate any user to the listed services.</item>
+///   <item>RBCD (resource-based constrained delegation) → if we control
+///   any account in <c>msDS-AllowedToActOnBehalfOfOtherIdentity</c>, we
+///   can S4U-impersonate to the resource. Frequently abusable on
+///   computer accounts an attacker just added (e.g. via
+///   ms-DS-MachineAccountQuota).</item>
+/// </list>
+/// </summary>
+public sealed class DelegationEnumResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("realm")] public string? Realm { get; set; }
+    [JsonPropertyName("base_dn")] public string? BaseDn { get; set; }
+    [JsonPropertyName("authenticated")] public bool Authenticated { get; set; }
+    [JsonPropertyName("unconstrained")] public List<DelegationPrincipal> Unconstrained { get; set; } = new();
+    [JsonPropertyName("constrained")] public List<DelegationPrincipal> Constrained { get; set; } = new();
+    [JsonPropertyName("constrained_with_protocol_transition")]
+    public List<DelegationPrincipal> ConstrainedWithProtocolTransition { get; set; } = new();
+    [JsonPropertyName("rbcd")] public List<DelegationPrincipal> Rbcd { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class DelegationPrincipal
+{
+    [JsonPropertyName("sam_account_name")] public string SamAccountName { get; set; } = "";
+    [JsonPropertyName("dn")] public string DistinguishedName { get; set; } = "";
+    [JsonPropertyName("user_account_control")] public int UserAccountControl { get; set; }
+    /// <summary>True when the principal name ends in <c>$</c> — i.e. a
+    /// computer or trust account.</summary>
+    [JsonPropertyName("is_computer")] public bool IsComputer { get; set; }
+    /// <summary>For Constrained / Constrained-with-protocol-transition,
+    /// the value of <c>msDS-AllowedToDelegateTo</c> (list of SPNs).</summary>
+    [JsonPropertyName("allowed_to_delegate_to")] public List<string> AllowedToDelegateTo { get; set; } = new();
+    /// <summary>For RBCD, the principal SIDs parsed out of the
+    /// <c>msDS-AllowedToActOnBehalfOfOtherIdentity</c> security descriptor.</summary>
+    [JsonPropertyName("allowed_to_act_principal_sids")] public List<string> AllowedToActPrincipalSids { get; set; } = new();
+    /// <summary>Human-readable hint linking the primitive to its abuse path.</summary>
+    [JsonPropertyName("hint")] public string Hint { get; set; } = "";
+    [JsonPropertyName("severity")] public string Severity { get; set; } = "yellow";
+}
+
 public sealed class DnsZoneTransferResult
 {
     [JsonPropertyName("domain")] public string Domain { get; set; } = "";
