@@ -98,7 +98,14 @@ public sealed class TenableScClient : ITenableExportBackend
             !string.IsNullOrEmpty(username) ? username! : "");
     }
 
-    /// <summary>API-key auth (preferred for automation).</summary>
+    /// <summary>
+    /// API-key auth (preferred for automation). Defaults to
+    /// <paramref name="insecureTls"/>=<c>true</c> because Tenable.sc on-prem
+    /// almost always ships with a self-signed cert; pass <c>false</c> to
+    /// require a valid certificate chain. <strong>Insecure TLS disables
+    /// certificate validation entirely</strong> — only enable it for
+    /// operator-controlled SC instances on trusted networks.
+    /// </summary>
     public static TenableScClient WithApiKey(
         string baseUrl, string accessKey, string secretKey,
         bool insecureTls = true, HttpClient? httpClient = null)
@@ -108,7 +115,11 @@ public sealed class TenableScClient : ITenableExportBackend
         return new TenableScClient(baseUrl, null, null, accessKey, secretKey, httpClient, insecureTls);
     }
 
-    /// <summary>Username + password auth (logs in lazily, logs out on dispose).</summary>
+    /// <summary>
+    /// Username + password auth (logs in lazily, logs out on dispose). Same
+    /// insecure-TLS default as <see cref="WithApiKey"/> — see that method's
+    /// remarks for the security caveat.
+    /// </summary>
     public static TenableScClient WithUserPass(
         string baseUrl, string username, string password,
         bool insecureTls = true, HttpClient? httpClient = null)
