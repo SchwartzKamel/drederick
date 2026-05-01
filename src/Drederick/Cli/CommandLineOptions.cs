@@ -1038,7 +1038,7 @@ public sealed class CommandLineOptions
           drederick doctor --category=jeopardy
 
           See docs/JEOPARDY.md for the full guide.
-          Env: COPILOT_TOKEN (or GH_TOKEN / GITHUB_TOKEN) for copilot,
+          Env: COPILOT_TOKEN (or GH_TOKEN / GITHUB_TOKEN / gh auth login) for copilot,
                AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY (or
                AZURE_OPENAI_BEARER_TOKEN / AZURE_OPENAI_USE_ENTRA=1) for azure,
                LLAMACPP_URL for llamacpp; CTFD_URL, CTFD_TOKEN for the target.

@@ -53,7 +53,8 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     public static MicrosoftAgentRunner? TryCreateFromProvider(
         LlmProvider provider,
         IReadOnlyDictionary<string, string>? azureDeploymentMap,
-        AuditLog audit)
+        AuditLog audit,
+        bool allowGitHubCliAuth = true)
     {
         var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
 
@@ -61,7 +62,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         {
             case LlmProvider.Copilot:
                 {
-                    var copilot = CopilotChatClient.TryCreateFromEnvironment(audit, model);
+                    var copilot = CopilotChatClient.TryCreateFromEnvironment(audit, model, allowGitHubCliAuth);
                     if (copilot is null) return null;
                     return new MicrosoftAgentRunner(audit, copilot, copilot.ModelId);
                 }

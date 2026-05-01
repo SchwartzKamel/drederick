@@ -610,15 +610,18 @@ per-provider flag reference lives in
 
     ```bash
     # Preferred:
+    gh auth login --web
+    # Or, for automation:
     export COPILOT_TOKEN="ghu_..."
-    # Or:
     export GH_TOKEN="$(gh auth token)"
     # PAT fallback (routes to the GitHub Models endpoint):
     export GITHUB_TOKEN="ghp_..."
     ```
 
-   Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. A `GITHUB_TOKEN`
-   that looks like a PAT causes the client to use
+   Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN > gh auth token`.
+   If no token is available and the terminal is interactive, Drederick starts
+   `gh auth login --web --skip-ssh-key` and retries. A `GITHUB_TOKEN` that
+   looks like a PAT causes the client to use
    `https://models.inference.ai.azure.com/v1` instead of the Copilot
    endpoint — see [LLM_SETUP.md#precedence](LLM_SETUP.md#precedence).
 

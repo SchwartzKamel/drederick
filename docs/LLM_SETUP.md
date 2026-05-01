@@ -54,7 +54,7 @@ escape hatch for Jeopardy only; raw OpenAI is deprioritized.
 
 | Rank | Provider | Use case | Auth | Config env | Models | Pros | Cons |
 | ---- | -------- | -------- | ---- | ---------- | ------ | ---- | ---- |
-| 1 | **Copilot SDK** | Jeopardy solver swarm; multi-model racing on one token. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN`; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com/v1`) | Claude Opus / Sonnet, GPT-5.x, Gemini 3.x, Grok, o3 family — whatever Copilot exposes today. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
+| 1 | **Copilot SDK** | Jeopardy solver swarm; multi-model racing on one token. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → authenticated `gh` CLI; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com/v1`) | Claude Opus / Sonnet, GPT-5.x, Gemini 3.x, Grok, o3 family — whatever Copilot exposes today. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
 | 1 | **Azure OpenAI** | Enterprise-governed deployments; auditable, per-tenant keys; Entra ID flows. | api-key **or** Entra ID bearer | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` **or** `AZURE_OPENAI_BEARER_TOKEN`, `AZURE_OPENAI_API_VERSION` (default `2024-10-21`), `AZURE_OPENAI_DEPLOYMENT_MAP` | Whatever you deployed in the resource — GPT-4o, GPT-4.1, o-series, etc. | Tenant-scoped, audit-friendly, data-residency controls, integrates with `az login`. | You own the deployments. `modelId → deploymentName` mapping has to be correct. |
 | 3 | **llama.cpp** | Offline / airgapped operations; lab hardware with GPUs; "no phone-home" policy. | none or static bearer | `LLAMACPP_URL` (default `http://127.0.0.1:8080`), `LLAMACPP_BEARER_TOKEN` (optional) | Any GGUF you can load. | Local, free, private. Works on the plane. | Tool-calling quality is model-dependent; most local models lack function calling and the client strips tools from those requests. |
 | 4 | OpenAI (raw) | Legacy fallback for `--agent` recon runner. | `OPENAI_API_KEY` | `OPENAI_API_KEY`, `DREDERICK_MODEL` (default `gpt-4o-mini`) | OpenAI models. | Simple. | Deprioritized — use Copilot or Azure via `--llm-provider`. |
@@ -130,8 +130,8 @@ The `--agent` recon runner now uses the same `--llm-provider` flag.
 Default is Copilot — omit `--llm-provider` to use it.
 
 ```bash
-# Copilot (default) — needs GH_TOKEN, COPILOT_TOKEN, or GITHUB_TOKEN
-export GH_TOKEN="$(gh auth token)"
+# Copilot (default) — reuses `gh auth login`; if not logged in,
+# Drederick starts `gh auth login --web --skip-ssh-key` for you.
 drederick --scope scope.yaml --target 10.10.10.5 --out out/ --agent
 
 # Azure OpenAI
@@ -148,7 +148,6 @@ drederick --scope scope.yaml --target 10.10.10.5 --out out/ \
   --agent --llm-provider=openai
 
 # Hybrid with Copilot — LLM first, deterministic fallback
-export GH_TOKEN="$(gh auth token)"
 drederick --scope scope.yaml --target 10.10.10.5 --out out/ --agent=hybrid
 ```
 
@@ -165,10 +164,10 @@ One token, five model families. This is the default for
 ### Quickstart
 
 ```bash
-export COPILOT_TOKEN="ghu_..."            # preferred
-# or:
-export GH_TOKEN="$(gh auth token)"        # gh CLI
-# or:
+gh auth login --web                       # preferred local setup
+# or, for automation:
+export COPILOT_TOKEN="ghu_..."
+export GH_TOKEN="$(gh auth token)"
 export GITHUB_TOKEN="ghp_..."             # PAT fallback (uses GitHub Models endpoint)
 
 drederick ctf-solve \
@@ -186,6 +185,7 @@ drederick ctf-solve \
 | `COPILOT_TOKEN` | *(none)* | Highest-precedence Copilot OAuth token. |
 | `GH_TOKEN` | *(none)* | Second choice — what `gh auth token` emits. |
 | `GITHUB_TOKEN` | *(none)* | Last choice. If it looks like a classic/fine-grained PAT and no Copilot token is present, the client **falls back to the GitHub Models endpoint** (`https://models.inference.ai.azure.com/v1`) instead of Copilot's endpoint. |
+| authenticated `gh` CLI | *(none)* | Used after env vars. Run `gh auth login --web`; Drederick will also launch that flow on demand in an interactive terminal. |
 | `COPILOT_INTEGRATION_ID` | `drederick-cli` | Required `Copilot-Integration-Id` header. |
 | `COPILOT_ENDPOINT` | `https://api.githubcopilot.com/v1` | Base URL override (rarely needed). |
 
@@ -338,7 +338,7 @@ providers.
 
 ```bash
 # Copilot (default — no --llm-provider needed)
-export GH_TOKEN="$(gh auth token)"
+gh auth login --web
 drederick --scope scope.yaml --target 10.10.10.5 --agent --out out/
 
 # Azure OpenAI
@@ -406,7 +406,7 @@ binary. Export the matching set **before** starting the server:
 
 ```bash
 # Copilot — default choice
-export COPILOT_TOKEN="$(gh auth token)"
+gh auth login --web
 
 # Azure OpenAI
 export AZURE_OPENAI_ENDPOINT="https://my-resource.openai.azure.com"
@@ -426,7 +426,7 @@ the chosen provider's `TryCreateFromEnvironment` is called at session
 start. If it returns `null`, the session fails with:
 
 ```
-no LLM client could be created from environment (set COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN
+no LLM client could be created from environment (run `gh auth login --web` or set COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN
 for copilot, or the provider-specific env vars for azure / llamacpp).
 ```
 
@@ -455,8 +455,12 @@ Inside `CopilotLlmClient.TryCreateFromEnvironment`:
    (`https://models.inference.ai.azure.com/v1`) instead of the Copilot
    endpoint. This lets a developer with only a PAT still reach the
    model catalog.
-4. none → return `null`, preflight fails with a clear "no Copilot token
-   found" message.
+4. else `gh auth token` → reuse the locally authenticated GitHub CLI
+   session; no shell export required.
+5. none + interactive terminal → start `gh auth login --web --skip-ssh-key`
+   and then retry `gh auth token`.
+6. none + non-interactive terminal → return `null`, preflight fails with a
+   clear "no Copilot token found" message.
 
 Tokens are **never logged in plaintext**. The audit log records a
 `SHA-256` digest (see [`TokenRedactor.cs`](../src/Drederick/Jeopardy/Llm/TokenRedactor.cs)).
@@ -469,7 +473,7 @@ runs two checks under the `jeopardy` category:
 
 | Check id | What it verifies |
 | -------- | ---------------- |
-| `jeopardy.llm.token` | Provider-aware: Copilot looks for `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`; Azure verifies endpoint + one of api-key / bearer / Entra + a deployment; llama.cpp verifies the base URL parses. |
+| `jeopardy.llm.token` | Provider-aware: Copilot looks for `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` / authenticated `gh` CLI; Azure verifies endpoint + one of api-key / bearer / Entra + a deployment; llama.cpp verifies the base URL parses. |
 | `jeopardy.llm.reachable` | Copilot: `GET https://api.githubcopilot.com/v1/models` (gated by scope unless `--allow-copilot-host`). Azure: `GET $endpoint/openai/models?api-version=…`. llama.cpp: `GET $url/v1/models` with a 2 s timeout (loopback allowed without scope). |
 
 Sample output when Copilot is wired correctly:
@@ -484,8 +488,8 @@ $ drederick doctor
 And when it's not:
 
 ```text
-[jeopardy.llm.token]     FAIL  no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment
-                               fix: export COPILOT_TOKEN=<token>   # or GH_TOKEN / GITHUB_TOKEN
+[jeopardy.llm.token]     FAIL  no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment and no authenticated gh CLI session
+                               fix: gh auth login --web   # or export COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN
 [jeopardy.llm.reachable] WARN  skipped — no LLM token set (see jeopardy.llm.token)
 ```
 
@@ -561,7 +565,7 @@ authorization", the tool call still fails. That's the design.
 
 | Symptom | Likely cause | Fix |
 | ------- | ------------ | --- |
-| `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)` | None of the three vars exported in the shell running `drederick`. | Export one; `COPILOT_TOKEN` wins precedence. |
+| `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)` | No env token and no authenticated `gh` CLI session. | Run `gh auth login --web` or export one; `COPILOT_TOKEN` wins precedence. |
 | `no LLM client could be created from environment …` from the Web UI | Selected `azure` or `llamacpp` in the session form but the matching env vars aren't set in the web-host process. | Stop `Drederick.Web`, export the provider's env vars ([Web UI section](#web-ui-provider)), relaunch. Env vars are read at session start, not at request time. |
 | `401` from Copilot | Token expired / revoked / wrong scope. | `gh auth refresh` or regenerate; re-export. |
 | `Azure OpenAI auth failed (401)` | `AZURE_OPENAI_API_KEY` wrong, or Entra bearer expired, or endpoint tenant mismatch. | Re-fetch the token (`az account get-access-token …`) or rotate the api-key; confirm the endpoint matches the subscription. |

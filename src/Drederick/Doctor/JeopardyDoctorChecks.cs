@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Drederick.Audit;
+using Drederick.Jeopardy.Llm;
 using Drederick.Scope;
 
 namespace Drederick.Doctor;
@@ -525,7 +526,7 @@ internal sealed class LlmTokenCheck : IDoctorCheck
     public string Id => "jeopardy.llm.token";
     public string Category => JeopardyDoctorChecks.CategoryName;
 
-    // Preference order is load-bearing: COPILOT_TOKEN beats GH_TOKEN beats GITHUB_TOKEN.
+    // Preference order is load-bearing: COPILOT_TOKEN beats GH_TOKEN beats GITHUB_TOKEN beats gh auth.
     internal static readonly string[] TokenVarsInPreferenceOrder =
         { "COPILOT_TOKEN", "GH_TOKEN", "GITHUB_TOKEN" };
 
@@ -604,10 +605,17 @@ internal sealed class LlmTokenCheck : IDoctorCheck
                             DoctorCheckStatus.Pass,
                             $"LLM token present via ${picked}"));
                     }
+                    var ghToken = CopilotAuthTokenResolver.TryReadGitHubCliToken();
+                    if (!string.IsNullOrWhiteSpace(ghToken))
+                    {
+                        return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                            DoctorCheckStatus.Pass,
+                            "LLM token present via authenticated GitHub CLI (`gh auth token`)"));
+                    }
                     return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
                         DoctorCheckStatus.Fail,
-                        "no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment",
-                        fixCommand: "export COPILOT_TOKEN=<token>   # or GH_TOKEN / GITHUB_TOKEN",
+                        "no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment and no authenticated gh CLI session",
+                        fixCommand: "gh auth login --web   # or export COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN",
                         fixRationale: "See docs/LLM_SETUP.md and docs/JEOPARDY.md for provisioning steps."));
                 }
         }

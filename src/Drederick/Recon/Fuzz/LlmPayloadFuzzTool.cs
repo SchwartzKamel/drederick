@@ -33,9 +33,10 @@ public interface ILlmMutator
 /// <summary>
 /// Default LLM mutator that delegates to the existing
 /// <see cref="ICopilotLlmClient"/> infrastructure (Copilot SDK, Azure OpenAI,
-/// llama.cpp). Requires <c>OPENAI_API_KEY</c> / <c>COPILOT_TOKEN</c> /
-/// <c>GH_TOKEN</c> / <c>GITHUB_TOKEN</c> / Azure env config / llama.cpp
-/// endpoint. If none available, <see cref="IsAvailable"/> is <c>false</c>.
+/// llama.cpp). Uses <c>COPILOT_TOKEN</c> / <c>GH_TOKEN</c> /
+/// <c>GITHUB_TOKEN</c> / authenticated <c>gh</c> CLI / Azure env config /
+/// llama.cpp endpoint. If none available, <see cref="IsAvailable"/> is
+/// <c>false</c>.
 /// </summary>
 public sealed class DefaultLlmMutator : ILlmMutator
 {
@@ -83,8 +84,8 @@ public sealed class DefaultLlmMutator : ILlmMutator
         if (_client is null || string.IsNullOrWhiteSpace(_modelId))
         {
             throw new InvalidOperationException(
-                "DefaultLlmMutator: no LLM client available. Set OPENAI_API_KEY, COPILOT_TOKEN, "
-                + "GH_TOKEN, GITHUB_TOKEN, or Azure/llama.cpp env vars.");
+                "DefaultLlmMutator: no LLM client available. Run `gh auth login --web`, set "
+                + "COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN, or configure Azure/llama.cpp env vars.");
         }
 
         var systemPrompt =

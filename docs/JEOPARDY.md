@@ -63,7 +63,7 @@ as.
 Minimum viable command:
 
 ```bash
-export COPILOT_TOKEN=<your GitHub Copilot token>
+gh auth login --web
 
 drederick ctf-solve \
   --scope scope.yaml \
@@ -111,7 +111,7 @@ Exit codes:
 | Requirement | How to satisfy it |
 | ----------- | ----------------- |
 | **Docker** (sandbox runtime) | Install via your package manager, then `docker info` should succeed. Run `drederick doctor --category=jeopardy` to verify (`DockerInstalledCheck`, `DockerDaemonCheck` in [`JeopardyDoctorChecks.cs`](../src/Drederick/Doctor/JeopardyDoctorChecks.cs)). |
-| **GitHub Copilot token** (first-class) | Set `COPILOT_TOKEN` (preferred), `GH_TOKEN`, or `GITHUB_TOKEN`. Resolution precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. Full recipe — plus Azure OpenAI and llama.cpp as alternate backends — in [`LLM_SETUP.md`](LLM_SETUP.md). |
+| **GitHub Copilot token** (first-class) | Run `gh auth login --web` (preferred local setup), or set `COPILOT_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. Resolution precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN > gh auth token`. Full recipe — plus Azure OpenAI and llama.cpp as alternate backends — in [`LLM_SETUP.md`](LLM_SETUP.md). |
 | **CTFd API token** | In the CTFd UI: click your profile → **Settings** → **Access Tokens** → generate one. Keep it in `$CTFD_TOKEN` or pass `--ctfd-token`; the token is never logged — only its SHA-256 lands in `audit.jsonl`. |
 | **Sandbox image** | Build it once per host: `docker build -t drederick/jeopardy-sandbox -f sandbox/Dockerfile.jeopardy-sandbox sandbox/`. The image is `ubuntu:24.04` with the full CTF toolchain preinstalled (see [`sandbox/jeopardy-tools.txt`](../sandbox/jeopardy-tools.txt)). |
 | **Scope file** | At minimum, the CTFd host. Ideally every challenge infra host as well. |
@@ -363,7 +363,7 @@ PoC triage workflow.
 | `Docker is required to run the Jeopardy sandbox` | Install Docker via your package manager; `drederick doctor --category=jeopardy` walks you through the detection. The doctor will **not** auto-install Docker (too much blast radius) — pick the recipe for your distro. |
 | `Docker daemon not reachable` | Start the daemon (`systemctl start docker`) and add your user to the `docker` group; re-login; rerun the doctor. |
 | `401` / `403` from CTFd | Re-mint the CTFd API token (Settings → Access Tokens). Confirm the token belongs to a registered, rules-accepted account. |
-| `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)` | Export one of those env vars. Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. See [`LLM_SETUP.md`](LLM_SETUP.md). |
+| `no Copilot token found (set COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN)` | Run `gh auth login --web` or export one of those env vars. Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN > gh auth token`. See [`LLM_SETUP.md`](LLM_SETUP.md). |
 | `CTFd host '…' is not in scope` | Add the CTFd host to `scope.yaml` and retry. The CLI surface-checks IP-literal hosts; hostnames are resolved and scope-checked at the client boundary. |
 | Solver stuck repeating the same tool call | `LoopDetector` terminates it and moves on. If it's still spinning, inject a `--kind hint` via `ctf-msg` or `--kind skip` the challenge. |
 | Budget exhausted mid-run | `CostTracker` halts new work; in-flight solvers finish their current step and exit. Rerun with a higher `--run-budget-usd` or tighter `--category-filter`. |

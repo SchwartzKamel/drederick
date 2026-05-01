@@ -73,16 +73,22 @@ public sealed class CopilotChatClient : IChatClient
     }
 
     /// <summary>
-    /// Construct from environment variables. Returns <c>null</c> if no usable
-    /// token is found. Token precedence: <c>COPILOT_TOKEN</c> &gt;
-    /// <c>GH_TOKEN</c> &gt; <c>GITHUB_TOKEN</c>.
+    /// Construct from environment variables or the authenticated GitHub CLI
+    /// session. Returns <c>null</c> if no usable token is found. Token
+    /// precedence: <c>COPILOT_TOKEN</c> &gt; <c>GH_TOKEN</c> &gt;
+    /// <c>GITHUB_TOKEN</c> &gt; <c>gh auth token</c>. If no <c>gh</c> session is
+    /// present and an interactive terminal is available, starts
+    /// <c>gh auth login --web --skip-ssh-key</c>.
     ///
     /// <para>If <paramref name="modelId"/> is null, auto-selects the first
     /// tool-capable model from the endpoint's <c>/v1/models</c> listing.</para>
     /// </summary>
-    public static CopilotChatClient? TryCreateFromEnvironment(AuditLog audit, string? modelId = null)
+    public static CopilotChatClient? TryCreateFromEnvironment(
+        AuditLog audit,
+        string? modelId = null,
+        bool allowGitHubCliAuth = true)
     {
-        var (token, source) = ResolveToken();
+        var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
         if (string.IsNullOrWhiteSpace(token)) return null;
 
         var integrationId = Environment.GetEnvironmentVariable("COPILOT_INTEGRATION_ID") ?? "drederick-cli";
@@ -93,7 +99,7 @@ public sealed class CopilotChatClient : IChatClient
         {
             endpoint = parsed;
         }
-        else if (source == TokenSource.GithubToken && LooksLikeGithubPat(token!))
+        else if (source == CopilotTokenSource.GithubToken && LooksLikeGithubPat(token!))
         {
             endpoint = DefaultGithubModelsEndpoint;
         }
@@ -481,19 +487,6 @@ public sealed class CopilotChatClient : IChatClient
             req.Headers.Add("Copilot-Integration-Id", _integrationId);
         if (!req.Headers.Contains("Accept"))
             req.Headers.Add("Accept", "application/json");
-    }
-
-    private enum TokenSource { None, CopilotToken, GhToken, GithubToken }
-
-    private static (string? Token, TokenSource Source) ResolveToken()
-    {
-        var c = Environment.GetEnvironmentVariable("COPILOT_TOKEN");
-        if (!string.IsNullOrWhiteSpace(c)) return (c, TokenSource.CopilotToken);
-        var g = Environment.GetEnvironmentVariable("GH_TOKEN");
-        if (!string.IsNullOrWhiteSpace(g)) return (g, TokenSource.GhToken);
-        var h = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-        if (!string.IsNullOrWhiteSpace(h)) return (h, TokenSource.GithubToken);
-        return (null, TokenSource.None);
     }
 
     private static bool LooksLikeGithubPat(string token)

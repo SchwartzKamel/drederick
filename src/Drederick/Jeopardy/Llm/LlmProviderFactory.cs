@@ -92,7 +92,7 @@ public static class LlmProviderFactory
         {
             stderr.WriteLine(
                 "llm-provider=copilot: no OAuth token found. "
-                + "Set one of COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN.");
+                + "Run `gh auth login --web` or set one of COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN.");
         }
         return c;
     }

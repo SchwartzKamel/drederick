@@ -392,7 +392,11 @@ public class ProviderChatClientTests
                 Environment.SetEnvironmentVariable("GITHUB_TOKEN", null);
 
                 var audit = new AuditLog(auditPath);
-                var result = MicrosoftAgentRunner.TryCreateFromProvider(LlmProvider.Copilot, null, audit);
+                var result = MicrosoftAgentRunner.TryCreateFromProvider(
+                    LlmProvider.Copilot,
+                    null,
+                    audit,
+                    allowGitHubCliAuth: false);
                 Assert.Null(result);
             }
             finally
@@ -405,6 +409,48 @@ public class ProviderChatClientTests
         finally
         {
             TryDelete(auditPath);
+        }
+    }
+
+    [Fact]
+    public void TryCreateFromProvider_Copilot_UsesAuthenticatedGitHubCliToken()
+    {
+        var auditPath = NewAuditPath();
+        var ghDir = Path.Combine(Path.GetTempPath(), "drederick-gh-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(ghDir);
+        var gh = Path.Combine(ghDir, OperatingSystem.IsWindows() ? "gh.cmd" : "gh");
+        File.WriteAllText(gh, OperatingSystem.IsWindows()
+            ? "@echo off\r\nif \"%1 %2\"==\"auth token\" (echo gho_from_cli& exit /b 0)\r\nexit /b 1\r\n"
+            : "#!/bin/sh\nif [ \"$1 $2\" = \"auth token\" ]; then printf 'gho_from_cli\\n'; exit 0; fi\nexit 1\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(gh, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var savedCopilot = Environment.GetEnvironmentVariable("COPILOT_TOKEN");
+        var savedGh = Environment.GetEnvironmentVariable("GH_TOKEN");
+        var savedGithub = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        var savedModel = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
+        var savedPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("COPILOT_TOKEN", null);
+            Environment.SetEnvironmentVariable("GH_TOKEN", null);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", null);
+            Environment.SetEnvironmentVariable("DREDERICK_MODEL", "gpt-4o-mini");
+            Environment.SetEnvironmentVariable("PATH", ghDir + Path.PathSeparator + savedPath);
+
+            var audit = new AuditLog(auditPath);
+            var result = MicrosoftAgentRunner.TryCreateFromProvider(LlmProvider.Copilot, null, audit);
+            Assert.NotNull(result);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("COPILOT_TOKEN", savedCopilot);
+            Environment.SetEnvironmentVariable("GH_TOKEN", savedGh);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", savedGithub);
+            Environment.SetEnvironmentVariable("DREDERICK_MODEL", savedModel);
+            Environment.SetEnvironmentVariable("PATH", savedPath);
+            TryDelete(auditPath);
+            try { Directory.Delete(ghDir, recursive: true); } catch { /* ignore */ }
         }
     }
 
