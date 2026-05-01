@@ -42,8 +42,7 @@ public sealed class TlsProbeTool : IReconTool
         {
             using var tcp = new TcpClient();
             await tcp.ConnectAsync(target, port, ct).ConfigureAwait(false);
-            using var ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false,
-                userCertificateValidationCallback: (_, _, _, _) => true);
+            using var ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false);
             await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
             {
                 TargetHost = target,

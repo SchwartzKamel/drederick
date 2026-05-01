@@ -12,6 +12,8 @@
 | [lame-2026-04-30-rematch](lame-2026-04-30-rematch.md) | Lame | 2026-04-30 | Easy | ✅ Win (rematch) | — | — |
 | [lame-model-benchmark](lame-model-benchmark-2026-04-30.md) | Lame | 2026-04-30 | Easy | 🏆 Benchmark (10W/4🚫/2❌) | — | — |
 | [jobtwo-2026-05-01](jobtwo-2026-05-01.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss | GAP-001,002,010,011,012 | ⏳ Pending |
+| [jobtwo-2026-05-01-rematch](jobtwo-2026-05-01-rematch.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss (rematch) | GAP-022,024,025 | ⏳ Pending |
+| [jobtwo-2026-05-01-r4](jobtwo-2026-05-01-r4.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss-by-no-punch (r4) | GAP-026,027,028 | ⏳ Pending |
 
 ---
 

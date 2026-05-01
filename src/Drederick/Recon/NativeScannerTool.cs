@@ -232,8 +232,7 @@ public sealed class NativeScannerTool : IReconTool
 
         try
         {
-            var ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false,
-                (_, _, _, _) => true);
+            var ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false);
             await ssl.AuthenticateAsClientAsync(
                 new SslClientAuthenticationOptions
                 {

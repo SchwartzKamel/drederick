@@ -255,17 +255,38 @@
 - **Status:** open
 - **Resolution plan:** Review system prompt to emphasize exploitation phase. Ensure exploit tools are clearly described and available. Consider adding "exploitation required" directive in lab mode.
 
+### GAP-026: Nmap-vs-Native Port-Truth Divergence
+- **Exposed by:** jobtwo-2026-05-01-R4
+- **Severity:** critical
+- **Impact:** Nmap returned `open_ports=[]` against 10.129.238.35 (Windows host, ~6 min runtime, returncode 0). Native HTTP probes from the same run succeeded against 80, 443, and 5985 (Microsoft-HTTPAPI/2.0 / WinRM). Native TLS probes attempted handshakes on 443/10001/10002. Yet the autopilot planner only consulted `Nmap.OpenPorts` and produced 0 actions. Drederick stood in the ring with the gloves still in the bag.
+- **Status:** ✅ resolved
+- **Resolution:** `ExploitationPlanner.HarvestPortsFromAllSignals` now unifies port-presence evidence from `Nmap.OpenPorts` + `NativeScan.OpenPorts` + every protocol result array (`Http`/`Tls`/`Ssh`/`Smb`/`Ftp`/`Snmp`/`Ldap`/`Rpc`/`Kerberos` and the `*Anon`/`SslCert`/`SshHostkey`/`LdapRootDse`/`HttpTitle`/`HttpHeaders`/`HttpRobots`/`HttpMethods`/`HttpContentDiscovery`/`TlsCipherEnum` siblings). Real `NmapPort` entries always win on collision; URL-only signals synthesize `NmapPort` with an inferred `Service` so PlanForPort routes correctly. Regression test in `ExploitationPlannerTests.Plan_Harvests_Ports_From_Http_When_Nmap_Empty`.
+
+### GAP-027: SslStream Double-Set RemoteCertificateValidationCallback
+- **Exposed by:** jobtwo-2026-05-01-R4
+- **Severity:** high
+- **Impact:** `TlsProbeTool` and `NativeScannerTool` both passed a callback to the `SslStream` ctor AND set `SslClientAuthenticationOptions.RemoteCertificateValidationCallback`. .NET 10 throws `InvalidOperationException: RemoteCertificateValidationCallback option was already set in the SslStream constructor.` All three TLS attempts (443, 10001, 10002) on the JobTwo r4 run errored out — losing TLS-only port-presence evidence.
+- **Status:** ✅ resolved
+- **Resolution:** Drop the ctor callback in both tools; set the callback once via `SslClientAuthenticationOptions` only. `SslCertTool` was already single-source via ctor — left untouched.
+
+### GAP-028: Autopilot Planner Ignored Non-Nmap Port Evidence
+- **Exposed by:** jobtwo-2026-05-01-R4
+- **Severity:** critical
+- **Impact:** `ExploitationPlanner.Plan` short-circuited on `host.Nmap is null` and only iterated `host.Nmap.OpenPorts`. Even with 5 lab-default credentials in the store and a confirmed WinRM 5985 response in the recon findings, the planner emitted `total=0` actions. JobTwo r4 audit shows `autopilot.plan.built total=0` and the bell rang on a 0-punch fight. **Sister gap to GAP-026** — same root cause, different surface.
+- **Status:** ✅ resolved
+- **Resolution:** Same patch as GAP-026 — planner now consumes the unified port set, not just nmap. Regression test added.
+
 ---
 
 ## Statistics
 
 | Severity | Total | Open | In Progress | Resolved | Workaround | Planned |
 |----------|-------|------|-------------|----------|------------|---------|
-| Critical | 7     | 1    | 0           | 3        | 2 workaround | 1     |
-| High     | 8     | 4    | 0           | 3        |            | 1       |
+| Critical | 9     | 1    | 0           | 5        | 2 workaround | 1     |
+| High     | 9     | 4    | 0           | 4        |            | 1       |
 | Medium   | 8     | 5    | 1 blocked   | 1        |            | 1       |
 | Low      | 2     | 2    | 0           | 0        |            | 0       |
-| **Total**| **25**| **12**| **1**      | **7**    | **2 workaround** | **3** |
+| **Total**| **28**| **12**| **1**      | **10**   | **2 workaround** | **3** |
 
 ---
 
@@ -278,3 +299,4 @@
 - **2026-05:** GAP-016 added and resolved — NativeScannerTool, NativeDnsTool, SharpSNMP SnmpTool, native DnsZoneTransferTool, ElfParser/PeParser, NativeHttpSprayTool, PathResolver eliminate 10+ external subprocess dependencies
 - **2026-05-01:** Added GAP-017 (plugin ecosystem hybridization), GAP-018 (Drederick-original signature capabilities), GAP-019 (self-improving feedback loop / training arc) — all planned.
 - **2026-05-01:** GAP-020→024 resolved — multi-choice parsing, SDK bypass, nmap timeout, multi-result serialization. GAP-023 blocked (Claude ordering). GAP-025 added (LLM won't exploit).
+- **2026-05-01:** GAP-026, GAP-027, GAP-028 added and resolved — JobTwo r4 tape revealed nmap-vs-native port-truth divergence, SslStream double-set ctor callback, and autopilot planner ignoring non-nmap port signals. Unified port harvest + single-source TLS callback. The champ studied the tape.
