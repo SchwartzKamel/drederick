@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Drederick.Audit;
+using Drederick.Ops;
 using Drederick.Scope;
 
 namespace Drederick.Recon.Binary;
@@ -37,11 +38,11 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         _scope = scope;
         _audit = audit;
         _magika = magika;
-        _readelfPath = WhichTool("readelf");
-        _nmPath = WhichTool("nm");
-        _objdumpPath = WhichTool("objdump");
-        _stringsPath = WhichTool("strings");
-        _filePath = WhichTool("file");
+        _readelfPath = PathResolver.Which("readelf");
+        _nmPath = PathResolver.Which("nm");
+        _objdumpPath = PathResolver.Which("objdump");
+        _stringsPath = PathResolver.Which("strings");
+        _filePath = PathResolver.Which("file");
     }
 
     public async Task<BinaryAnalysisReport> AnalyzeAsync(string filePath, CancellationToken cancellationToken = default)
@@ -751,36 +752,6 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         await proc.WaitForExitAsync(ct);
 
         return output;
-    }
-
-    /// <summary>
-    /// Attempts to find a tool in PATH.
-    /// </summary>
-    private string? WhichTool(string toolName)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("which")
-            {
-                Arguments = toolName,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            using var proc = Process.Start(psi);
-            if (proc == null)
-                return null;
-
-            var output = proc.StandardOutput.ReadToEnd().Trim();
-            proc.WaitForExit();
-
-            return string.IsNullOrEmpty(output) ? null : output;
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     /// <summary>
