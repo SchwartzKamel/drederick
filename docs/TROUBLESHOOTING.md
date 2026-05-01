@@ -379,26 +379,25 @@ Common mistakes:
 
 ## llm-runner
 
-`--agent` uses the Microsoft Agent Framework runner backed by OpenAI
-(see `src/Drederick/Agent/MicrosoftAgentRunner.cs`). It needs
-`OPENAI_API_KEY` in the environment and will use `DREDERICK_MODEL` if
-set (default `gpt-4o-mini`). Errors from the OpenAI client are recorded
-as `runner.agent_error` in the audit log and then rethrown.
-
-> This is the **legacy recon runner**. Azure OpenAI / Copilot / llama.cpp
-> setup for the Jeopardy solver lives in [`LLM_SETUP.md`](LLM_SETUP.md);
-> Jeopardy-specific failures are in [jeopardy-llm](#jeopardy-llm).
+`--agent` supports `--llm-provider=copilot|azure|openai`. Copilot uses
+the official `GitHub.Copilot.SDK` runner
+(`src/Drederick/Agent/CopilotSdkAgentRunner.cs`); Azure and raw OpenAI use
+`src/Drederick/Agent/MicrosoftAgentRunner.cs` with structured tool-call
+adapters. Errors are recorded as `runner.agent_error` in the audit log and
+then rethrown.
 
 1. Check the env vars are actually exported in the shell you're running
    `drederick` from:
 
     ```bash
-    env | grep -E 'OPENAI_API_KEY|DREDERICK_MODEL'
+    env | grep -E 'COPILOT_TOKEN|GH_TOKEN|GITHUB_TOKEN|AZURE_OPENAI|OPENAI_API_KEY|DREDERICK_MODEL'
     ```
 
-2. If `--agent` was requested but `OPENAI_API_KEY` is missing, drederick
-   logs `--agent requested but OPENAI_API_KEY is not set. Falling back to
-   AdaptiveRunner.` and continues — this is expected, not a failure.
+2. If the selected provider is not configured, drederick logs
+   `--agent requested but LLM provider '<provider>' is not configured.
+   Falling back to AdaptiveRunner.` and continues — this is expected, not a
+   failure. For Copilot, run `gh auth login --web` or export
+   `COPILOT_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`.
 
 3. Rate limits / timeouts / provider 5xx surface as
    `runner.agent_error`. Inspect:

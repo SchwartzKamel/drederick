@@ -126,7 +126,7 @@ public sealed record JeopardyDoctorDeps(
     string DockerfilePath = "sandbox/Dockerfile.jeopardy-sandbox",
     string SandboxBuildContext = "sandbox/",
     string CopilotHost = "api.githubcopilot.com",
-    string CopilotModelsUrl = "https://api.githubcopilot.com/v1/models",
+    string CopilotModelsUrl = "https://api.githubcopilot.com/models",
     string DockerRootDir = "/var/lib/docker",
     long MinFreeBytes = 10L * 1024 * 1024 * 1024,
     // --- jeopardy-llm-provider-deps ---

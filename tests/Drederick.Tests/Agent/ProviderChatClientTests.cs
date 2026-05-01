@@ -4,238 +4,20 @@ using System.Text.Json;
 using Drederick.Agent;
 using Drederick.Audit;
 using Drederick.Jeopardy.Llm;
+using GitHub.Copilot.SDK;
 using Microsoft.Extensions.AI;
 using Xunit;
 
 namespace Drederick.Tests.Agent;
 
 /// <summary>
-/// Tests for <see cref="CopilotChatClient"/> and <see cref="AzureOpenAiChatClient"/>
-/// — the new <see cref="IChatClient"/> implementations that enable Copilot SDK
-/// and Azure OpenAI for the <c>--agent</c> recon/exploit runner.
+/// Tests for the provider implementations that enable Copilot SDK and Azure
+/// OpenAI for the <c>--agent</c> recon/exploit runner.
 /// </summary>
 public class ProviderChatClientTests
 {
     private static string NewAuditPath() =>
         Path.Combine(AppContext.BaseDirectory, $"drederick-provider-{Guid.NewGuid():N}.jsonl");
-
-    // ---- CopilotChatClient request serialization ----
-
-    [Fact]
-    public void CopilotChatClient_BuildRequestBody_IncludesModelAndMessages()
-    {
-        var auditPath = NewAuditPath();
-        try
-        {
-            var audit = new AuditLog(auditPath);
-            var client = new CopilotChatClient("test-token", "test-integration", audit, "gpt-4o-mini",
-                endpoint: new Uri("https://test.example.com/v1"));
-
-            var messages = new List<ChatMessage>
-            {
-                new(ChatRole.System, "You are a test assistant."),
-                new(ChatRole.User, "Hello!"),
-            };
-
-            var body = client.BuildRequestBody(messages, null);
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-
-            Assert.Equal("gpt-4o-mini", root.GetProperty("model").GetString());
-            var msgs = root.GetProperty("messages");
-            Assert.Equal(2, msgs.GetArrayLength());
-            Assert.Equal("system", msgs[0].GetProperty("role").GetString());
-            Assert.Equal("You are a test assistant.", msgs[0].GetProperty("content").GetString());
-            Assert.Equal("user", msgs[1].GetProperty("role").GetString());
-            Assert.Equal("Hello!", msgs[1].GetProperty("content").GetString());
-        }
-        finally
-        {
-            TryDelete(auditPath);
-        }
-    }
-
-    [Fact]
-    public void CopilotChatClient_BuildRequestBody_SerializesToolCallMessages()
-    {
-        var auditPath = NewAuditPath();
-        try
-        {
-            var audit = new AuditLog(auditPath);
-            var client = new CopilotChatClient("test-token", "test-integration", audit, "gpt-4o-mini",
-                endpoint: new Uri("https://test.example.com/v1"));
-
-            // Simulate an assistant message with a tool call
-            var assistantMsg = new ChatMessage(ChatRole.Assistant, (string?)null);
-            assistantMsg.Contents.Add(new FunctionCallContent("call_123", "nmap_scan",
-                new Dictionary<string, object?> { ["target"] = "10.10.10.5" }));
-
-            // And a tool result message
-            var toolResultMsg = new ChatMessage(ChatRole.Tool, (string?)null);
-            toolResultMsg.Contents.Add(new FunctionResultContent("call_123", "{\"ports\": [22, 80]}"));
-
-            var messages = new List<ChatMessage> { assistantMsg, toolResultMsg };
-            var body = client.BuildRequestBody(messages, null);
-            using var doc = JsonDocument.Parse(body);
-            var msgs = doc.RootElement.GetProperty("messages");
-
-            // First message: assistant with tool_calls
-            var m0 = msgs[0];
-            Assert.Equal("assistant", m0.GetProperty("role").GetString());
-            var toolCalls = m0.GetProperty("tool_calls");
-            Assert.Equal(1, toolCalls.GetArrayLength());
-            Assert.Equal("call_123", toolCalls[0].GetProperty("id").GetString());
-            Assert.Equal("nmap_scan", toolCalls[0].GetProperty("function").GetProperty("name").GetString());
-
-            // Second message: tool result
-            var m1 = msgs[1];
-            Assert.Equal("tool", m1.GetProperty("role").GetString());
-            Assert.Equal("call_123", m1.GetProperty("tool_call_id").GetString());
-        }
-        finally
-        {
-            TryDelete(auditPath);
-        }
-    }
-
-    // ---- CopilotChatClient response parsing ----
-
-    [Fact]
-    public void CopilotChatClient_ParseResponse_TextResponse()
-    {
-        var auditPath = NewAuditPath();
-        try
-        {
-            var audit = new AuditLog(auditPath);
-            var client = new CopilotChatClient("test-token", "test-integration", audit, "gpt-4o-mini",
-                endpoint: new Uri("https://test.example.com/v1"));
-
-            var json = """
-            {
-              "model": "gpt-4o-mini",
-              "choices": [{
-                "finish_reason": "stop",
-                "message": {
-                  "role": "assistant",
-                  "content": "Hello, world!"
-                }
-              }],
-              "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 5
-              }
-            }
-            """;
-
-            var response = client.ParseResponse(json, TimeSpan.FromMilliseconds(100));
-
-            Assert.Equal("gpt-4o-mini", response.ModelId);
-            Assert.Equal(ChatFinishReason.Stop, response.FinishReason);
-            Assert.Equal(10, response.Usage?.InputTokenCount);
-            Assert.Equal(5, response.Usage?.OutputTokenCount);
-            Assert.Single(response.Messages);
-            Assert.Contains(response.Messages[0].Contents, c => c is TextContent tc && tc.Text == "Hello, world!");
-        }
-        finally
-        {
-            TryDelete(auditPath);
-        }
-    }
-
-    [Fact]
-    public void CopilotChatClient_ParseResponse_ToolCallResponse()
-    {
-        var auditPath = NewAuditPath();
-        try
-        {
-            var audit = new AuditLog(auditPath);
-            var client = new CopilotChatClient("test-token", "test-integration", audit, "gpt-4o-mini",
-                endpoint: new Uri("https://test.example.com/v1"));
-
-            var json = """
-            {
-              "model": "gpt-4o-mini",
-              "choices": [{
-                "finish_reason": "tool_calls",
-                "message": {
-                  "role": "assistant",
-                  "content": null,
-                  "tool_calls": [{
-                    "id": "call_abc",
-                    "type": "function",
-                    "function": {
-                      "name": "nmap_scan",
-                      "arguments": "{\"target\":\"10.10.10.5\"}"
-                    }
-                  }]
-                }
-              }],
-              "usage": {
-                "prompt_tokens": 20,
-                "completion_tokens": 15
-              }
-            }
-            """;
-
-            var response = client.ParseResponse(json, TimeSpan.FromMilliseconds(50));
-
-            Assert.Equal(ChatFinishReason.ToolCalls, response.FinishReason);
-            var msg = response.Messages[0];
-            var fc = msg.Contents.OfType<FunctionCallContent>().Single();
-            Assert.Equal("call_abc", fc.CallId);
-            Assert.Equal("nmap_scan", fc.Name);
-            Assert.NotNull(fc.Arguments);
-        }
-        finally
-        {
-            TryDelete(auditPath);
-        }
-    }
-
-    [Fact]
-    public void CopilotChatClient_ParseResponse_MultipleToolCalls()
-    {
-        var auditPath = NewAuditPath();
-        try
-        {
-            var audit = new AuditLog(auditPath);
-            var client = new CopilotChatClient("test-token", "test-integration", audit, "gpt-4o-mini",
-                endpoint: new Uri("https://test.example.com/v1"));
-
-            var json = """
-            {
-              "model": "gpt-4o-mini",
-              "choices": [{
-                "finish_reason": "tool_calls",
-                "message": {
-                  "role": "assistant",
-                  "content": "Let me scan both.",
-                  "tool_calls": [
-                    {"id": "c1", "type": "function", "function": {"name": "nmap_scan", "arguments": "{\"target\":\"10.10.10.5\"}"}},
-                    {"id": "c2", "type": "function", "function": {"name": "http_probe", "arguments": "{\"target\":\"10.10.10.5\"}"}}
-                  ]
-                }
-              }],
-              "usage": {"prompt_tokens": 30, "completion_tokens": 25}
-            }
-            """;
-
-            var response = client.ParseResponse(json, TimeSpan.FromMilliseconds(50));
-            var msg = response.Messages[0];
-
-            // Should have text + 2 tool calls
-            var text = msg.Contents.OfType<TextContent>().Single();
-            Assert.Equal("Let me scan both.", text.Text);
-            var calls = msg.Contents.OfType<FunctionCallContent>().ToList();
-            Assert.Equal(2, calls.Count);
-            Assert.Equal("c1", calls[0].CallId);
-            Assert.Equal("c2", calls[1].CallId);
-        }
-        finally
-        {
-            TryDelete(auditPath);
-        }
-    }
 
     // ---- AzureOpenAiChatClient ----
 
@@ -413,7 +195,7 @@ public class ProviderChatClientTests
     }
 
     [Fact]
-    public void TryCreateFromProvider_Copilot_UsesAuthenticatedGitHubCliToken()
+    public void TryCreateFromProvider_Copilot_UsesAuthenticatedGitHubCliTokenAndOfficialSdkRunner()
     {
         var auditPath = NewAuditPath();
         var ghDir = Path.Combine(Path.GetTempPath(), "drederick-gh-" + Guid.NewGuid().ToString("N"));
@@ -440,7 +222,8 @@ public class ProviderChatClientTests
 
             var audit = new AuditLog(auditPath);
             var result = MicrosoftAgentRunner.TryCreateFromProvider(LlmProvider.Copilot, null, audit);
-            Assert.NotNull(result);
+            var sdkRunner = Assert.IsType<CopilotSdkAgentRunner>(result);
+            Assert.Equal("gpt-4o-mini", sdkRunner.ModelId);
         }
         finally
         {
@@ -451,6 +234,36 @@ public class ProviderChatClientTests
             Environment.SetEnvironmentVariable("PATH", savedPath);
             TryDelete(auditPath);
             try { Directory.Delete(ghDir, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void CopilotSdkAgentRunner_Config_UsesOfficialSdkAndOnlyProvidedTools()
+    {
+        var auditPath = NewAuditPath();
+        try
+        {
+            var audit = new AuditLog(auditPath);
+            var runner = new CopilotSdkAgentRunner(audit, "gho_test", "claude-haiku-4.5");
+            var function = AIFunctionFactory.Create((string value) => value, name: "echo_test");
+
+            var options = runner.CreateClientOptions();
+            Assert.Equal("gho_test", options.GitHubToken);
+            Assert.False(options.UseLoggedInUser);
+
+            var config = runner.CreateSessionConfig(new List<AIFunction> { function });
+            Assert.Equal("claude-haiku-4.5", config.Model);
+            Assert.Single(config.Tools);
+            Assert.Equal("echo_test", Assert.Single(config.AvailableTools));
+            Assert.NotNull(config.OnPermissionRequest);
+            Assert.Equal(SystemMessageMode.Append, config.SystemMessage.Mode);
+            Assert.Contains("Drederick", config.SystemMessage.Content);
+            Assert.False(config.Streaming);
+            Assert.False(config.InfiniteSessions.Enabled);
+        }
+        finally
+        {
+            TryDelete(auditPath);
         }
     }
 

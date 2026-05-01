@@ -46,14 +46,15 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         new(_audit, _chatClient, _modelId, exploitTools);
 
     /// <summary>
-    /// Factory: build a runner from the selected LLM provider. Supports Copilot
-    /// SDK, Azure OpenAI, and legacy raw OpenAI. Returns <c>null</c> if the
-    /// provider's required environment is not configured.
+    /// Factory: build a runner from the selected LLM provider. Supports the
+    /// official Copilot SDK, Azure OpenAI, and legacy raw OpenAI. Returns
+    /// <c>null</c> if the provider's required environment is not configured.
     /// </summary>
-    public static MicrosoftAgentRunner? TryCreateFromProvider(
+    public static IReconAgentRunner? TryCreateFromProvider(
         LlmProvider provider,
         IReadOnlyDictionary<string, string>? azureDeploymentMap,
         AuditLog audit,
+        LlmExploitTools? exploitTools = null,
         bool allowGitHubCliAuth = true)
     {
         var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
@@ -61,17 +62,17 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         switch (provider)
         {
             case LlmProvider.Copilot:
-                {
-                    var copilot = CopilotChatClient.TryCreateFromEnvironment(audit, model, allowGitHubCliAuth);
-                    if (copilot is null) return null;
-                    return new MicrosoftAgentRunner(audit, copilot, copilot.ModelId);
-                }
+                return CopilotSdkAgentRunner.TryCreateFromEnvironment(
+                    audit,
+                    model,
+                    exploitTools,
+                    allowGitHubCliAuth);
 
             case LlmProvider.Azure:
                 {
                     var azure = AzureOpenAiChatClient.TryCreateFromEnvironment(audit, azureDeploymentMap, model);
                     if (azure is null) return null;
-                    return new MicrosoftAgentRunner(audit, azure, azure.ModelId);
+                    return new MicrosoftAgentRunner(audit, azure, azure.ModelId, exploitTools);
                 }
 
             case LlmProvider.LlamaCpp:
@@ -87,7 +88,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
                     model ??= "gpt-4o-mini";
                     var openAi = new OpenAIClient(apiKey);
                     var chat = openAi.GetChatClient(model);
-                    return new MicrosoftAgentRunner(audit, chat.AsIChatClient(), model);
+                    return new MicrosoftAgentRunner(audit, chat.AsIChatClient(), model, exploitTools);
                 }
         }
     }
@@ -117,44 +118,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             ["targets"] = targets,
         });
 
-        IList<AITool> aiTools = new List<AITool>
-        {
-            AIFunctionFactory.Create(tools.NmapScanAsync, name: "nmap_scan"),
-            AIFunctionFactory.Create(tools.HttpProbeAsync, name: "http_probe"),
-            AIFunctionFactory.Create(tools.TlsProbeAsync, name: "tls_probe"),
-            AIFunctionFactory.Create(tools.DnsProbeAsync, name: "dns_probe"),
-        };
-
-        // Extended scanner surface: only expose a tool if the underlying
-        // scanner was registered on the toolbox (callers may construct a
-        // toolbox with just the original four). We detect by IReconTool.Name.
-        void AddIf(string toolName, AITool t)
-        {
-            if (tools.Tools.Any(x => x.Name == toolName)) aiTools.Add(t);
-        }
-        AddIf("smb", AIFunctionFactory.Create(tools.SmbProbeAsync, name: "smb_probe"));
-        AddIf("ftp", AIFunctionFactory.Create(tools.FtpProbeAsync, name: "ftp_probe"));
-        AddIf("ssh", AIFunctionFactory.Create(tools.SshProbeAsync, name: "ssh_probe"));
-        AddIf("snmp", AIFunctionFactory.Create(tools.SnmpProbeAsync, name: "snmp_probe"));
-        AddIf("ldap", AIFunctionFactory.Create(tools.LdapProbeAsync, name: "ldap_probe"));
-        AddIf("rpc", AIFunctionFactory.Create(tools.RpcProbeAsync, name: "rpc_probe"));
-        AddIf("kerberos", AIFunctionFactory.Create(tools.KerberosProbeAsync, name: "kerberos_probe"));
-        AddIf("dns-axfr", AIFunctionFactory.Create(tools.DnsZoneTransferAsync, name: "dns_zone_transfer"));
-        AddIf("http-content-discovery",
-            AIFunctionFactory.Create(tools.HttpContentDiscoveryAsync, name: "http_content_discovery"));
-        AddIf("tls-cipher-enum",
-            AIFunctionFactory.Create(tools.TlsCipherEnumAsync, name: "tls_cipher_enum"));
-
-        // --- llm-exploit-wiring ---
-        // Offensive surface (exploit, credential spray, post-ex, pivot,
-        // multi-stage chain, flag extraction). Each AIFunction re-checks
-        // scope internally and consults RunPermissions before touching
-        // anything. Null-gated on the underlying tool being wired.
-        if (_exploitTools is not null)
-        {
-            foreach (var t in _exploitTools.BuildAiTools()) aiTools.Add(t);
-        }
-        // --- end llm-exploit-wiring ---
+        IList<AITool> aiTools = LlmToolCatalog.BuildAiTools(tools, _exploitTools);
 
         AIAgent agent = _chatClient.AsAIAgent(
             instructions: BuildSystemPrompt(),
@@ -253,7 +217,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         (by SHA-256 only), opened sessions, and any flags extracted.
         """;
 
-    private static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)
+    internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Targets (all inside authorized scope):");

@@ -87,7 +87,12 @@ public sealed class LlmProviderFactoryTests : IDisposable
     {
         Environment.SetEnvironmentVariable("COPILOT_TOKEN", "ghu_fake_copilot_token_for_tests_only");
         var err = new StringWriter();
-        var client = LlmProviderFactory.Create(LlmProvider.Copilot, NewOpts(), _audit, err);
+        var client = LlmProviderFactory.Create(
+            LlmProvider.Copilot,
+            NewOpts(),
+            _audit,
+            err,
+            allowGitHubCliAuth: false);
         Assert.NotNull(client);
         Assert.IsType<CopilotLlmClient>(client);
         Assert.Empty(err.ToString());
@@ -97,7 +102,12 @@ public sealed class LlmProviderFactoryTests : IDisposable
     public void Copilot_With_No_Token_Returns_Null_And_Writes_Actionable_Stderr()
     {
         var err = new StringWriter();
-        var client = LlmProviderFactory.Create(LlmProvider.Copilot, NewOpts(), _audit, err);
+        var client = LlmProviderFactory.Create(
+            LlmProvider.Copilot,
+            NewOpts(),
+            _audit,
+            err,
+            allowGitHubCliAuth: false);
         Assert.Null(client);
         var msg = err.ToString();
         Assert.Contains("copilot", msg, StringComparison.OrdinalIgnoreCase);

@@ -633,7 +633,11 @@ if (!opts.Quiet)
 IReconAgentRunner runner;
 if (opts.UseAgent)
 {
-    var agentRunner = MicrosoftAgentRunner.TryCreateFromProvider(opts.LlmProvider, opts.AzureDeploymentMap, audit);
+    var agentRunner = MicrosoftAgentRunner.TryCreateFromProvider(
+        opts.LlmProvider,
+        opts.AzureDeploymentMap,
+        audit,
+        llmExploitTools);
     if (agentRunner is null)
     {
         var providerName = opts.LlmProvider.ToString().ToLowerInvariant();
@@ -643,7 +647,7 @@ if (opts.UseAgent)
     }
     else
     {
-        runner = agentRunner.WithExploitTools(llmExploitTools);
+        runner = agentRunner;
     }
 }
 else
@@ -700,10 +704,14 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
 if (opts.UseHybridAgent)
 {
     IReconAgentRunner? llmInner = null;
-    var llmCandidate = MicrosoftAgentRunner.TryCreateFromProvider(opts.LlmProvider, opts.AzureDeploymentMap, audit);
+    var llmCandidate = MicrosoftAgentRunner.TryCreateFromProvider(
+        opts.LlmProvider,
+        opts.AzureDeploymentMap,
+        audit,
+        llmExploitTools);
     if (llmCandidate is not null)
     {
-        llmInner = llmCandidate.WithExploitTools(llmExploitTools);
+        llmInner = llmCandidate;
     }
 
     IReconAgentRunner deterministicInner;

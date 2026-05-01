@@ -54,7 +54,7 @@ escape hatch for Jeopardy only; raw OpenAI is deprioritized.
 
 | Rank | Provider | Use case | Auth | Config env | Models | Pros | Cons |
 | ---- | -------- | -------- | ---- | ---------- | ------ | ---- | ---- |
-| 1 | **Copilot SDK** | Jeopardy solver swarm; multi-model racing on one token. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → authenticated `gh` CLI; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com/v1`) | Claude Opus / Sonnet, GPT-5.x, Gemini 3.x, Grok, o3 family — whatever Copilot exposes today. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
+| 1 | **Copilot SDK / Copilot API** | `--agent` recon through the official `GitHub.Copilot.SDK`; Jeopardy solver swarm through the Copilot chat API. | OAuth (Copilot/GitHub PAT) | `COPILOT_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN` → authenticated `gh` CLI; `COPILOT_INTEGRATION_ID` (default `drederick-cli`); `COPILOT_ENDPOINT` (default `https://api.githubcopilot.com`, Jeopardy/raw API only) | Claude Opus / Sonnet, GPT-5.x, Gemini 3.x, Grok, o3 family — whatever Copilot exposes today. | One token, five model families, Tatum approves. Built-in model rotation for the swarm. | Needs an active Copilot entitlement. Rate limits follow your subscription. |
 | 1 | **Azure OpenAI** | Enterprise-governed deployments; auditable, per-tenant keys; Entra ID flows. | api-key **or** Entra ID bearer | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` **or** `AZURE_OPENAI_BEARER_TOKEN`, `AZURE_OPENAI_API_VERSION` (default `2024-10-21`), `AZURE_OPENAI_DEPLOYMENT_MAP` | Whatever you deployed in the resource — GPT-4o, GPT-4.1, o-series, etc. | Tenant-scoped, audit-friendly, data-residency controls, integrates with `az login`. | You own the deployments. `modelId → deploymentName` mapping has to be correct. |
 | 3 | **llama.cpp** | Offline / airgapped operations; lab hardware with GPUs; "no phone-home" policy. | none or static bearer | `LLAMACPP_URL` (default `http://127.0.0.1:8080`), `LLAMACPP_BEARER_TOKEN` (optional) | Any GGUF you can load. | Local, free, private. Works on the plane. | Tool-calling quality is model-dependent; most local models lack function calling and the client strips tools from those requests. |
 | 4 | OpenAI (raw) | Legacy fallback for `--agent` recon runner. | `OPENAI_API_KEY` | `OPENAI_API_KEY`, `DREDERICK_MODEL` (default `gpt-4o-mini`) | OpenAI models. | Simple. | Deprioritized — use Copilot or Azure via `--llm-provider`. |
@@ -64,7 +64,7 @@ Sources of truth:
 [`AzureOpenAiLlmClient.cs`](../src/Drederick/Jeopardy/Llm/AzureOpenAiLlmClient.cs),
 [`LlamaCppLlmClient.cs`](../src/Drederick/Jeopardy/Llm/LlamaCppLlmClient.cs),
 [`MicrosoftAgentRunner.cs`](../src/Drederick/Agent/MicrosoftAgentRunner.cs),
-[`CopilotChatClient.cs`](../src/Drederick/Agent/CopilotChatClient.cs),
+[`CopilotSdkAgentRunner.cs`](../src/Drederick/Agent/CopilotSdkAgentRunner.cs),
 [`AzureOpenAiChatClient.cs`](../src/Drederick/Agent/AzureOpenAiChatClient.cs).
 
 <a id="modes"></a>
@@ -78,8 +78,8 @@ but not for `--agent` (most local models lack function-calling).
 | ---- | ----------------- | --------- | ----------- |
 | Jeopardy solver swarm (CLI) | `drederick ctf-solve` | **Copilot / Azure / llama.cpp** — operator-selectable per run via `LlmProviderFactory`. | Pass `--llm-provider=copilot\|azure\|llamacpp` (default `copilot`) and export the matching env vars (or pass the CLI flags listed below). |
 | Jeopardy solver swarm (Web UI) | `Drederick.Web` session-start form | **Copilot / Azure / llama.cpp** — operator-selectable per session. | Pick `copilot`, `azure`, or `llamacpp` in the form; export the matching env vars on the host running `Drederick.Web` ([details](#web-ui-provider)). |
-| Recon cornerman | `drederick ... --agent` | **Copilot / Azure / OpenAI** via Microsoft Agent Framework with full tool-call round-trips. | Pass `--llm-provider=copilot\|azure\|openai` (default `copilot`) and export the matching env vars. |
-| Recon cornerman — hybrid | `drederick ... --agent=hybrid` | **Copilot / Azure / OpenAI** via Microsoft Agent Framework, with automatic fallback to `AdaptiveRunner` on operational failure. | Same as `--agent`; if auth / network is missing, the deterministic runner takes over. Scope rejections still propagate. |
+| Recon cornerman | `drederick ... --agent` | **Copilot / Azure / OpenAI**. Copilot uses the official `GitHub.Copilot.SDK`; Azure/OpenAI use Microsoft Agent Framework with structured tool calls. | Pass `--llm-provider=copilot\|azure\|openai` (default `copilot`) and export the matching env vars. |
+| Recon cornerman — hybrid | `drederick ... --agent=hybrid` | **Copilot / Azure / OpenAI** with automatic fallback to `AdaptiveRunner` on operational failure. | Same as `--agent`; if auth / network is missing, the deterministic runner takes over. Scope rejections still propagate. |
 | Autopilot exploitation | `--autopilot` | Deterministic — **no LLM**. | No env vars needed. Driven by CLI flags. |
 
 > If the provider for a mode isn't configured, that mode degrades
@@ -156,10 +156,10 @@ drederick --scope scope.yaml --target 10.10.10.5 --out out/ --agent=hybrid
 > the runner falls back to `AdaptiveRunner`.
 
 <a id="provider-copilot"></a>
-## Copilot SDK (preferred for Jeopardy)
+## Copilot SDK / API (preferred Copilot path)
 
-One token, five model families. This is the default for
-`drederick ctf-solve` and the standard corner for this shop.
+One token, five model families. This is the default for `--agent` and
+`drederick ctf-solve`, and the standard corner for this shop.
 
 ### Quickstart
 
@@ -187,7 +187,7 @@ drederick ctf-solve \
 | `GITHUB_TOKEN` | *(none)* | Last choice. If it looks like a classic/fine-grained PAT and no Copilot token is present, the client **falls back to the GitHub Models endpoint** (`https://models.inference.ai.azure.com/v1`) instead of Copilot's endpoint. |
 | authenticated `gh` CLI | *(none)* | Used after env vars. Run `gh auth login --web`; Drederick will also launch that flow on demand in an interactive terminal. |
 | `COPILOT_INTEGRATION_ID` | `drederick-cli` | Required `Copilot-Integration-Id` header. |
-| `COPILOT_ENDPOINT` | `https://api.githubcopilot.com/v1` | Base URL override (rarely needed). |
+| `COPILOT_ENDPOINT` | `https://api.githubcopilot.com` | Base URL override for the Jeopardy/raw Copilot API client (rarely needed). |
 
 ### Picking models
 
@@ -325,14 +325,13 @@ before shrinking the quant.
 <a id="provider-agent-recon"></a>
 ## `--agent` (recon) — multi-provider
 
-The recon-side LLM runner ([`MicrosoftAgentRunner.cs`](../src/Drederick/Agent/MicrosoftAgentRunner.cs))
-now supports **Copilot SDK, Azure OpenAI, and raw OpenAI** via the
-`--llm-provider` flag. Provider-specific `IChatClient` implementations
-([`CopilotChatClient.cs`](../src/Drederick/Agent/CopilotChatClient.cs),
-[`AzureOpenAiChatClient.cs`](../src/Drederick/Agent/AzureOpenAiChatClient.cs))
-handle full structured tool-call round-trips, so the Microsoft Agent
-Framework's `FunctionInvokingChatClient` works correctly with all
-providers.
+The recon-side LLM runner now supports **Copilot SDK, Azure OpenAI, and raw
+OpenAI** via the `--llm-provider` flag. Copilot uses the official
+[`GitHub.Copilot.SDK`](../src/Drederick/Agent/CopilotSdkAgentRunner.cs)
+session runtime with Drederick's own scoped tools registered as
+`AIFunction`s. Azure and raw OpenAI use
+[`MicrosoftAgentRunner.cs`](../src/Drederick/Agent/MicrosoftAgentRunner.cs)
+with provider-specific `IChatClient` adapters.
 
 ### Quickstart
 
@@ -474,14 +473,14 @@ runs two checks under the `jeopardy` category:
 | Check id | What it verifies |
 | -------- | ---------------- |
 | `jeopardy.llm.token` | Provider-aware: Copilot looks for `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN` / authenticated `gh` CLI; Azure verifies endpoint + one of api-key / bearer / Entra + a deployment; llama.cpp verifies the base URL parses. |
-| `jeopardy.llm.reachable` | Copilot: `GET https://api.githubcopilot.com/v1/models` (gated by scope unless `--allow-copilot-host`). Azure: `GET $endpoint/openai/models?api-version=…`. llama.cpp: `GET $url/v1/models` with a 2 s timeout (loopback allowed without scope). |
+| `jeopardy.llm.reachable` | Copilot: `GET https://api.githubcopilot.com/models` (gated by scope unless `--allow-copilot-host`). Azure: `GET $endpoint/openai/models?api-version=…`. llama.cpp: `GET $url/v1/models` with a 2 s timeout (loopback allowed without scope). |
 
 Sample output when Copilot is wired correctly:
 
 ```text
 $ drederick doctor
 [jeopardy.llm.token]     PASS  LLM token present via $COPILOT_TOKEN
-[jeopardy.llm.reachable] PASS  GET https://api.githubcopilot.com/v1/models → 200
+[jeopardy.llm.reachable] PASS  GET https://api.githubcopilot.com/models → 200
 ...
 ```
 
@@ -573,7 +572,7 @@ authorization", the tool call still fails. That's the design.
 | `LLAMACPP_URL` connection refused | `llama-server` not running, or wrong port. | `curl "$LLAMACPP_URL/v1/models"` to confirm; restart server with `--port 8080 --jinja`. |
 | llama.cpp runs but is painfully slow | Too-large quant, tiny `-c`, no GPU offload. | Drop to Q4_K_M, set `--n-gpu-layers -1` if you have VRAM, or lower `--solver-concurrency` on the swarm so one model isn't racing itself. |
 | llama.cpp model refuses tool calls / ignores `tools` field | Model doesn't support function calling; the client auto-strips tools for those. | Use a tool-calling model (Qwen2.5-Coder, Llama-3.x instruct, Hermes-3), or accept freeform reasoning without tool loops. |
-| `--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.` on stderr | Env var missing from the shell. | `export OPENAI_API_KEY=...` in the same shell. |
+| `--agent requested but LLM provider 'copilot' is not configured. Falling back to AdaptiveRunner.` on stderr | No usable token from env or authenticated `gh` CLI. | Run `gh auth login --web`, or export `COPILOT_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`. |
 | `runner.agent_error` with `429 rate_limit_exceeded` | Provider quota. | Drederick already fell back to Adaptive; raise the quota or wait. |
 | LLM calls the same tool on the same target repeatedly | Normal up to `ToolBudget`; the tool layer then refuses. | Raise budget in `ReconToolbox` wiring if legitimate; usually it's the model being inefficient. |
 | `ScopeException` from an agent-invoked tool | Model chose a target not resolvable in the scope. | Expected — the tool refuses cleanly. Check `audit.jsonl` for the attempted target. |

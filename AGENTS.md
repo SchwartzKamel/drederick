@@ -87,7 +87,7 @@ Build, test, and run commands you can rely on.
 | `drederick --scope … --target … --no-lab` | Strict-mode run (exploitation categories opt-in per flag). | `src/Drederick/Cli/*` | `tests/Drederick.Tests/**` |
 | `drederick doctor [--install] [-y]` | Detect/install operator tooling. | `src/Drederick/Doctor/*` | `DoctorTests` |
 | `drederick serve --out out/` | Launch Datasette against `findings.db`. | `src/Drederick/Cli/ServeCommand*` | `ServeCommandTests` (if present) |
-| `drederick --scope … --target … --agent` | LLM-driven planner. Supports `--llm-provider=copilot\|azure\|openai` (default `copilot`). | `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
+| `drederick --scope … --target … --agent` | LLM-driven planner. Supports `--llm-provider=copilot\|azure\|openai` (default `copilot`); Copilot uses the official `GitHub.Copilot.SDK`. | `src/Drederick/Agent/CopilotSdkAgentRunner.cs`, `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
 | `DREDERICK_SKIP_CVE=1 drederick …` | Skip CVE enrichment. | `src/Drederick/Enrichment/CveAnnotator.cs` | `CveAnnotatorTests` |
 | `drederick --no-fetch-poc` | Skip PoC source caching. | `src/Drederick/Enrichment/PocAggregator.cs` | `PocAggregatorTests` |
 | `drederick --allow-dos` / `--allow-destructive` / `--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` / `--acknowledge-lockout-risk` | Per-run opt-ins for high-blast-radius categories (required in strict mode; defaults on in lab mode except `--allow-dos`). | `src/Drederick/Cli/*` | `OptInFlagTests` |
@@ -121,8 +121,8 @@ surgical edits, identify the owning concept first.
 | `docs/EMPIRE.md` | Empire C2 operational guide: agent types, deployment, modules, troubleshooting. | empire-c2 |
 | `docs/C2_INTEGRATION.md` | Architecture, thread-safety, audit invariants, and extension points for C2 frameworks. | empire-c2 |
 | `src/Drederick/Agent/AdaptiveRunner.cs` | Deterministic rule-based planner (recon + exploit). | orchestration |
-| `src/Drederick/Agent/MicrosoftAgentRunner.cs` | LLM-driven planner (Microsoft Agent Framework). Accepts `IChatClient`; provider factory selects Copilot/Azure/OpenAI. | orchestration-llm |
-| `src/Drederick/Agent/CopilotChatClient.cs` | `IChatClient` for Copilot SDK — full structured tool-call round-trips for `--agent`. | orchestration-llm |
+| `src/Drederick/Agent/MicrosoftAgentRunner.cs` | LLM-driven planner for Azure/OpenAI through Microsoft Agent Framework. Accepts `IChatClient`; provider factory selects provider-specific runners. | orchestration-llm |
+| `src/Drederick/Agent/CopilotSdkAgentRunner.cs` | Official `GitHub.Copilot.SDK` runner for `--agent --llm-provider=copilot`; registers Drederick scoped tools as `AIFunction`s. | orchestration-llm |
 | `src/Drederick/Agent/AzureOpenAiChatClient.cs` | `IChatClient` for Azure OpenAI — deployment mapping + full tool-call round-trips for `--agent`. | orchestration-llm |
 | `src/Drederick/Agent/HostWorkerPool.cs` | Bounded `Channel<ScanJob>` pool. | concurrency |
 | `src/Drederick/Audit/AuditLog.cs` | Append-only JSONL audit log (thread-safe). | audit |

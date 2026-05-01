@@ -72,7 +72,7 @@ public interface ICopilotLlmClient
 /// <list type="bullet">
 ///   <item><c>COPILOT_TOKEN</c>, <c>GH_TOKEN</c>, <c>GITHUB_TOKEN</c> — OAuth token (fall through in that order).</item>
 ///   <item><c>COPILOT_INTEGRATION_ID</c> — required header, default <c>drederick-cli</c>.</item>
-///   <item><c>COPILOT_ENDPOINT</c> — base URL override, default <c>https://api.githubcopilot.com/v1</c>.</item>
+///   <item><c>COPILOT_ENDPOINT</c> — base URL override, default <c>https://api.githubcopilot.com</c>.</item>
 /// </list>
 ///
 /// <para>Audit: every chat emits <c>copilot.chat.start</c> and
@@ -81,7 +81,7 @@ public interface ICopilotLlmClient
 /// </summary>
 public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
 {
-    public static readonly Uri DefaultCopilotEndpoint = new("https://api.githubcopilot.com/v1");
+    public static readonly Uri DefaultCopilotEndpoint = new("https://api.githubcopilot.com");
     public static readonly Uri DefaultGithubModelsEndpoint = new("https://models.inference.ai.azure.com/v1");
 
     private const string DefaultIntegrationId = "drederick-cli";
