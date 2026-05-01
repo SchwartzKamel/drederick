@@ -8,7 +8,9 @@
 
 | ID | Box | Date | Difficulty | Outcome | Key Gaps | Rematch? |
 |----|-----|------|-----------|---------|----------|----------|
-| [lame-2026-04-30](lame-2026-04-30.md) | Lame | 2026-04-30 | Easy | ❌ Loss | GAP-001,002,003 | Pending |
+| [lame-2026-04-30](lame-2026-04-30.md) | Lame | 2026-04-30 | Easy | ❌ Loss | GAP-001,002,003 | ✅ Won on rematch |
+| [lame-2026-04-30-rematch](lame-2026-04-30-rematch.md) | Lame | 2026-04-30 | Easy | ✅ Win (rematch) | — | — |
+| [lame-model-benchmark](lame-model-benchmark-2026-04-30.md) | Lame | 2026-04-30 | Easy | 🏆 Benchmark (10W/4🚫/2❌) | — | — |
 
 ---
 
@@ -19,7 +21,7 @@
 | Outcome | Count | Fights |
 |---------|-------|--------|
 | ❌ Loss | 1 | lame-2026-04-30 |
-| ✅ Win | 0 | — |
+| ✅ Win | 1 | lame-2026-04-30-rematch |
 
 ### By Gap Type
 
@@ -35,9 +37,9 @@
 
 | Service | Fights | Best Outcome |
 |---------|--------|-------------|
-| Samba (SMB) | lame-2026-04-30 | ❌ Loss |
-| vsftpd (FTP) | lame-2026-04-30 | ❌ Loss |
-| OpenSSH (SSH) | lame-2026-04-30 | ❌ Loss |
+| Samba (SMB) | lame-2026-04-30, lame-2026-04-30-rematch | ✅ Win |
+| vsftpd (FTP) | lame-2026-04-30, lame-2026-04-30-rematch | ✅ Win |
+| OpenSSH (SSH) | lame-2026-04-30, lame-2026-04-30-rematch | ✅ Win |
 
 ---
 

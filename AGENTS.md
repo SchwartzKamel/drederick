@@ -19,6 +19,7 @@ related:
   - docs/JEOPARDY.md
   - docs/COMPARISON.md
   - docs/CREDENTIALS.md
+  - docs/MODEL_BEHAVIOR.md
 ---
 -->
 
@@ -103,6 +104,20 @@ Build, test, and run commands you can rely on.
 Continuous integration is wired in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
 release artifacts via [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
+<a id="llm-model-guidance"></a>
+## LLM/model guidance
+
+Before changing provider selection, prompts, LLM-visible tool
+descriptions, hybrid fallback, Jeopardy swarm behavior, or cost reports,
+read [`docs/MODEL_BEHAVIOR.md`](docs/MODEL_BEHAVIOR.md) and
+[`.github/fight-history/INDEX.md`](.github/fight-history/INDEX.md).
+Preserve the contract: Copilot SDK checks `/models`, default
+`claude-haiku-4.5` remains the preferred compliant model,
+non-compliant Copilot model refusals propagate even under hybrid, and
+hybrid falls back only on operational/provider failures. Permission
+approval is not the boundary; scope checks, argv validation, budgets,
+and audit are.
+
 <a id="file-concept-map"></a>
 ## File → concept map
 
@@ -147,6 +162,7 @@ surgical edits, identify the owning concept first.
 | `tests/fixtures/` | Recorded scanner/exploit fixtures (nmap XML, HTTP bodies, msfconsole transcripts, searchsploit JSON). | fixtures |
 | `tests/fixtures/bin/` | Fake subprocess binaries for exploit-tool testing (replay stdout/exit). | fixtures |
 | `docs/` | Human+agent docs (see [`docs/README.md`](docs/README.md)). | docs |
+| `docs/MODEL_BEHAVIOR.md` | Durable model behavior fight notes: compliance limits, Lame lesson, routing card, multi-model playbook, benchmark fields. | orchestration-llm |
 | `Makefile` | `quickstart`, `bootstrap`, `publish`, `install` targets. | build |
 | `.github/workflows/ci.yml` | CI build + test. | ci |
 | `.github/workflows/release.yml` | Release artifact pipeline. | release |
@@ -372,7 +388,9 @@ scopes overlap, coordinate via issue comments — do not racewrite.
 6. [`docs/DATASETTE.md`](docs/DATASETTE.md) — current UI + triage workflow.
 7. [`.github/copilot-instructions.md`](.github/copilot-instructions.md) —
    Copilot-specific version of this file (for Copilot sessions).
-8. [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md) — after the
+8. [`docs/MODEL_BEHAVIOR.md`](docs/MODEL_BEHAVIOR.md) — model compliance,
+   routing, fight-history lessons, and price-to-performance fields.
+9. [`docs/POST_EXPLOITATION.md`](docs/POST_EXPLOITATION.md) — after the
    bell: session dispatch, Linux/Windows enumeration, pivot discovery,
    flag extraction.
 

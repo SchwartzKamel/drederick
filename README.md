@@ -10,6 +10,7 @@ related:
   - docs/README.md
   - docs/SCOPE_AND_LEGAL.md
   - docs/ARCHITECTURE.md
+  - docs/MODEL_BEHAVIOR.md
   - docs/POST_EXPLOITATION.md
   - docs/EMPIRE.md
 ---
@@ -153,12 +154,13 @@ triage workflow.
   `out/findings.db` with 7 labelled tables, clickable facets, and 5
   canned queries for CVE / PoC / tooling triage.
 - **Adaptive orchestration.** `AdaptiveRunner` (deterministic rule-based
-  planner, default), `MicrosoftAgentRunner` (LLM-driven, enabled with
-  `--agent` + `OPENAI_API_KEY`), or `HybridAgentRunner` (LLM-first with
-  automatic fallback to the deterministic runner on any operational
-  failure — no key, network error, auth, rate limit, transient SDK
-  exception; enabled with `--agent=hybrid`). Either way, scope is
-  enforced inside every tool — the planner cannot escape the allow-list.
+  planner, default), Copilot SDK / Azure / OpenAI LLM runners (enabled
+  with `--agent --llm-provider=copilot|azure|openai`, Copilot default),
+  or `HybridAgentRunner` (LLM-first with automatic fallback to the
+  deterministic runner on operational provider failures only — no key,
+  network error, auth, rate limit, transient SDK exception; enabled with
+  `--agent=hybrid`). Scope is enforced inside every tool, and Copilot
+  model-compliance refusals propagate rather than falling back silently.
 - **Full-auto offensive subsystem.** `ExploitRunner` (cached PoC spawn),
   `MsfRcRunner` (msfconsole `-r`), `NucleiRunner`, `PasswordSprayTool`,
   `MultiStageExploitRunner`, `SessionManager` + `SessionPivotProber`,
@@ -241,15 +243,14 @@ $DRED --scope scope.yaml --target 10.10.10.5 --content-discovery --out out/
 # Strictest posture (no cheatsheet, tighter scope cap, safe+default NSE only).
 $DRED --scope scope.yaml --target 10.10.10.5 --no-lab --out out/
 
-# LLM-driven planner (needs an OpenAI-compatible key). Full setup,
-# provider recipes, and combining with --autopilot: docs/LLM_SETUP.md.
-export OPENAI_API_KEY=sk-...
-export DREDERICK_MODEL=gpt-4o-mini          # optional, default gpt-4o-mini
+# LLM-driven planner (Copilot default; Azure/OpenAI also supported).
+# Full provider recipes and model behavior notes:
+# docs/LLM_SETUP.md and docs/MODEL_BEHAVIOR.md.
 $DRED --scope scope.yaml --target 10.10.10.5 --agent --out out/
 
-# Hybrid planner: LLM first, fall back to the deterministic runner on any
-# operational failure (no key, network, auth, rate limit, transient SDK
-# error). ScopeException still propagates — never swallowed.
+# Hybrid planner: LLM first, fall back to the deterministic runner only on
+# operational/provider failure (no key, network, auth, rate limit, transient
+# SDK error). ScopeException and Copilot model-compliance refusals propagate.
 $DRED --scope scope.yaml --target 10.10.10.5 --agent=hybrid --out out/
 
 # Skip PoC fetching for this run.
@@ -378,8 +379,9 @@ read [`AGENTS.md`](AGENTS.md) first.
   dispatch, Linux/Windows enumeration, pivot discovery, flag extraction.
 - [`docs/CREDENTIALS.md`](docs/CREDENTIALS.md) — `CredRunner` contract:
   spray, brute, AS-REP roast, kerberoast, PtH, lockout throttling.
-- [`docs/LLM_SETUP.md`](docs/LLM_SETUP.md) — wiring OpenAI / Azure /
-  llama.cpp for `--agent`, combining with `--autopilot`.
+- [`docs/LLM_SETUP.md`](docs/LLM_SETUP.md) — wiring Copilot / Azure /
+  OpenAI for `--agent` and llama.cpp for Jeopardy; combining with
+  `--autopilot`.
 - [`docs/UI.md`](docs/UI.md) — Avalonia point-and-click operator console.
 - [`docs/WEB_UI.md`](docs/WEB_UI.md) — browser-based operator pane (`Drederick.Web` + React SPA): architecture, threat model, launch, surfaces.
 - [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — first-run walkthrough.
@@ -433,8 +435,8 @@ Shipped in v0.3.1 (see [`CHANGELOG.md`](CHANGELOG.md)):
 
 - `HybridAgentRunner` (`--agent=hybrid`): LLM-first orchestration with
   deterministic fallback on any operational failure (no key, network,
-  auth, rate-limit, transient SDK error). `ScopeException` always
-  propagates — never swallowed.
+  auth, rate-limit, transient SDK error). `ScopeException` and Copilot
+  model-compliance refusals always propagate — never swallowed.
 - `LlmProviderFactory` + `--llm-provider={copilot,azure,llamacpp}` backend
   picker for `ctf-solve` and `drederick doctor --category=jeopardy`.
 

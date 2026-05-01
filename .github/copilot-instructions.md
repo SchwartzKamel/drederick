@@ -15,6 +15,9 @@ non-trivial changes, read `docs/ARCHITECTURE.md`, `docs/DEVELOPING.md`,
 and `docs/SCOPE_AND_LEGAL.md`. For the post-exploitation subsystem
 (session dispatch, `PostExLinux`/`PostExWindows`, pivot discovery, flag
 extraction, multi-stage chain), see `docs/POST_EXPLOITATION.md`.
+Before touching LLM/model routing, prompts, tool descriptions, hybrid
+fallback, Jeopardy swarm behavior, or benchmark reporting, read
+`docs/MODEL_BEHAVIOR.md` and `.github/fight-history/INDEX.md`.
 
 **Design stance: sharpen the fangs, then use them.** Prefer wider NSE
 coverage over narrower, more concurrent scans over sequential, deeper
@@ -414,3 +417,18 @@ When gaps are fixed, schedule a rematch:
 3. Add a new fight-log entry with `rematch_of` linking to the original
 4. Update gap statuses based on rematch results
 5. A loss is only a loss if we learn nothing from it
+
+### Model behavior for offensive security
+
+Use `docs/MODEL_BEHAVIOR.md` as the durable guide and
+`.github/fight-history/lame-model-benchmark-2026-04-30.md` as the latest
+Lame benchmark tape. Preserve these contracts:
+
+- Copilot SDK checks `/models`, audits model decisions, and defaults to
+  `claude-haiku-4.5`.
+- `CopilotModelCompliance` proves availability/policy/tool-call support,
+  not offsec willingness or quality.
+- Non-compliant Copilot model refusals propagate even under hybrid.
+- Hybrid falls back only on operational/provider failures.
+- `PermissionHandler.ApproveAll` is not the boundary; tool scope checks,
+  argv validation, budgets, and audit are.

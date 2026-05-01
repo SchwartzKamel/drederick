@@ -15,19 +15,19 @@
 - **Exposed by:** lame-2026-04-30
 - **Severity:** critical
 - **Impact:** Autopilot can't fire exploits for known-vulnerable versions — fight plan had `nuclei=0, msfrc=0` despite fingerprinting Samba 3.0.20 and vsftpd 2.3.4
-- **Status:** open
+- **Status:** workaround
 - **Description:** No version→exploit lookup table exists. The planner doesn't cross-reference service fingerprints against known exploit modules (Metasploit, nuclei, standalone PoCs). Version-exact matches on known-RCE modules should rank higher than password spraying, but currently no exploit actions are generated at all.
 - **Suggested fix:** Build a curated version→exploit catalog mapping service fingerprints to Metasploit modules, nuclei templates, and standalone PoCs. Integrate into the planner so high-confidence version matches generate exploit actions with priority above spray (currently 200).
-- **Resolution:**
+- **Resolution:** Copilot fills this gap as human-in-the-loop; drederick code still needs the fix for autonomous operation. (lame-2026-04-30-rematch)
 
 ### GAP-002: Metasploit RC Generation and Execution
 - **Exposed by:** lame-2026-04-30
 - **Severity:** critical
 - **Impact:** The `msf-rc` tool is wired into the exploit toolbox (7 tools ready) but was never invoked — no exploit was ever attempted
-- **Status:** open
+- **Status:** workaround
 - **Description:** Autopilot doesn't generate `.rc` scripts for high-confidence exploits. After a shell lands, there's no logic to detect shell type (root vs user), grab flags, record loot, or queue privesc. The `sessions` table and `session.manager.ready` event exist but aren't wired to Metasploit session callbacks.
 - **Suggested fix:** Generate `.rc` files for high-confidence exploits (e.g., `use exploit/multi/samba/usermap_script` with appropriate RHOSTS/LHOST/PAYLOAD). Wire session callbacks to detect shell type, grab flags from standard locations, record loot in `findings.db`, and queue privesc if user-level.
-- **Resolution:**
+- **Resolution:** Copilot fills this gap as human-in-the-loop; drederick code still needs the fix for autonomous operation. (lame-2026-04-30-rematch)
 
 ### GAP-003: Crash-Resilient Nmap Scanning
 - **Exposed by:** lame-2026-04-30
@@ -108,16 +108,17 @@
 
 ## Statistics
 
-| Severity | Total | Open | In Progress | Resolved |
-|----------|-------|------|-------------|----------|
-| Critical | 3     | 3    | 0           | 0        |
-| High     | 3     | 3    | 0           | 0        |
-| Medium   | 2     | 2    | 0           | 0        |
-| Low      | 1     | 1    | 0           | 0        |
-| **Total**| **9** | **9**| **0**       | **0**    |
+| Severity | Total | Open | In Progress | Resolved | Workaround |
+|----------|-------|------|-------------|----------|------------|
+| Critical | 3     | 1    | 0           | 0        | 2 workaround |
+| High     | 3     | 3    | 0           | 0        | |
+| Medium   | 2     | 2    | 0           | 0        | |
+| Low      | 1     | 1    | 0           | 0        | |
+| **Total**| **9** | **7**| **0**       | **0**    | **2 workaround** |
 
 ---
 
 ## Changelog
 
 - **2026-04-30:** Initial gaps from HTB Lame engagement (GAP-001 through GAP-009)
+- **2026-04-30:** GAP-001 and GAP-002 → workaround (Copilot fills as human-in-the-loop; lame-2026-04-30-rematch WIN)

@@ -17,6 +17,7 @@ related:
   - UI_GUIDE.md
   - COMPARISON.md
   - LLM_SETUP.md
+  - MODEL_BEHAVIOR.md
   - POST_EXPLOITATION.md
   - EMPIRE.md
   - C2_INTEGRATION.md
@@ -40,7 +41,8 @@ related:
 - **Install (fastest):** `curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | bash` — downloads the latest signed release binary to `~/.local/bin`.
 - **Install (from source):** `make quickstart` — deps + build + publish + userspace install.
 - **Scan your first HTB box:** `drederick --scope scope.yaml --target 10.10.10.5 --out out/`
-- **Turn on the LLM cornerman:** [`LLM_SETUP.md`](LLM_SETUP.md) — 60-second OpenAI wiring for `--agent` + `--autopilot`.
+- **Turn on the LLM cornerman:** [`LLM_SETUP.md`](LLM_SETUP.md) — provider wiring for `--agent`, `--agent=hybrid`, and `ctf-solve`.
+- **Pick the right model for the round:** [`MODEL_BEHAVIOR.md`](MODEL_BEHAVIOR.md) — fight notes, compliance limits, and price-to-performance fields.
 - **Open the dashboard:** `drederick serve --out out/` → <http://127.0.0.1:8001>
 - **Read the invariants:** [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md) ·
   summary below at [Invariants cheatsheet](#invariants-cheatsheet).
@@ -67,7 +69,8 @@ related:
 | [`COMPARISON.md`](COMPARISON.md) | humans | Drederick vs peers across three fronts: recon (AutoRecon / nmapAutomator / Reconnoitre), full-auto offensive (PentestGPT / HackingBuddyGPT / Metasploit Pro), and Jeopardy CTF solving (ctf-agent / EnIGMA / CAI). | human |
 | [`GETTING_STARTED.md`](GETTING_STARTED.md) | humans | End-to-end first-run walkthrough. | human |
 | [`CREDENTIALS.md`](CREDENTIALS.md) | humans + agents | Credential-attack subsystem: `CredRunner`, spray/brute/AS-REP/kerberoast/PtH, lockout throttling, secret-hashing rules. | both |
-| [`LLM_SETUP.md`](LLM_SETUP.md) | humans | Wiring OpenAI for `--agent`; combining with `--autopilot`; provider recipes; safety. | human |
+| [`LLM_SETUP.md`](LLM_SETUP.md) | humans | Wiring Copilot, Azure, or OpenAI for `--agent`; provider recipes; safety. | human |
+| [`MODEL_BEHAVIOR.md`](MODEL_BEHAVIOR.md) | humans + agents | Model behavior on authorized offsec work: compliance limits, Lame fight lesson, routing card, multi-model playbook, and benchmark fields. | agent |
 | [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) | humans | After the session opens: `SessionManager`, `PostExLinux` / `PostExWindows`, pivot probes, Empire C2 agent dispatch, flag extraction, multi-stage chain. | human |
 | [`EMPIRE.md`](EMPIRE.md) | operators | Empire C2 integration: agent types, platform-specific payload generation (PowerShell, Python, Bash), privilege escalation + lateral movement modules, operational patterns, troubleshooting. | human |
 | [`C2_INTEGRATION.md`](C2_INTEGRATION.md) | contributors | C2 subsystem architecture: `EmpireAgentStager` / `EmpireModuleExecutor` / `EmpireApiClient` contracts, thread-safety, audit invariants, extension points for new C2 frameworks. | both |
@@ -99,9 +102,10 @@ related:
 3. [`DATASETTE.md`](DATASETTE.md) — dashboard + PoC triage workflow.
 4. [`UI_GUIDE.md`](UI_GUIDE.md) — what exists today (Datasette) vs planned.
 5. [`LLM_SETUP.md`](LLM_SETUP.md) — turn on the cornerman; combine `--agent` with `--autopilot`.
-6. [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) — after the bell: session dispatch, Linux/Windows enumeration, pivot discovery, flag extraction.
-7. [`JEOPARDY.md`](JEOPARDY.md) — Jeopardy CTF mode: `ctf-solve` swarm, mid-run `ctf-msg` hints, sandbox image.
-8. [`COMPARISON.md`](COMPARISON.md) — when to pick drederick vs peers.
+6. [`MODEL_BEHAVIOR.md`](MODEL_BEHAVIOR.md) — route models by fight data and cost, not vibes.
+7. [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md) — after the bell: session dispatch, Linux/Windows enumeration, pivot discovery, flag extraction.
+8. [`JEOPARDY.md`](JEOPARDY.md) — Jeopardy CTF mode: `ctf-solve` swarm, mid-run `ctf-msg` hints, sandbox image.
+9. [`COMPARISON.md`](COMPARISON.md) — when to pick drederick vs peers.
 
 ### Reviewer
 
@@ -120,7 +124,9 @@ related:
    refusal list.
 4. [`../AGENTS.md#file-concept-map`](../AGENTS.md#file-concept-map) —
    path → concept resolution.
-5. [`DB_SCHEMA.md`](DB_SCHEMA.md) — queryable contract for `findings.db`.
+5. [`MODEL_BEHAVIOR.md`](MODEL_BEHAVIOR.md) — before touching LLM/model
+   routing, prompts, hybrid fallback, or benchmark reporting.
+6. [`DB_SCHEMA.md`](DB_SCHEMA.md) — queryable contract for `findings.db`.
 
 <a id="invariants-cheatsheet"></a>
 ## Invariants cheatsheet
@@ -142,8 +148,8 @@ Depth: [`SCOPE_AND_LEGAL.md`](SCOPE_AND_LEGAL.md). Stable ids:
 - **PoC cache is verbatim** — no rewriting, no phone-home stripping, no
   sanitization. `ExploitRunner` spawns cached PoCs against scope-validated
   targets only.
-- **LLM cannot escape scope** — `MicrosoftAgentRunner` tools re-check scope
-  internally; no prompt, jailbreak, or forged tool call disables this.
+- **LLM cannot escape scope** — LLM-exposed tools re-check scope internally;
+  no prompt, jailbreak, or forged tool call disables this.
 - **Audit is append-only** — every PoC fetch, PoC spawn, credential
   attempt, payload drop, and session open/close is recorded with target,
   tool, argv digest (SHA-256), and timestamp.
