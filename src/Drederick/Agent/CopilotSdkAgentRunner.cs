@@ -111,7 +111,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
 
             var response = await session.SendAndWaitAsync(
                 new MessageOptions { Prompt = MicrosoftAgentRunner.BuildUserMessage(targets, prior) },
-                timeout: null,
+                timeout: TimeSpan.FromMinutes(10),
                 ct).ConfigureAwait(false);
 
             var text = response?.Data?.Content;
@@ -152,7 +152,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
     {
         GitHubToken = _githubToken,
         UseLoggedInUser = false,
-        LogLevel = "warn",
+        LogLevel = "warning",
         Cwd = Directory.GetCurrentDirectory(),
     };
 
