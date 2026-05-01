@@ -70,6 +70,23 @@ public sealed class CommandLineOptions
     /// IPs from the Tenable file that fall outside the scope are logged and skipped.
     /// </summary>
     public string? TenableImportPath { get; set; }
+
+    /// <summary>Tenable.io API base URL (default <c>https://cloud.tenable.com</c>). Falls back to <c>$TENABLE_URL</c>.</summary>
+    public string? TenableApiUrl { get; set; }
+    /// <summary>Tenable.io access key. Falls back to <c>$TENABLE_ACCESS_KEY</c>.</summary>
+    public string? TenableAccessKey { get; set; }
+    /// <summary>Tenable.io secret key. Falls back to <c>$TENABLE_SECRET_KEY</c>.</summary>
+    public string? TenableSecretKey { get; set; }
+    /// <summary>Specific scan id to pull via <c>--tenable-scan-id</c>.</summary>
+    public int? TenableScanId { get; set; }
+    /// <summary>Scan name (most recent completed match wins) via <c>--tenable-scan-name</c>.</summary>
+    public string? TenableScanName { get; set; }
+    /// <summary>Pull the most recently completed scan visible to the API key.</summary>
+    public bool TenableLatest { get; set; }
+    /// <summary>Export format requested from the API. Default <c>nessus</c>; <c>csv</c> also accepted.</summary>
+    public string TenableFormat { get; set; } = "nessus";
+    /// <summary>When true, ignore the on-disk export cache and force a fresh export.</summary>
+    public bool TenableNoCache { get; set; }
     // --- end tenable-import options ---
 
     // ANCHOR: vpn-preflight-options (owned by vpn-htb-ergonomics task)
@@ -564,6 +581,33 @@ public sealed class CommandLineOptions
                 // --- end autopilot flag parse ---
                 case "--tenable-import":
                     o.TenableImportPath = RequireNext(args, ref i, a); break;
+                case "--tenable-api-url":
+                    o.TenableApiUrl = RequireNext(args, ref i, a); break;
+                case "--tenable-access-key":
+                    o.TenableAccessKey = RequireNext(args, ref i, a); break;
+                case "--tenable-secret-key":
+                    o.TenableSecretKey = RequireNext(args, ref i, a); break;
+                case "--tenable-scan-id":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1)
+                            throw new ArgumentException($"--tenable-scan-id must be a positive integer, got '{v}'.");
+                        o.TenableScanId = n; break;
+                    }
+                case "--tenable-scan-name":
+                    o.TenableScanName = RequireNext(args, ref i, a); break;
+                case "--tenable-latest":
+                    o.TenableLatest = true; break;
+                case "--tenable-format":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!string.Equals(v, "nessus", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(v, "csv", StringComparison.OrdinalIgnoreCase))
+                            throw new ArgumentException($"--tenable-format must be 'nessus' or 'csv', got '{v}'.");
+                        o.TenableFormat = v.ToLowerInvariant(); break;
+                    }
+                case "--tenable-no-cache":
+                    o.TenableNoCache = true; break;
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;
@@ -1073,6 +1117,21 @@ public sealed class CommandLineOptions
                                Service data is pre-seeded into the cross-run knowledge
                                base so the adaptive runner focuses on unexplored surface.
                                IPs outside the scope are logged and skipped.
+          --tenable-api-url <url>     Tenable.io base URL. Default https://cloud.tenable.com.
+                                      Env: $TENABLE_URL.
+          --tenable-access-key <key>  Tenable.io API access key. Env: $TENABLE_ACCESS_KEY.
+          --tenable-secret-key <key>  Tenable.io API secret key. Env: $TENABLE_SECRET_KEY.
+          --tenable-scan-id <n>       Pull the export for scan id <n>.
+          --tenable-scan-name <name>  Pull the most recently completed scan whose name
+                                      matches (case-insensitive).
+          --tenable-latest            Pull the most recently completed scan visible
+                                      to the API key.
+          --tenable-format <fmt>      Export format: nessus (default) or csv.
+          --tenable-no-cache          Force a fresh export, bypassing
+                                      <out>/tenable_cache/. Cached exports are
+                                      keyed by scan id + last_modification_date,
+                                      so they automatically refresh when Tenable
+                                      reruns the scan.
 
         RUNNER:
           -a, --agent          Use Microsoft Agent Framework runner (needs

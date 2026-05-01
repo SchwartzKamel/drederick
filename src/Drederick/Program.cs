@@ -374,6 +374,69 @@ catch (ScopeException ex)
     return 2;
 }
 
+// --- tenable-api-pull ---
+// "Smart" Tenable.io API pulling: when --tenable-scan-id / --tenable-scan-name /
+// --tenable-latest is set (and --tenable-import is not), authenticate against the
+// configured Tenable management plane, select the right scan, request an export,
+// poll until ready, cache the bytes under <out>/tenable_cache/, and feed the path
+// into the file-based ingest path below. Exports are cached keyed by
+// scan_id + last_modification_date so re-running with the same flags is free.
+if (string.IsNullOrEmpty(opts.TenableImportPath) &&
+    (opts.TenableScanId.HasValue || !string.IsNullOrEmpty(opts.TenableScanName) || opts.TenableLatest))
+{
+    var apiUrl = opts.TenableApiUrl
+        ?? Environment.GetEnvironmentVariable("TENABLE_URL")
+        ?? "https://cloud.tenable.com";
+    var accessKey = opts.TenableAccessKey ?? Environment.GetEnvironmentVariable("TENABLE_ACCESS_KEY");
+    var secretKey = opts.TenableSecretKey ?? Environment.GetEnvironmentVariable("TENABLE_SECRET_KEY");
+    if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
+    {
+        Console.Error.WriteLine(
+            "tenable-api: --tenable-access-key and --tenable-secret-key (or " +
+            "$TENABLE_ACCESS_KEY / $TENABLE_SECRET_KEY) are required.");
+        return 2;
+    }
+
+    Directory.CreateDirectory(opts.OutputDir);
+    var pullAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var pullAudit = new AuditLog(pullAuditPath);
+
+    var selector = new Drederick.Ops.Tenable.TenableScanSelector
+    {
+        ScanId = opts.TenableScanId,
+        ScanName = opts.TenableScanName,
+        Latest = opts.TenableLatest,
+    };
+    var pullOpts = new Drederick.Ops.Tenable.TenableApiPullOptions
+    {
+        Format = opts.TenableFormat,
+        CacheRoot = Path.Combine(opts.OutputDir, "tenable_cache"),
+        NoCache = opts.TenableNoCache,
+    };
+
+    try
+    {
+        using var apiClient = new Drederick.Ops.Tenable.TenableApiClient(apiUrl, accessKey, secretKey);
+        var puller = new Drederick.Ops.Tenable.TenableApiPuller(apiClient, pullAudit);
+        var pullResult = await puller.PullAsync(selector, pullOpts);
+        Console.WriteLine(
+            $"tenable-api: pulled scan {pullResult.ScanId} ('{pullResult.ScanName}') " +
+            $"format={pullResult.Format} from-cache={pullResult.FromCache} → {pullResult.CachedPath}");
+        opts.TenableImportPath = pullResult.CachedPath;
+    }
+    catch (Drederick.Ops.Tenable.TenableApiException ex)
+    {
+        Console.Error.WriteLine($"tenable-api: {ex.Message}");
+        return 2;
+    }
+    catch (HttpRequestException ex)
+    {
+        Console.Error.WriteLine($"tenable-api: network error: {ex.Message}");
+        return 2;
+    }
+}
+// --- end tenable-api-pull ---
+
 // --- tenable-import-prefill ---
 // Parse the Tenable export early so its IPs can flow into the targets block
 // below. Out-of-scope hosts are collected for later audit/warning output.
