@@ -671,6 +671,7 @@ internal sealed class LlmReachableCheck : IDoctorCheck
         {
             ["Authorization"] = $"Bearer {token}",
             ["Accept"] = "application/json",
+            ["Copilot-Integration-Id"] = Environment.GetEnvironmentVariable("COPILOT_INTEGRATION_ID") ?? "drederick-cli",
             ["User-Agent"] = "drederick-doctor",
         };
         int status;
