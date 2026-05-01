@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Xml.Linq;
 using Drederick.Recon;
 
@@ -69,6 +70,13 @@ public static class TenableScanImporter
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"Tenable import file not found: {filePath}", filePath);
 
+        const long MaxFileSizeBytes = 100 * 1024 * 1024; // 100 MB
+        var info = new FileInfo(filePath);
+        if (info.Length > MaxFileSizeBytes)
+            throw new InvalidOperationException(
+                $"Tenable import file '{filePath}' is {info.Length / (1024 * 1024)} MB, " +
+                "which exceeds the 100 MB safety cap.");
+
         var content = File.ReadAllText(filePath);
         return ParseContent(content, filePath);
     }
@@ -136,17 +144,13 @@ public static class TenableScanImporter
             if (string.IsNullOrEmpty(os)) os = null;
 
             // Prefer the explicit host-ip tag; fall back to the name attribute.
-            var ip = hostIpTag ?? nameAttr;
-            if (string.IsNullOrEmpty(ip)) continue;
-
-            // Only accept valid IP addresses; skip pure hostnames.
-            if (!IPAddress.TryParse(ip, out _))
-            {
-                if (!string.IsNullOrEmpty(hostIpTag) && IPAddress.TryParse(hostIpTag, out _))
-                    ip = hostIpTag;
-                else
-                    continue;
-            }
+            // Only accept valid IP addresses — skip pure hostnames in both positions.
+            string? ip = null;
+            if (!string.IsNullOrEmpty(hostIpTag) && IPAddress.TryParse(hostIpTag, out _))
+                ip = hostIpTag;
+            else if (!string.IsNullOrEmpty(nameAttr) && IPAddress.TryParse(nameAttr, out _))
+                ip = nameAttr;
+            if (ip is null) continue;
 
             var services = new List<TenableService>();
 
@@ -281,6 +285,8 @@ public static class TenableScanImporter
                 };
             }
 
+            // Skip rows that carry neither a port number nor a plugin ID — these are
+            // host-level metadata rows with no actionable service information.
             if (port == 0 && pluginId == 0) continue;
 
             hostServices[host].Add(new TenableService
@@ -384,7 +390,7 @@ public static class TenableScanImporter
     internal static List<string> SplitCsvLine(string line)
     {
         var fields = new List<string>();
-        var current = new System.Text.StringBuilder();
+        var current = new StringBuilder();
         bool inQuotes = false;
 
         for (int i = 0; i < line.Length; i++)
