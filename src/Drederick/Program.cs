@@ -512,12 +512,16 @@ var kerberos = new KerberosTool(scope, audit);
 var dnsAxfr = new DnsZoneTransferTool(scope, audit);
 var httpContentDiscovery = new HttpContentDiscoveryTool(scope, audit);
 var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
+// --- recon tools ---
+var nativeScanner = new NativeScannerTool(scope, audit);
+var nativeDns = new NativeDnsTool(scope, audit);
 var toolbox = new ReconToolbox(
     new IReconTool[]
     {
         nmap, http, tls, dns,
         smb, ftp, ssh, snmp, ldap, rpc, kerberos,
         dnsAxfr, httpContentDiscovery, tlsCipherEnum,
+        nativeScanner, nativeDns,
     },
     audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);
@@ -537,13 +541,14 @@ var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
 var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
 var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);
 var spray = new PasswordSprayTool(scope, audit, permissions, exploitRunner);
+var httpSpray = new NativeHttpSprayTool(scope, audit, permissions);
 
 // Empire tools
 var empireStager = new EmpireAgentStager(scope, audit);
 var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary);
 
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, empireExecutor },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor },
     audit);
 audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
 {
