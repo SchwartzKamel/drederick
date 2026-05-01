@@ -647,7 +647,10 @@ internal sealed class LlmReachableCheck : IDoctorCheck
     private async Task<DoctorCheckResult> CheckCopilotAsync(CancellationToken ct)
     {
         var picked = LlmTokenCheck.ResolveTokenVar(_d.Env);
-        if (picked is null)
+        var token = picked is not null
+            ? _d.Env.Get(picked)
+            : CopilotAuthTokenResolver.TryReadGitHubCliToken();
+        if (string.IsNullOrWhiteSpace(token))
         {
             return JeopardyDoctorChecks.Finish(_d.Audit, Id,
                 DoctorCheckStatus.Warn,
@@ -664,7 +667,6 @@ internal sealed class LlmReachableCheck : IDoctorCheck
                 fixRationale: "Network checks must go through scope.Require; api.githubcopilot.com is first-party Microsoft but still gated for auditability.");
         }
 
-        var token = _d.Env.Get(picked);
         var headers = new Dictionary<string, string>
         {
             ["Authorization"] = $"Bearer {token}",
