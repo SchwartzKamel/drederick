@@ -374,6 +374,37 @@ catch (ScopeException ex)
     return 2;
 }
 
+// --- tenable-import-prefill ---
+// Parse the Tenable export early so its IPs can flow into the targets block
+// below. Out-of-scope hosts are collected for later audit/warning output.
+TenableImportResult? tenableResult = null;
+var tenableOutOfScope = new List<string>();
+if (!string.IsNullOrEmpty(opts.TenableImportPath))
+{
+    try
+    {
+        tenableResult = TenableScanImporter.Parse(opts.TenableImportPath);
+        foreach (var ip in tenableResult.Hosts)
+        {
+            if (scope.Contains(ip))
+            {
+                if (!opts.Targets.Contains(ip, StringComparer.OrdinalIgnoreCase))
+                    opts.Targets.Add(ip);
+            }
+            else
+            {
+                tenableOutOfScope.Add(ip);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"tenable-import: failed to parse '{opts.TenableImportPath}': {ex.Message}");
+        return 2;
+    }
+}
+// --- end tenable-import-prefill ---
+
 List<string> targets;
 if (opts.Targets.Count > 0)
 {
@@ -436,6 +467,34 @@ Console.WriteLine(opts.LabMode
 }
 
 var kb = KnowledgeBase.Load(opts.MemoryPath);
+
+// --- tenable-import-wiring ---
+// Log the import outcome and seed the knowledge base with service data so the
+// adaptive runner can treat Tenable-known ports as pre-discovered rather than
+// re-scanning them from scratch on the first pass.
+if (tenableResult is not null)
+{
+    int inScopeCount = tenableResult.Hosts.Count - tenableOutOfScope.Count;
+    audit.Record("tenable.import", new Dictionary<string, object?>
+    {
+        ["source"] = opts.TenableImportPath,
+        ["format"] = tenableResult.Format,
+        ["host_count"] = tenableResult.Hosts.Count,
+        ["in_scope_count"] = inScopeCount,
+        ["skipped_count"] = tenableOutOfScope.Count,
+    });
+    foreach (var ip in tenableOutOfScope)
+    {
+        Console.Error.WriteLine($"tenable-import: {ip} is not in scope — skipping.");
+        audit.Record("tenable.import.out_of_scope", new Dictionary<string, object?> { ["ip"] = ip });
+    }
+    Console.WriteLine(
+        $"tenable-import: {tenableResult.Hosts.Count} host(s) in '{opts.TenableImportPath}' " +
+        $"— {inScopeCount} in scope, {tenableOutOfScope.Count} skipped.");
+    var tenableFindings = TenableScanImporter.ToHostFindings(tenableResult);
+    kb.Merge(tenableFindings);
+}
+// --- end tenable-import-wiring ---
 
 // ANCHOR: vpn-preflight (owned by vpn-htb-ergonomics task)
 // Before queueing any scan jobs: resolve --htb-host aliases via /etc/hosts,

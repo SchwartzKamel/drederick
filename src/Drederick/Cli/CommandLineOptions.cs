@@ -60,6 +60,18 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool LabMode { get; set; } = true;
 
+    // --- tenable-import options ---
+    /// <summary>
+    /// Path to a Tenable scan export file (Nessus XML <c>.nessus</c> or Tenable
+    /// CSV). When set, the importer extracts all host IPs and adds any that are
+    /// inside the scope as additional targets, then pre-seeds the
+    /// <c>KnowledgeBase</c> with service data from the scan so the adaptive runner
+    /// can focus on unexplored surface rather than re-discovering known ports.
+    /// IPs from the Tenable file that fall outside the scope are logged and skipped.
+    /// </summary>
+    public string? TenableImportPath { get; set; }
+    // --- end tenable-import options ---
+
     // ANCHOR: vpn-preflight-options (owned by vpn-htb-ergonomics task)
     /// <summary>Abort the run if an HTB CIDR target is passed but no tun*/tap* VPN interface is up.</summary>
     public bool RequireVpn { get; set; }
@@ -550,6 +562,8 @@ public sealed class CommandLineOptions
                 case "--cred":
                     o.AutopilotCreds.Add(RequireNext(args, ref i, a)); break;
                 // --- end autopilot flag parse ---
+                case "--tenable-import":
+                    o.TenableImportPath = RequireNext(args, ref i, a); break;
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;
@@ -1052,6 +1066,13 @@ public sealed class CommandLineOptions
           -t, --target <ip>    Add a target (repeatable). If omitted and --expand
                                is set, the full scope is enumerated.
           --expand             Enumerate all hosts in the scope file.
+          --tenable-import <file>
+                               Path to a Tenable scan export (Nessus XML .nessus or
+                               Tenable CSV). All host IPs found in the file that are
+                               inside the scope are added as targets automatically.
+                               Service data is pre-seeded into the cross-run knowledge
+                               base so the adaptive runner focuses on unexplored surface.
+                               IPs outside the scope are logged and skipped.
 
         RUNNER:
           -a, --agent          Use Microsoft Agent Framework runner (needs
