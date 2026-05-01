@@ -3,7 +3,7 @@ title: Developing
 audience: [humans]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ARCHITECTURE.md
   - MODULES.md
@@ -63,6 +63,19 @@ signatures stay typed per-scanner because recon surfaces are intentionally
 heterogeneous — forcing a uniform `ScanAsync(target, ct)` would throw away
 useful per-tool parameters. `ReconToolbox` dispatches by concrete type
 (`OfType<T>().SingleOrDefault()`).
+
+> **Native-first preference.** Before reaching for a subprocess, ask: can
+> the tool's core function be implemented in pure .NET with reasonable effort?
+> If yes, prefer native over subprocess — it eliminates the external
+> dependency, simplifies tests (no fake binary needed), and keeps the
+> distributed binary self-contained. Use `PathResolver.Which("tool-name")`
+> (`src/Drederick/Ops/PathResolver.cs`) for tool-presence checks rather than
+> spawning `which`. External tools remain the right choice when they are truly
+> irreplaceable (NSE scripts, msfconsole, hashcat). See `NativeScannerTool`
+> (TCP scanner, pure `System.Net.Sockets`) and `NativeDnsTool`
+> (`DnsClient.NET`) for worked examples. See
+> [`SELF_SUFFICIENCY.md`](SELF_SUFFICIENCY.md) for the full native-vs-external
+> decision table.
 
 1. **Create** `src/Drederick/Recon/<Name>Tool.cs`.
 2. **Implement** `IReconTool`:
@@ -161,6 +174,15 @@ Spawning subprocesses, hashing captured output, and persisting
 shell out from the tool directly, because `ExploitRunner` owns the
 argv-digest, working-dir isolation, stdout/stderr truncation, and
 SHA-256 pipeline that `exploit_runs` depends on.
+
+> **Native-first preference.** Where the tool's core function can be
+> implemented in pure .NET — HTTP sprays, DNS queries, SNMP walks, binary
+> analysis — prefer native over subprocess. External tools remain the right
+> choice when they are truly irreplaceable (msfconsole, nuclei, hashcat). Use
+> `PathResolver.Which("tool-name")` for tool-presence checks rather than
+> spawning `which`. See `NativeHttpSprayTool` (`src/Drederick/Exploit/
+> NativeHttpSprayTool.cs`) for a worked example of a native exploit-layer
+> tool.
 
 1. **Create** `src/Drederick/Exploit/<Name>Tool.cs` (or `<Name>Runner.cs`
    if it drives an external orchestrator like msfconsole/nuclei).

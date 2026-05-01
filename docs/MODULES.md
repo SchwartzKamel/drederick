@@ -3,7 +3,7 @@ title: Scanner modules
 audience: [humans, agents]
 primary: both
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ARCHITECTURE.md
   - POST_EXPLOITATION.md
@@ -151,13 +151,19 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 
 ## 8. `SnmpTool` {#scanner-snmp}
 
-- **Purpose:** SNMPv2c system-OID walk (`1.3.6.1.2.1.1`) with default
-  communities `public` / `private`.
-- **Subprocess:** `snmpwalk` — capped output size.
-- **Prohibitions:** no community brute-force, no writes, no walks outside
-  the system subtree.
+- **Purpose:** SNMPv2c/v1 system-OID walk across three subtrees
+  (`1.3.6.1.2.1.1` system, `1.3.6.1.2.1.25` host-resources,
+  `1.3.6.1.4.1` enterprise) with seven communities tried (`public`,
+  `private`, `community`, `manager`, `admin`, `cisco`, `snmpd`).
+- **Subprocess:** none — `Lextm.SharpSnmpLib` (`ISnmpWalker` abstraction).
+- **Replaces:** `snmpwalk` subprocess dependency. Zero external tools required.
+- **External dependency:** none (native via `Lextm.SharpSnmpLib` NuGet).
+- **Scope check:** `_scope.Require(target)` as first statement.
+- **Prohibitions:** no writes, no SET operations, no community brute-force
+  beyond the built-in 7-entry set.
 - **Result:** `HostFinding.Snmp[]` → SNMP system OID entries.
-- **Dispatch trigger:** nmap service `snmp`, or `service ~= snmp` on UDP.
+- **Dispatch trigger:** nmap or `NativeScannerTool` service hint `snmp`,
+  or UDP port 161.
 
 ## 9. `LdapTool` {#scanner-ldap}
 
@@ -197,7 +203,11 @@ are defined in `Drederick.Cli.CommandLineOptions`.
 
 - **Purpose:** DNS AXFR against an in-scope nameserver IP for a given
   domain label.
-- **Subprocess:** `dig axfr <domain> @<nameserver>`.
+- **Subprocess:** none — `DnsClient.NET` `LookupClient.QueryServerAsync`
+  with `QueryType.AXFR`.
+- **Replaces:** `dig axfr <domain> @<nameserver>` subprocess dependency.
+- **External dependency:** none (native via `DnsClient` NuGet).
+- **Scope check:** `_scope.Require(target)` as first statement (nameserver IP).
 - **Prohibitions:** nameserver **must** be an IP literal in scope; domain
   is a label only (no wildcards, no injected query flags). AXFR is a
   legitimate enumeration query, not an exploit.
@@ -263,7 +273,65 @@ are defined in `Drederick.Cli.CommandLineOptions`.
   ([`MagikaToolCheck`](../src/Drederick/Doctor/MagikaToolCheck.cs)).
   Wired via `drederick doctor --category=recon`.
 
-## Reporting {#reporting}
+## 16. `NativeScannerTool` {#scanner-native}
+
+- **Class:** `NativeScannerTool` (`src/Drederick/Recon/NativeScannerTool.cs`)
+- **Purpose:** Async TCP port scanner and service banner grabber. 57-port
+  default set covering well-known services; `SemaphoreSlim`-bounded
+  concurrency; TLS probe (SNI, certificate, negotiated version); Redis
+  inline-command probe on port 6379. Zero external dependencies.
+- **Subprocess:** none — `System.Net.Sockets.TcpClient` +
+  `System.Net.Security.SslStream`.
+- **Scope check:** `_scope.Require(target)` as first statement.
+- **External dependency:** none (native).
+- **Replaces:** primary use of `nmap` for basic port enumeration when nmap
+  is not installed. `NmapTool` remains the optional enrichment layer for
+  NSE scripts and deep version detection.
+- **Prohibitions:** read-only banner grab; no auth probing; no write
+  operations.
+- **Result:** `HostFinding.NativeScan[]` → `NativeScanResult { Port, Open,
+  Banner, ServiceHint, Tls { Version, Subject, Error } }`.
+- **Dispatch trigger:** phase 1 alongside `NmapTool`; if nmap is absent,
+  sole TCP port scanner.
+
+## 17. `NativeDnsTool` {#scanner-native-dns}
+
+- **Class:** `NativeDnsTool` (`src/Drederick/Recon/NativeDnsTool.cs`)
+- **Purpose:** Full DNS record resolution (A/AAAA/MX/NS/TXT/SOA/PTR) using
+  `DnsClient.NET`. No `dig` dependency. Covers all common record types
+  needed for target enumeration and virtual-host discovery.
+- **Subprocess:** none — `DnsClient.LookupClient`.
+- **Scope check:** `_scope.Require(target)` as first statement.
+- **External dependency:** none (native via `DnsClient` NuGet).
+- **Replaces:** `dig` for basic DNS record queries. Complements
+  `DnsProbeTool` (which uses `System.Net.Dns` for forward/reverse).
+- **Prohibitions:** no recursive resolution beyond the configured system
+  resolver; no zone transfer (see `DnsZoneTransferTool`).
+- **Result:** `HostFinding.NativeDns[]` → `NativeDnsResult { RecordType,
+  Name, Values[], Ttl, Error }`.
+- **Dispatch trigger:** phase 1; runs alongside `DnsProbeTool`.
+
+## 18. `ElfParser` / `PeParser` / `BinaryAnalyzer` {#scanner-binary}
+
+- **Classes:** `ElfParser`, `PeParser`, `BinaryAnalyzer`
+  (`src/Drederick/Recon/Binary/`)
+- **Purpose:** Native ELF/PE binary analysis: magic detection, architecture,
+  section enumeration, symbol extraction, imported libraries, entry-point,
+  strings, embedded artifacts. Zero external tool dependencies. 46 parser
+  tests + all 16 original tests pass.
+- **Subprocess:** none — pure byte parsing over `Span<byte>` / `BinaryReader`.
+- **Scope check:** `_scope.Require(target)` on path-resolved analysis start.
+- **External dependency:** none (native).
+- **Replaces:** `file`, `readelf`, `nm`, `strings`, `objdump` for structural
+  binary analysis. `MagikaDetector` remains available for ML-based file-type
+  hints (optional).
+- **Prohibitions:** read-only; does not execute, disassemble beyond headers,
+  or modify the analyzed artifact. Paths must resolve under the working
+  directory (no workspace escape via `..`).
+- **Result:** `BinaryAnalysisReport { Format, Architecture, Sections[],
+  Symbols[], Strings[], Imports[], EntryPoint, Magika }`.
+- **Dispatch trigger:** invoked by `ChallengeSolver` on CTF challenge
+  binaries; available to the LLM runner via `ReconToolbox`.
 
 ### `JsonReport`
 
@@ -334,6 +402,7 @@ gate. Summary:
 | `ExploitRunner` (cached PoC spawn) | `--allow-exec-pocs` |
 | `MsfRcRunner` (msfconsole `-r`) | `--allow-exec-pocs` (+ `--allow-payloads` when delivering) |
 | `NucleiRunner` | `--allow-exec-pocs` |
+| `NativeHttpSprayTool` (pure-.NET HTTP spray: Basic/Digest/Tomcat/Jenkins/Grafana/WordPress/phpMyAdmin/OWA/WinRM) | `--allow-cred-attacks` + `--acknowledge-lockout-risk` |
 | `PasswordSprayTool` | `--allow-cred-attacks` + `--acknowledge-lockout-risk` |
 | `MultiStageExploitRunner` | `--allow-exec-pocs` + `--allow-payloads` |
 | `EmpireAgentStager` (agent payload generation) | `--allow-payloads` |
@@ -348,3 +417,20 @@ gate. Summary:
 submission). It is orthogonal to the offensive recon/exploit toolbox but
 shares `Scope`, `AuditLog`, and `KnowledgeBase`. See
 [`JEOPARDY.md`](JEOPARDY.md).
+
+## Operational utilities {#ops-utilities}
+
+### `PathResolver` (`src/Drederick/Ops/PathResolver.cs`)
+
+- **Purpose:** `PathResolver.Which(name)` — replaces all `which` subprocess
+  calls for tool-presence checks. Walks `PATH` environment variable entries
+  to find the first matching executable; no subprocess spawn.
+- **External dependency:** none (native).
+- **Replaces:** `which` subprocess calls in `BinaryAnalyzer`, `MagikaDetector`,
+  and any scanner that checks for optional external tools before shelling out.
+- **Usage:**
+  ```csharp
+  string? nmapPath = PathResolver.Which("nmap");
+  if (nmapPath is not null)
+      // enrich with nmap NSE; else use NativeScannerTool result only
+  ```

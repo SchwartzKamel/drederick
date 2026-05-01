@@ -164,6 +164,14 @@
 - **Description:** `ExploitationPlanner` only scanned `out/poc_cache/nuclei` for filename token matches against `port.Product`. It ignored NSE script CVE IDs, the enriched `findings.kind='cve'` rows, and the `poc_refs` table populated by `PocAggregator` (which already pulls Metasploit module names and nuclei template paths per CVE). It also had no `msfrc` execution path.
 - **Resolution:** `ExploitationPlanner` now extracts CVE IDs from NSE script output (`port.Scripts[].Id` and `.Output`) and from `findings.db` (joined to host+service), then queries `poc_refs` for matching `nuclei` templates and `metasploit` modules. It emits `nuclei` (priority 500) and `msfrc` (priority 490) actions strictly above credential sprays (300/200). `AutopilotRunner` gained an `msfrc` branch that drives `MsfRcRunner` (module + whitelisted options, host-bearing values re-validated). Action IDs are now content-addressed so iteration dedup persists across re-plans.
 
+### GAP-016: External Binary Dependency Audit
+- **Exposed by:** architecture review 2026-05
+- **Severity:** medium
+- **Impact:** 15+ external binaries required for recon/analysis: `nmap` (port scan), `dig` (DNS queries and AXFR), `snmpwalk` (SNMP), `file`/`readelf`/`nm`/`strings`/`objdump` (binary analysis), `netexec` HTTP layer (HTTP credential spray), `which` (tool-presence checks). Absent tooling degraded enumeration coverage silently.
+- **Status:** resolved
+- **Description:** Drederick required external binary installation for core recon operations. Missing tools caused silent gaps in enumeration coverage without clear operator feedback. No .NET-native fallback existed for TCP port scanning, DNS resolution, SNMP, or binary analysis.
+- **Resolution:** `NativeScannerTool` (async TCP scanner + TLS/Redis probes, pure `System.Net.Sockets`, replaces nmap for basic port enumeration), `NativeDnsTool` (`DnsClient.NET`, replaces `dig` for A/AAAA/MX/NS/TXT/SOA/PTR), `DnsZoneTransferTool` rewritten (`DnsClient.NET` AXFR, replaces `dig axfr`), `SnmpTool` rewritten (`Lextm.SharpSnmpLib`, 7 communities / 3 OID subtrees, replaces `snmpwalk`), `ElfParser`/`PeParser`/`BinaryAnalyzer` (native byte parsing, replaces `file`/`readelf`/`nm`/`strings`/`objdump`, 46 new parser tests), `NativeHttpSprayTool` (pure-.NET HTTP spray: Basic/Digest/Tomcat/Jenkins/Grafana/WordPress/phpMyAdmin/OWA/WinRM, replaces `netexec` HTTP layer), `PathResolver.Which()` (PATH env scan, replaces `which` subprocesses). 10+ subprocess dependencies eliminated. External tools remain available as optional enrichment (NSE scripts, msfconsole, nuclei, hashcat).
+
 ---
 
 ## Statistics
@@ -172,9 +180,9 @@
 |----------|-------|------|-------------|----------|------------|
 | Critical | 3     | 1    | 0           | 0        | 2 workaround |
 | High     | 5     | 3    | 0           | 2        | |
-| Medium   | 5     | 5    | 0           | 0        | |
+| Medium   | 6     | 5    | 0           | 1        | |
 | Low      | 2     | 2    | 0           | 0        | |
-| **Total**| **15**| **11**| **0**      | **2**    | **2 workaround** |
+| **Total**| **16**| **11**| **0**      | **3**    | **2 workaround** |
 
 ---
 
@@ -184,3 +192,4 @@
 - **2026-04-30:** GAP-001 and GAP-002 → workaround (Copilot fills as human-in-the-loop; lame-2026-04-30-rematch WIN)
 - **2026-05-01:** New gaps from HTB JobTwo engagement (GAP-010 through GAP-014) — hard Windows box exposed enumeration and LLM runner gaps
 - **2026-05-01:** GAP-010 resolved — Copilot SDK native sidecar now packaged in publish/install/release; GAP-015 added and resolved — autopilot now CVE-driven (NSE + findings.db → nuclei/msfrc above sprays)
+- **2026-05:** GAP-016 added and resolved — NativeScannerTool, NativeDnsTool, SharpSNMP SnmpTool, native DnsZoneTransferTool, ElfParser/PeParser, NativeHttpSprayTool, PathResolver eliminate 10+ external subprocess dependencies

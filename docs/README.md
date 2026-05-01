@@ -3,7 +3,7 @@ title: Documentation index
 audience: [humans, agents]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ../README.md
   - ../AGENTS.md
@@ -11,6 +11,7 @@ related:
   - SCOPE_AND_LEGAL.md
   - DEVELOPING.md
   - MODULES.md
+  - SELF_SUFFICIENCY.md
   - DATASETTE.md
   - DB_SCHEMA.md
   - UI.md
@@ -81,6 +82,7 @@ related:
 | [`../SECURITY.md`](../SECURITY.md) | humans | Private security-bug reporting channel + disclosure posture. | human |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | humans | Release notes, breaking-change log. | human |
 | [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | humans | Community expectations for issues, PRs, discussions. | human |
+| [`SELF_SUFFICIENCY.md`](SELF_SUFFICIENCY.md) | operators + contributors | Native-first architecture: what's built in vs what stays external, zero-dep recon mode, NuGet packages. | both |
 
 <a id="by-role"></a>
 ## By role

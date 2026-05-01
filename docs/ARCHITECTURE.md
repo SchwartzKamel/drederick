@@ -3,7 +3,7 @@ title: Architecture
 audience: [humans, agents]
 primary: both
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - SCOPE_AND_LEGAL.md
   - MODULES.md
@@ -20,11 +20,13 @@ related:
 
 # Architecture
 
-> **TL;DR.** `CLI → Scope → Doctor → ReconToolbox (14 `IReconTool`s) →
+> **TL;DR.** `CLI → Scope → Doctor → ReconToolbox (17 `IReconTool`s;
+> `NativeScannerTool` preferred, `NmapTool` optional NSE enrichment) →
 > HostWorkerPool → Runner (AdaptiveRunner / MicrosoftAgentRunner /
 > HybridAgentRunner / AutopilotRunner) → Enrichment (NVD + multi-source PoC) →
-> ExploitToolbox (`ExploitRunner`, `MsfRcRunner`, `NucleiRunner`, `PasswordSprayTool`,
-> `MultiStageExploitRunner`) → Post-ex (`SessionManager`, `PostExLinux`,
+> ExploitToolbox (`ExploitRunner`, `MsfRcRunner`, `NucleiRunner`,
+> `NativeHttpSprayTool`, `PasswordSprayTool`, `MultiStageExploitRunner`) →
+> Post-ex (`SessionManager`, `PostExLinux`,
 > `PostExWindows`, `SessionPivotProber`, `FlagExtractor`) → Reporting (JSON /
 > Markdown / SqliteReport) + Memory (`memory/findings.json`) → Presentation
 > (Datasette / Avalonia `Drederick.UI` / browser `Drederick.Web` + SignalR)`.
@@ -69,11 +71,11 @@ flowchart TD
     CLI["CLI (Drederick.Cli)<br/>Options, help, flags"]
     Scope["Scope (default-deny)<br/>ScopeLoader → Scope<br/>lab: /8 v4, /32 v6 · strict: /16 v4, /48 v6"]
     Doctor["Doctor (preflight)<br/>optional; drederick doctor [--install]<br/>detects / installs operator tooling"]
-    Toolbox["ReconToolbox<br/>Audit (JSONL) · Budget · IReadOnlyList&lt;IReconTool&gt;<br/>─────<br/>NmapTool · HttpProbeTool · TlsProbeTool<br/>DnsProbeTool<br/>SmbTool · FtpTool · SshTool<br/>SnmpTool · LdapTool · RpcTool<br/>KerberosTool (SPN listing only)<br/>DnsZoneTransferTool (AXFR)<br/>HttpContentDiscoveryTool (path-only)<br/>TlsCipherEnumTool"]
+    Toolbox["ReconToolbox<br/>Audit (JSONL) · Budget · IReadOnlyList&lt;IReconTool&gt;<br/>─────<br/>NativeScannerTool (native) · NmapTool (optional NSE)<br/>NativeDnsTool (native) · DnsProbeTool<br/>HttpProbeTool · TlsProbeTool<br/>SmbTool · FtpTool · SshTool<br/>SnmpTool (native) · LdapTool · RpcTool<br/>KerberosTool (SPN listing only)<br/>DnsZoneTransferTool (native AXFR)<br/>HttpContentDiscoveryTool (path-only)<br/>TlsCipherEnumTool · BinaryAnalyzer"]
     Pool["HostWorkerPool<br/>bounded Channel&lt;…&gt;<br/>--host-concurrency<br/>--service-concurrency"]
     Runner["Runner<br/>AdaptiveRunner (deterministic)<br/>MicrosoftAgentRunner (LLM)"]
     Enrich["Enrichment<br/>CveAnnotator (NVD 2.0)<br/>PocAggregator (Searchsploit / GHSA / Metasploit / Nuclei)<br/>cached verbatim to out/poc_cache/"]
-    Exploit["ExploitToolbox<br/>ExploitRunner · MsfRcRunner · NucleiRunner<br/>PasswordSprayTool · MultiStageExploitRunner<br/>(scope-gated, per-category opt-in)"]
+    Exploit["ExploitToolbox<br/>ExploitRunner · MsfRcRunner · NucleiRunner<br/>NativeHttpSprayTool · PasswordSprayTool<br/>MultiStageExploitRunner<br/>(scope-gated, per-category opt-in)"]
     PostEx["Post-ex<br/>SessionManager · SessionPivotProber<br/>PostExLinux · PostExWindows · FlagExtractor"]
     Report["Reporting<br/>JsonReport · MarkdownReport<br/>ManualCommandsCheatsheet<br/>SqliteReport (findings.db)"]
     Present["Presentation / Memory<br/>drederick serve → Datasette<br/>Avalonia operator console (Drederick.UI)<br/>KnowledgeBase (memory/findings.json)"]
@@ -117,7 +119,7 @@ only. It never scans, modifies, or reaches out to any target.**
 
 ### `Drederick.Recon` {#layer-recon}
 
-Fourteen scanners, all implementing `IReconTool` (a metadata-only interface
+Seventeen scanners, all implementing `IReconTool` (a metadata-only interface
 carrying `Name` and `Description`). Call signatures remain typed per-scanner
 because recon surfaces are intentionally heterogeneous — nmap takes a port
 spec, http takes port + TLS, DNS-AXFR takes (domain, nameserver), etc. The
@@ -145,6 +147,19 @@ Every scanner:
 
 Port-spec argv is regex-validated (`RejectUnsafePortSpec`). Per-scanner
 documentation lives in [`MODULES.md`](./MODULES.md).
+
+**Native-first pipeline:** `NativeScannerTool` is the preferred port scanner —
+zero external dependencies, `SemaphoreSlim`-bounded async TCP with TLS and
+Redis probes. `NmapTool` remains the optional enrichment layer for NSE scripts
+and deep version detection. Dispatch order: `NativeScannerTool (preferred, no
+deps) → NmapTool (optional, NSE/version depth)`. Similarly, `NativeDnsTool`
+(`DnsClient.NET`) covers A/AAAA/MX/NS/TXT/SOA/PTR without `dig`, `SnmpTool`
+uses `Lextm.SharpSnmpLib` without `snmpwalk`, `DnsZoneTransferTool` performs
+AXFR via `DnsClient.NET` without `dig`, and `BinaryAnalyzer` parses ELF/PE
+natively without `file`/`readelf`/`nm`. NuGet dependencies added:
+`DnsClient` (DNS), `Lextm.SharpSnmpLib` (SNMP). See
+[`SELF_SUFFICIENCY.md`](./SELF_SUFFICIENCY.md) for the full native-vs-external
+table and zero-dep run instructions.
 
 ### `Drederick.Agent` — orchestration + worker pool {#layer-agent}
 
@@ -229,6 +244,11 @@ tool additionally gates on a `RunPermissions` category flag.
   (+ `--allow-payloads` when the module delivers one).
 - `NucleiRunner` — runs cached nuclei templates from the PoC cache against
   a target. Gate: `--allow-exec-pocs`.
+- `NativeHttpSprayTool` — pure-.NET HTTP credential spray: Basic, Digest,
+  Tomcat manager, Jenkins, Grafana, WordPress, phpMyAdmin, OWA, WinRM, with
+  auto-detect mode. Lockout-aware; attempted secrets are SHA-256'd before
+  any audit write. Replaces the `netexec` HTTP layer. Gate:
+  `--allow-cred-attacks` + `--acknowledge-lockout-risk`.
 - `PasswordSprayTool` — lockout-aware password spraying across
   SMB/WinRM/LDAP/SSH. Gates: `--allow-cred-attacks` **and**
   `--acknowledge-lockout-risk`. Attempted secrets are SHA-256'd before
@@ -262,6 +282,16 @@ Once a session opens, post-ex takes over. Full reference in
 - `FlagExtractor` — scoring judge for CTF knockouts. Scans loot + captured
   stdout for `flag{}` / `HTB{}` / `THM{}` / `picoCTF{}` / 32-hex patterns,
   deduped by SHA-256 of the match. Local-only — never validates remotely.
+
+### `Drederick.Ops` — operational utilities {#layer-ops}
+
+- `HtbRanges` — well-known HTB/THM CIDR ranges for rapid scope-building.
+- `VpnDetector` — detects active VPN interface + assigned IP (for `--lhost`
+  auto-fill).
+- `PathResolver` — `PathResolver.Which(name)` replaces all `which` subprocess
+  calls for tool-presence checks. Walks `PATH` environment variable entries;
+  no subprocess spawn. Used by `BinaryAnalyzer` and `MagikaDetector` for
+  optional-tool detection and by the native-tool checkers in `Doctor`.
 
 ### `Drederick.Jeopardy` — CTF solver subsystem {#layer-jeopardy}
 
@@ -355,5 +385,7 @@ Calls the same scope-enforced tools via `DrederickHost` (see
 - [`SCOPE_AND_LEGAL.md`](./SCOPE_AND_LEGAL.md) — the hard guarantees; changes
   that weaken any of them need discussion first.
 - [`MODULES.md`](./MODULES.md) — scanner-by-scanner contracts.
+- [`SELF_SUFFICIENCY.md`](./SELF_SUFFICIENCY.md) — native-first philosophy,
+  native vs external table, NuGet packages, zero-dep run instructions.
 - [`COMPARISON.md`](./COMPARISON.md) — Drederick vs AutoRecon / nmapAutomator
   / Reconnoitre.
