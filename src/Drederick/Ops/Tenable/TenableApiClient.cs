@@ -154,7 +154,12 @@ public sealed class TenableApiClient : IDisposable
         if (resp.IsSuccessStatusCode) return;
         string body = "";
         try { body = await resp.Content.ReadAsStringAsync(); }
-        catch { /* ignore */ }
+        catch
+        {
+            // Best-effort body capture for the error message; if the body itself
+            // can't be read (network reset, timeout) we still want to surface the
+            // HTTP status, so swallow the secondary read failure.
+        }
         throw new TenableApiException(
             $"Tenable API: {action} returned HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}. " +
             $"Body: {Truncate(body, 512)}");
