@@ -198,7 +198,7 @@ public class ProviderChatClientTests
     public void TryCreateFromProvider_Copilot_UsesAuthenticatedGitHubCliTokenAndOfficialSdkRunner()
     {
         var auditPath = NewAuditPath();
-        var ghDir = Path.Combine(Path.GetTempPath(), "drederick-gh-" + Guid.NewGuid().ToString("N"));
+        var ghDir = Path.Combine(AppContext.BaseDirectory, "drederick-gh-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(ghDir);
         var gh = Path.Combine(ghDir, OperatingSystem.IsWindows() ? "gh.cmd" : "gh");
         File.WriteAllText(gh, OperatingSystem.IsWindows()
@@ -238,6 +238,117 @@ public class ProviderChatClientTests
     }
 
     [Fact]
+    public void CopilotModelCompliance_SelectsHaikuFirst_WhenModelIsImplicit()
+    {
+        var models = new[]
+        {
+            Model("gpt-4o-mini"),
+            Model("claude-haiku-4.5"),
+            Model("claude-sonnet-4.5"),
+        };
+
+        var decision = CopilotModelCompliance.SelectModel(models, requestedModelId: null, explicitModel: false);
+
+        Assert.True(decision.Compliant);
+        Assert.Equal("claude-haiku-4.5", decision.SelectedModelId);
+        Assert.Equal("preferred:claude-haiku-4.5", decision.Reason);
+    }
+
+    [Fact]
+    public void CopilotModelCompliance_ExplicitUnavailableModel_Fails()
+    {
+        var models = new[]
+        {
+            Model("claude-haiku-4.5"),
+        };
+
+        var decision = CopilotModelCompliance.SelectModel(models, "not-real", explicitModel: true);
+
+        Assert.False(decision.Compliant);
+        Assert.Equal("model_unavailable", decision.Reason);
+        Assert.Null(decision.SelectedModelId);
+        Assert.Contains("not-real", CopilotModelCompliance.BuildFailureMessage(decision));
+    }
+
+    [Fact]
+    public void CopilotModelCompliance_ExplicitNonToolModel_Fails()
+    {
+        var models = new[]
+        {
+            Model("text-embedding-3-small"),
+            Model("claude-haiku-4.5"),
+        };
+
+        var decision = CopilotModelCompliance.SelectModel(models, "text-embedding-3-small", explicitModel: true);
+
+        Assert.False(decision.Compliant);
+        Assert.Equal("missing_tool_support_metadata", decision.Reason);
+        Assert.Null(decision.SelectedModelId);
+    }
+
+    [Fact]
+    public void CopilotModelCompliance_DisabledPolicy_FailsEvenForKnownToolModel()
+    {
+        var models = new[]
+        {
+            Model("claude-haiku-4.5", policyState: "disabled"),
+        };
+
+        var decision = CopilotModelCompliance.SelectModel(models, "claude-haiku-4.5", explicitModel: true);
+
+        Assert.False(decision.Compliant);
+        Assert.Equal("model_policy_not_enabled", decision.Reason);
+    }
+
+    [Fact]
+    public async Task CopilotModelCompliance_CachesModelList_PerToken()
+    {
+        CopilotModelCompliance.ClearCacheForTests();
+        try
+        {
+            var calls = 0;
+            Task<IList<ModelInfo>> Fetch(CancellationToken _)
+            {
+                calls++;
+                return Task.FromResult<IList<ModelInfo>>(new List<ModelInfo> { Model("claude-haiku-4.5") });
+            }
+
+            var first = await CopilotModelCompliance.GetModelsAsync("gho_token_a", Fetch, CancellationToken.None);
+            var second = await CopilotModelCompliance.GetModelsAsync("gho_token_a", Fetch, CancellationToken.None);
+            var third = await CopilotModelCompliance.GetModelsAsync("gho_token_b", Fetch, CancellationToken.None);
+
+            Assert.False(first.FromCache);
+            Assert.True(second.FromCache);
+            Assert.False(third.FromCache);
+            Assert.Equal(2, calls);
+        }
+        finally
+        {
+            CopilotModelCompliance.ClearCacheForTests();
+        }
+    }
+
+    [Fact]
+    public async Task CopilotModelCompliance_GetModelsAsync_HonorsCancellationBeforeFetch()
+    {
+        CopilotModelCompliance.ClearCacheForTests();
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var calls = 0;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            CopilotModelCompliance.GetModelsAsync(
+                "gho_token_cancel",
+                _ =>
+                {
+                    calls++;
+                    return Task.FromResult<IList<ModelInfo>>(new List<ModelInfo>());
+                },
+                cts.Token));
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
     public void CopilotSdkAgentRunner_Config_UsesOfficialSdkAndOnlyProvidedTools()
     {
         var auditPath = NewAuditPath();
@@ -253,13 +364,13 @@ public class ProviderChatClientTests
 
             var config = runner.CreateSessionConfig(new List<AIFunction> { function });
             Assert.Equal("claude-haiku-4.5", config.Model);
-            Assert.Single(config.Tools);
-            Assert.Equal("echo_test", Assert.Single(config.AvailableTools));
+            Assert.Single(config.Tools!);
+            Assert.Equal("echo_test", Assert.Single(config.AvailableTools!));
             Assert.NotNull(config.OnPermissionRequest);
-            Assert.Equal(SystemMessageMode.Append, config.SystemMessage.Mode);
+            Assert.Equal(SystemMessageMode.Append, config.SystemMessage!.Mode);
             Assert.Contains("Drederick", config.SystemMessage.Content);
             Assert.False(config.Streaming);
-            Assert.False(config.InfiniteSessions.Enabled);
+            Assert.False(config.InfiniteSessions!.Enabled);
         }
         finally
         {
@@ -348,4 +459,18 @@ public class ProviderChatClientTests
     {
         try { File.Delete(path); } catch { /* ignore */ }
     }
+
+    private static ModelInfo Model(string id, string? policyState = "enabled") => new()
+    {
+        Id = id,
+        Name = id,
+        Capabilities = new ModelCapabilities
+        {
+            Supports = new ModelSupports(),
+        },
+        Policy = new ModelPolicy
+        {
+            State = policyState ?? "",
+        },
+    };
 }

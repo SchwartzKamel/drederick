@@ -112,6 +112,28 @@ public class HybridAgentRunnerTests
     }
 
     [Fact]
+    public async Task LlmThrowsModelCompliance_Propagates_DeterministicNotCalled()
+    {
+        var (tools, kb, audit, path) = Build();
+        try
+        {
+            var llm = new StubRunner { Throw = new CopilotModelComplianceException("model lacks tool support") };
+            var det = new StubRunner();
+            var hybrid = new HybridAgentRunner(llm, det, audit);
+
+            await Assert.ThrowsAsync<CopilotModelComplianceException>(() =>
+                hybrid.RunAsync(new[] { "10.0.0.1" }, tools!, kb, CancellationToken.None));
+
+            Assert.Equal(1, llm.Calls);
+            Assert.Equal(0, det.Calls);
+            audit.Dispose();
+            var lines = File.ReadAllLines(path);
+            Assert.DoesNotContain(lines, l => l.Contains("\"hybrid.llm_fallback\""));
+        }
+        finally { audit.Dispose(); if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
     public async Task NullLlmInner_DeterministicCalledDirectly()
     {
         var (tools, kb, audit, path) = Build();

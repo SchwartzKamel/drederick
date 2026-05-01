@@ -20,6 +20,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
     private readonly AuditLog _audit;
     private readonly string _githubToken;
     private readonly string _modelId;
+    private readonly bool _modelWasExplicit;
     private readonly LlmExploitTools? _exploitTools;
 
     public string ModelId => _modelId;
@@ -28,7 +29,8 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         AuditLog audit,
         string githubToken,
         string modelId,
-        LlmExploitTools? exploitTools = null)
+        LlmExploitTools? exploitTools = null,
+        bool modelWasExplicit = true)
     {
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentException.ThrowIfNullOrWhiteSpace(githubToken);
@@ -37,11 +39,12 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         _audit = audit;
         _githubToken = githubToken;
         _modelId = modelId;
+        _modelWasExplicit = modelWasExplicit;
         _exploitTools = exploitTools;
     }
 
     public CopilotSdkAgentRunner WithExploitTools(LlmExploitTools exploitTools) =>
-        new(_audit, _githubToken, _modelId, exploitTools);
+        new(_audit, _githubToken, _modelId, exploitTools, _modelWasExplicit);
 
     public static CopilotSdkAgentRunner? TryCreateFromEnvironment(
         AuditLog audit,
@@ -59,8 +62,9 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
             ["source"] = source.ToString(),
         });
 
-        modelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId;
-        return new CopilotSdkAgentRunner(audit, token, modelId, exploitTools);
+        var explicitModel = !string.IsNullOrWhiteSpace(modelId);
+        modelId = explicitModel ? modelId!.Trim() : DefaultModelId;
+        return new CopilotSdkAgentRunner(audit, token, modelId, exploitTools, explicitModel);
     }
 
     public async Task RunAsync(
@@ -71,22 +75,38 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
     {
         var aiTools = LlmToolCatalog.BuildAiFunctions(tools, _exploitTools);
 
-        _audit.Record("runner.start", new Dictionary<string, object?>
-        {
-            ["runner"] = nameof(CopilotSdkAgentRunner),
-            ["model"] = _modelId,
-            ["targets"] = targets,
-            ["sdk"] = "GitHub.Copilot.SDK",
-            ["tool_count"] = aiTools.Count,
-        });
-
         await using var client = CreateClient();
         try
         {
             await client.StartAsync(ct).ConfigureAwait(false);
 
+            var modelSnapshot = await CopilotModelCompliance.GetModelsAsync(
+                _githubToken,
+                client.ListModelsAsync,
+                ct).ConfigureAwait(false);
+            var modelDecision = CopilotModelCompliance.SelectModel(
+                modelSnapshot.Models,
+                _modelId,
+                _modelWasExplicit);
+            AuditModelDecision(modelDecision, modelSnapshot);
+            if (!modelDecision.Compliant || string.IsNullOrWhiteSpace(modelDecision.SelectedModelId))
+            {
+                throw new CopilotModelComplianceException(CopilotModelCompliance.BuildFailureMessage(modelDecision));
+            }
+
+            _audit.Record("runner.start", new Dictionary<string, object?>
+            {
+                ["runner"] = nameof(CopilotSdkAgentRunner),
+                ["model"] = modelDecision.SelectedModelId,
+                ["requested_model"] = _modelId,
+                ["model_explicit"] = _modelWasExplicit,
+                ["targets"] = targets,
+                ["sdk"] = "GitHub.Copilot.SDK",
+                ["tool_count"] = aiTools.Count,
+            });
+
             await using var session = await client.CreateSessionAsync(
-                CreateSessionConfig(aiTools),
+                CreateSessionConfig(aiTools, modelDecision.SelectedModelId),
                 ct).ConfigureAwait(false);
 
             var response = await session.SendAndWaitAsync(
@@ -136,10 +156,13 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         Cwd = Directory.GetCurrentDirectory(),
     };
 
-    internal SessionConfig CreateSessionConfig(ICollection<AIFunction> aiTools) => new()
+    internal SessionConfig CreateSessionConfig(ICollection<AIFunction> aiTools) =>
+        CreateSessionConfig(aiTools, _modelId);
+
+    internal SessionConfig CreateSessionConfig(ICollection<AIFunction> aiTools, string modelId) => new()
     {
         ClientName = "drederick",
-        Model = _modelId,
+        Model = modelId,
         Tools = aiTools,
         AvailableTools = aiTools.Select(t => t.Name).ToArray(),
         OnPermissionRequest = PermissionHandler.ApproveAll,
@@ -153,4 +176,22 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
             Content = MicrosoftAgentRunner.BuildSystemPrompt(),
         },
     };
+
+    private void AuditModelDecision(CopilotModelDecision decision, CopilotModelListSnapshot snapshot)
+    {
+        _audit.Record(
+            decision.Compliant ? "copilot.sdk.model.selected" : "copilot.sdk.model.refused",
+            new Dictionary<string, object?>
+            {
+                ["runner"] = nameof(CopilotSdkAgentRunner),
+                ["requested_model"] = decision.RequestedModelId,
+                ["model_explicit"] = decision.ExplicitModel,
+                ["selected_model"] = decision.SelectedModelId,
+                ["compliant"] = decision.Compliant,
+                ["reason"] = decision.Reason,
+                ["available_model_count"] = snapshot.Models.Count,
+                ["compliant_model_count"] = decision.CompliantModelIds.Count,
+                ["model_cache"] = snapshot.FromCache ? "hit" : "miss",
+            });
+    }
 }
