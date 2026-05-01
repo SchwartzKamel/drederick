@@ -7,7 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="GitHub.Copilot.SDK" Version="0.3.0" />
+    <PackageReference Include="Lextm.SharpSnmpLib" Version="12.5.7" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0" />
     <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0" />
     <PackageReference Include="OpenAI" Version="2.9.1" />
@@ -15,18 +17,13 @@
     <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.0" />
   </ItemGroup>
 
-  <Target Name="_CopyCopilotCliToPublishDir"
-          AfterTargets="Publish"
-          DependsOnTargets="_DownloadCopilotCli"
-          Condition="'$(CopilotSkipCliDownload)' != 'true' And '$(_CopilotPlatform)' != '' And '$(PublishDir)' != ''">
+  <Target Name="_CopyCopilotCliToPublishDir" AfterTargets="Publish" DependsOnTargets="_DownloadCopilotCli" Condition="'$(CopilotSkipCliDownload)' != 'true' And '$(_CopilotPlatform)' != '' And '$(PublishDir)' != ''">
     <PropertyGroup>
       <_DrederickCopilotCacheDir>$(IntermediateOutputPath)copilot-cli\$(CopilotCliVersion)\$(_CopilotPlatform)</_DrederickCopilotCacheDir>
       <_DrederickCopilotCliBinaryPath>$(_DrederickCopilotCacheDir)\$(_CopilotBinary)</_DrederickCopilotCliBinaryPath>
       <_DrederickCopilotPublishDir>$(PublishDir)runtimes\$(_CopilotRid)\native</_DrederickCopilotPublishDir>
     </PropertyGroup>
     <MakeDir Directories="$(_DrederickCopilotPublishDir)" />
-    <Copy SourceFiles="$(_DrederickCopilotCliBinaryPath)"
-          DestinationFolder="$(_DrederickCopilotPublishDir)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(_DrederickCopilotCliBinaryPath)" DestinationFolder="$(_DrederickCopilotPublishDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

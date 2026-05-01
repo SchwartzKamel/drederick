@@ -1,29 +1,24 @@
+using System.Net;
 using Drederick.Audit;
-using Drederick.Doctor;
 using Drederick.Scope;
+using DnsClient;
+using DnsClient.Protocol;
 
 namespace Drederick.Recon;
 
 /// <summary>
-/// Attempts a DNS zone transfer (AXFR) for a domain against a named nameserver.
-/// Shells out to the <c>dig</c> binary; no record-type bruteforcing, no
-/// subdomain enumeration, no recursive NS chasing — this is a single AXFR
-/// attempt per call.
+/// Attempts a DNS zone transfer (AXFR) for a domain against a named nameserver
+/// using DnsClient.NET — no external <c>dig</c> binary required.
 ///
-/// Scope semantics (there is genuine ambiguity here — AXFR has *two* targets:
-/// the domain being asked about, and the nameserver being asked). We resolve
-/// the ambiguity as follows:
-///   * The caller MUST pass an explicit nameserver (an IP literal). The tool
-///     calls <see cref="Scope.Scope.Require"/> on that IP. The scope enforcer
-///     only understands IP addresses, so an IP literal is the only thing it
-///     can meaningfully validate.
+/// Scope semantics: AXFR has two targets — the domain being asked about, and the
+/// nameserver being asked. We resolve the ambiguity as follows:
+///   * The caller MUST pass an explicit nameserver IP literal. The tool calls
+///     <see cref="Scope.Scope.Require"/> on that IP. The scope enforcer only
+///     understands IP addresses, so an IP literal is the only thing it can
+///     meaningfully validate.
 ///   * If the caller does NOT pass a nameserver, we refuse with a
-///     <see cref="ScopeException"/>. Letting <c>dig</c> "pick" the NS would
-///     send the AXFR to whichever authoritative server the recursive resolver
-///     returns, which we cannot scope-check in advance — that's precisely the
-///     kind of "route around the scope" that <see cref="IReconTool"/>
-///     forbids. The caller is expected to run <c>dns</c> or <c>nmap</c> on
-///     candidate NS hosts inside scope first, then pass one explicitly here.
+///     <see cref="ScopeException"/>. Letting the resolver pick the NS would send
+///     the AXFR to an address we cannot scope-check in advance.
 /// The <c>domain</c> argument is not itself scope-checked because domains are
 /// not IPs; the gate is the nameserver IP that will actually receive traffic.
 /// </summary>
@@ -34,28 +29,26 @@ public sealed class DnsZoneTransferTool : IReconTool
     public string Description =>
         "Attempt a DNS zone transfer (AXFR) for a domain against an in-scope nameserver IP. " +
         "Returns the parsed record list on success, or the refusal reason on failure. " +
-        "The nameserver MUST be an IP literal inside the authorized scope.";
+        "The nameserver MUST be an IP literal inside the authorized scope. " +
+        "Uses native DnsClient.NET — no external dig binary required.";
 
-    private const int TimeoutSeconds = 10;
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
 
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
-    private readonly string _digPath;
-    private readonly IProcessRunner _runner;
+    private readonly IAxfrProvider _provider;
 
     public DnsZoneTransferTool(
         Scope.Scope scope,
         AuditLog audit,
-        string? digPath = null,
-        IProcessRunner? runner = null)
+        IAxfrProvider? provider = null)
     {
         _scope = scope;
         _audit = audit;
-        _digPath = digPath ?? "dig";
-        _runner = runner ?? new DefaultProcessRunner();
+        _provider = provider ?? new DnsClientAxfrProvider();
     }
 
-    public Task<DnsZoneTransferResult> ProbeAsync(
+    public async Task<DnsZoneTransferResult> ProbeAsync(
         string domain,
         string? nameserver = null,
         CancellationToken ct = default)
@@ -81,19 +74,10 @@ public sealed class DnsZoneTransferTool : IReconTool
             NameServer = nameserver,
         };
 
-        var arguments = $"AXFR {domain} @{nameserver} +time=5 +tries=1";
-
-        int exit;
-        string stdout;
-        string stderr;
-        try
-        {
-            (exit, stdout, stderr) = _runner.Run(_digPath, arguments, TimeoutSeconds);
-        }
-        catch (TimeoutException ex)
+        if (!IPAddress.TryParse(nameserver, out var nsAddr))
         {
             result.Success = false;
-            result.Error = "timeout: " + ex.Message;
+            result.Error = $"nameserver '{nameserver}' is not a valid IP address";
             _audit.Record("dns-axfr.finish", new Dictionary<string, object?>
             {
                 ["domain"] = domain,
@@ -101,49 +85,21 @@ public sealed class DnsZoneTransferTool : IReconTool
                 ["success"] = false,
                 ["error"] = result.Error,
             });
-            return Task.FromResult(result);
-        }
-        catch (Exception ex)
-        {
-            result.Success = false;
-            result.Error = $"dig failed to start: {ex.Message}";
-            _audit.Record("dns-axfr.finish", new Dictionary<string, object?>
-            {
-                ["domain"] = domain,
-                ["nameserver"] = nameserver,
-                ["success"] = false,
-                ["error"] = result.Error,
-            });
-            return Task.FromResult(result);
+            return result;
         }
 
-        if (exit == -1)
+        var outcome = await _provider.QueryAsync(domain, nsAddr, DefaultTimeout, ct)
+            .ConfigureAwait(false);
+
+        if (outcome.Success)
         {
-            result.Success = false;
-            result.Error = string.IsNullOrWhiteSpace(stderr)
-                ? "dig binary not available (exit -1)"
-                : Tail(stderr, 500);
-        }
-        else if (LooksRefused(stdout, stderr))
-        {
-            result.Success = false;
-            result.Error = ExtractRefusal(stdout, stderr);
+            result.Success = true;
+            result.Records.AddRange(outcome.Records);
         }
         else
         {
-            var records = ParseRecords(stdout).ToList();
-            if (records.Count == 0)
-            {
-                result.Success = false;
-                result.Error = exit != 0
-                    ? $"dig exit {exit}: {Tail(stderr, 300)}"
-                    : "no records returned";
-            }
-            else
-            {
-                result.Success = true;
-                result.Records.AddRange(records);
-            }
+            result.Success = false;
+            result.Error = outcome.Error ?? "zone transfer failed";
         }
 
         _audit.Record("dns-axfr.finish", new Dictionary<string, object?>
@@ -154,51 +110,113 @@ public sealed class DnsZoneTransferTool : IReconTool
             ["record_count"] = result.Records.Count,
             ["error"] = result.Error,
         });
-        return Task.FromResult(result);
+        return result;
     }
+}
 
-    private static bool LooksRefused(string stdout, string stderr)
-    {
-        var haystack = stdout + "\n" + stderr;
-        return haystack.Contains("Transfer failed", StringComparison.OrdinalIgnoreCase)
-            || haystack.Contains("REFUSED", StringComparison.Ordinal)
-            || haystack.Contains("communications error", StringComparison.OrdinalIgnoreCase)
-            || haystack.Contains("connection refused", StringComparison.OrdinalIgnoreCase);
-    }
+/// <summary>
+/// Result of an AXFR query attempt (returned by <see cref="IAxfrProvider"/>).
+/// </summary>
+public sealed class AxfrOutcome
+{
+    public bool Success { get; init; }
+    public bool Refused { get; init; }
+    public IReadOnlyList<string> Records { get; init; } = Array.Empty<string>();
+    public string? Error { get; init; }
+}
 
-    private static string ExtractRefusal(string stdout, string stderr)
+/// <summary>
+/// Abstraction over DNS zone-transfer (AXFR) execution. Injectable for testing;
+/// production uses <see cref="DnsClientAxfrProvider"/>.
+/// </summary>
+public interface IAxfrProvider
+{
+    Task<AxfrOutcome> QueryAsync(
+        string zone,
+        IPAddress nameserver,
+        TimeSpan timeout,
+        CancellationToken ct);
+}
+
+/// <summary>
+/// Default AXFR provider: uses DnsClient.NET directly, no external binaries.
+/// AXFR requires TCP — <c>UseTcpOnly</c> is set on the lookup client.
+/// </summary>
+internal sealed class DnsClientAxfrProvider : IAxfrProvider
+{
+    public async Task<AxfrOutcome> QueryAsync(
+        string zone,
+        IPAddress nameserver,
+        TimeSpan timeout,
+        CancellationToken ct)
     {
-        foreach (var raw in (stdout + "\n" + stderr).Split('\n'))
+        var opts = new LookupClientOptions(new IPEndPoint(nameserver, 53))
         {
-            var line = raw.Trim();
-            if (line.Length == 0) continue;
-            if (line.Contains("Transfer failed", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("REFUSED", StringComparison.Ordinal) ||
-                line.Contains("communications error", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("connection refused", StringComparison.OrdinalIgnoreCase))
+            UseCache = false,
+            Recursion = false,
+            Timeout = timeout,
+            UseTcpOnly = true,
+        };
+        var client = new LookupClient(opts);
+
+        try
+        {
+            var response = await client.QueryAsync(zone, QueryType.AXFR, QueryClass.IN, ct)
+                .ConfigureAwait(false);
+
+            var records = response.Answers
+                .Select(DnsRecordFormatter.Format)
+                .Where(s => s is not null)
+                .Cast<string>()
+                .ToList();
+
+            if (records.Count == 0)
+                return new AxfrOutcome { Success = false, Error = "no records returned" };
+
+            return new AxfrOutcome { Success = true, Records = records };
+        }
+        catch (DnsResponseException ex)
+            when (ex.Code == DnsResponseCode.Refused || ex.Code == DnsResponseCode.NotAuthorized)
+        {
+            return new AxfrOutcome
             {
-                return line;
-            }
+                Refused = true,
+                Error = $"zone transfer refused ({ex.Code})",
+            };
         }
-        return "zone transfer refused";
-    }
-
-    private static IEnumerable<string> ParseRecords(string stdout)
-    {
-        if (string.IsNullOrWhiteSpace(stdout)) yield break;
-        foreach (var raw in stdout.Split('\n'))
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
         {
-            var line = raw.TrimEnd('\r');
-            if (line.Length == 0) continue;
-            // dig prefixes comments with ';' (including ';;' diagnostic lines).
-            if (line.TrimStart().StartsWith(';')) continue;
-            // A valid RR line has at least: owner TTL CLASS TYPE RDATA (>=5 whitespace-
-            // separated fields). Reject anything shorter to skip stray output.
-            var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 5) continue;
-            yield return line.Trim();
+            return new AxfrOutcome { Error = ex.Message };
         }
     }
+}
 
-    private static string Tail(string s, int max) => s.Length <= max ? s : s[^max..];
+/// <summary>Formats DnsClient resource records as zone-file-style strings.</summary>
+internal static class DnsRecordFormatter
+{
+    public static string? Format(DnsResourceRecord record)
+    {
+        var owner = record.DomainName.ToString();
+        var ttl = record.TimeToLive;
+        var cls = "IN";
+        var type = record.RecordType.ToString().ToUpperInvariant();
+
+        var rdata = record switch
+        {
+            ARecord a => a.Address.ToString(),
+            AaaaRecord aaaa => aaaa.Address.ToString(),
+            MxRecord mx => $"{mx.Preference} {mx.Exchange}",
+            NsRecord ns => ns.NSDName.ToString(),
+            SoaRecord soa =>
+                $"{soa.MName} {soa.RName} {soa.Serial} {soa.Refresh} {soa.Retry} {soa.Expire} {soa.Minimum}",
+            TxtRecord txt => string.Join(" ", txt.Text.Select(t => $"\"{t}\"")),
+            CNameRecord cn => cn.CanonicalName.ToString(),
+            PtrRecord ptr => ptr.PtrDomainName.ToString(),
+            _ => null,
+        };
+
+        if (rdata is null) return null;
+        return $"{owner}\t{ttl}\t{cls}\t{type}\t{rdata}";
+    }
 }

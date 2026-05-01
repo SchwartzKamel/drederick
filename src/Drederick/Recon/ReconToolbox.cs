@@ -27,6 +27,8 @@ public sealed class ReconToolbox
     private readonly DnsZoneTransferTool? _dnsAxfr;
     private readonly HttpContentDiscoveryTool? _httpContentDiscovery;
     private readonly TlsCipherEnumTool? _tlsCipherEnum;
+    private readonly NativeScannerTool? _nativeScanner;
+    private readonly NativeDnsTool? _nativeDns;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -68,6 +70,8 @@ public sealed class ReconToolbox
         _dnsAxfr = materialized.OfType<DnsZoneTransferTool>().SingleOrDefault();
         _httpContentDiscovery = materialized.OfType<HttpContentDiscoveryTool>().SingleOrDefault();
         _tlsCipherEnum = materialized.OfType<TlsCipherEnumTool>().SingleOrDefault();
+        _nativeScanner = materialized.OfType<NativeScannerTool>().SingleOrDefault();
+        _nativeDns = materialized.OfType<NativeDnsTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -245,9 +249,10 @@ public sealed class ReconToolbox
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
 
-    [Description("Probe SNMP (UDP 161) by walking a small set of system OIDs against the 'public' " +
-                 "community using snmpwalk. Read-only and capped in output size. Does not attempt " +
-                 "community brute force.")]
+    [Description("Native SNMP v1/v2c enumeration: system info, process list, installed software walk " +
+                 "without external snmpwalk dependency. Tries common read communities (public, private, " +
+                 "community, manager, snmp, secret, cisco) and walks the system MIB, hrSWRun, and " +
+                 "hrSWInstalled subtrees. Read-only.")]
     public async Task<string> SnmpProbeAsync(
         [Description("Target IP address (must be in scope).")] string target,
         [Description("UDP port number (1-65535).")] int port,
@@ -366,6 +371,45 @@ public sealed class ReconToolbox
         GetOrCreate(target).TlsCipherEnum.Add(r);
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
+
+    [Description("Fast native TCP port scanner with banner grabbing. " +
+                 "Use when nmap is unavailable or for initial quick sweep. " +
+                 "Returns a JSON summary of open TCP ports with detected services. " +
+                 "The target MUST be inside the authorized scope.")]
+    public async Task<string> ScanNativeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Optional comma-separated port list, e.g. '80,443,22'. Omit for built-in top-port list.")] string? ports,
+        CancellationToken ct = default)
+    {
+        var tool = _nativeScanner ?? throw new InvalidOperationException("NativeScannerTool is not registered.");
+        int[]? portList = null;
+        if (!string.IsNullOrWhiteSpace(ports))
+        {
+            portList = ports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(int.Parse)
+                .ToArray();
+        }
+        Charge(target, "nativescan");
+        var hf = await tool.ScanAsync(target, portList, ct: ct).ConfigureAwait(false);
+        GetOrCreate(target).NativeScan = hf.NativeScan;
+        return System.Text.Json.JsonSerializer.Serialize(hf.NativeScan);
+    }
+
+    [Description("Native DNS recon: resolves A/AAAA/MX/NS/TXT/SOA records and attempts AXFR zone " +
+                 "transfers without external dig dependency. Target must be an in-scope IP address. " +
+                 "queryType: 'ALL' (default), 'A', 'AAAA', 'MX', 'NS', 'TXT', 'SOA', 'PTR', 'AXFR'.")]
+    public async Task<string> NativeDnsQueryAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Record type: ALL, A, AAAA, MX, NS, TXT, SOA, PTR, or AXFR. Defaults to ALL.")] string queryType = "ALL",
+        CancellationToken ct = default)
+    {
+        var tool = _nativeDns ?? throw new InvalidOperationException("NativeDnsTool is not registered.");
+        Charge(target, "dns-native");
+        var r = await tool.QueryAsync(target, queryType, ct).ConfigureAwait(false);
+        GetOrCreate(target).NativeDns.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
 
     private static void ValidatePort(int port)
     {

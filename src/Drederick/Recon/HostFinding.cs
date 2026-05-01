@@ -19,9 +19,11 @@ public sealed class HostFinding
     [JsonPropertyName("rpc")] public List<RpcResult> Rpc { get; set; } = new();
     [JsonPropertyName("kerberos")] public List<KerberosResult> Kerberos { get; set; } = new();
     [JsonPropertyName("dns_zone_transfer")] public List<DnsZoneTransferResult> DnsZoneTransfer { get; set; } = new();
+    [JsonPropertyName("native_dns")] public List<NativeDnsResult> NativeDns { get; set; } = new();
     [JsonPropertyName("http_content_discovery")] public List<HttpContentDiscoveryResult> HttpContentDiscovery { get; set; } = new();
     [JsonPropertyName("tls_cipher_enum")] public List<TlsCipherEnumResult> TlsCipherEnum { get; set; } = new();
     [JsonPropertyName("empire_module_results")] public List<EmpireModuleResultRecord>? EmpireModuleResults { get; set; }
+    [JsonPropertyName("native_scan")] public NativeScanResult? NativeScan { get; set; }
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
 }
 
@@ -200,4 +202,24 @@ public sealed class EmpireModuleResultRecord
     [JsonPropertyName("output")] public string? Output { get; set; }
     [JsonPropertyName("executed_at")] public string? ExecutedAt { get; set; }
     [JsonPropertyName("success")] public bool Success { get; set; }
+}
+
+public sealed class NativeDnsResult
+{
+    [JsonPropertyName("target")] public string Target { get; set; } = "";
+    [JsonPropertyName("query_type")] public string QueryType { get; set; } = "";
+    [JsonPropertyName("records")] public Dictionary<string, List<string>> Records { get; set; } = new();
+    [JsonPropertyName("axfr_attempted")] public bool AxfrAttempted { get; set; }
+    [JsonPropertyName("axfr_success")] public bool AxfrSuccess { get; set; }
+    [JsonPropertyName("axfr_records")] public List<string> AxfrRecords { get; set; } = new();
+    [JsonPropertyName("axfr_error")] public string? AxfrError { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class NativeScanResult
+{
+    [JsonPropertyName("source")] public string Source { get; set; } = "nativescan";
+    [JsonPropertyName("started")] public string? Started { get; set; }
+    [JsonPropertyName("finished")] public string? Finished { get; set; }
+    [JsonPropertyName("open_ports")] public List<NmapPort> OpenPorts { get; set; } = new();
 }
