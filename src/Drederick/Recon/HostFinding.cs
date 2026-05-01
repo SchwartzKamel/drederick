@@ -208,6 +208,63 @@ public sealed class DelegationPrincipal
     [JsonPropertyName("severity")] public string Severity { get; set; } = "yellow";
 }
 
+/// <summary>
+/// Result of an Active Directory Certificate Services (AD CS)
+/// vulnerability sweep. Two buckets:
+/// <list type="bullet">
+///   <item><see cref="VulnerableTemplates"/> — templates that match
+///   the ESC1 pattern (low-priv enroll + ENROLLEE_SUPPLIES_SUBJECT +
+///   client-auth or smart-card-logon EKU). Severity is <c>red</c>
+///   when all three conditions match; <c>yellow</c> when only two
+///   match.</item>
+///   <item><see cref="EnrollmentServices"/> — AD CS Enrollment
+///   Services entries (CA hosts). Surfaces <c>dnsHostName</c> + flag
+///   bits so a planner can target NTLM relay for ESC8.</item>
+/// </list>
+/// Read-only LDAP; no enrollment, no template modification.
+/// </summary>
+public sealed class CertVulnerabilityEnumResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("realm")] public string? Realm { get; set; }
+    [JsonPropertyName("config_naming_context")] public string? ConfigNamingContext { get; set; }
+    [JsonPropertyName("authenticated")] public bool Authenticated { get; set; }
+    [JsonPropertyName("vulnerable_templates")] public List<CertTemplateFinding> VulnerableTemplates { get; set; } = new();
+    [JsonPropertyName("enrollment_services")] public List<CertEnrollmentServiceFinding> EnrollmentServices { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class CertTemplateFinding
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("dn")] public string DistinguishedName { get; set; } = "";
+    [JsonPropertyName("schema_version")] public int SchemaVersion { get; set; }
+    [JsonPropertyName("name_flag")] public long NameFlag { get; set; }
+    [JsonPropertyName("enrollment_flag")] public long EnrollmentFlag { get; set; }
+    [JsonPropertyName("enrollee_supplies_subject")] public bool EnrolleeSuppliesSubject { get; set; }
+    [JsonPropertyName("requires_manager_approval")] public bool RequiresManagerApproval { get; set; }
+    /// <summary>True when the template's EKU set contains any of
+    /// Client Authentication (1.3.6.1.5.5.7.3.2), Smart Card Logon
+    /// (1.3.6.1.4.1.311.20.2.2), PKINIT Client Authentication
+    /// (1.3.6.1.5.2.3.4), or Any Purpose (2.5.29.37.0).</summary>
+    [JsonPropertyName("client_auth_eku")] public bool ClientAuthEku { get; set; }
+    [JsonPropertyName("ekus")] public List<string> Ekus { get; set; } = new();
+    [JsonPropertyName("matches")] public List<string> Matches { get; set; } = new();
+    [JsonPropertyName("severity")] public string Severity { get; set; } = "yellow";
+    [JsonPropertyName("hint")] public string Hint { get; set; } = "";
+}
+
+public sealed class CertEnrollmentServiceFinding
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("dn")] public string DistinguishedName { get; set; } = "";
+    [JsonPropertyName("dns_host_name")] public string? DnsHostName { get; set; }
+    /// <summary>List of template names this CA publishes.</summary>
+    [JsonPropertyName("templates")] public List<string> Templates { get; set; } = new();
+    [JsonPropertyName("hint")] public string Hint { get; set; } = "";
+    [JsonPropertyName("severity")] public string Severity { get; set; } = "yellow";
+}
+
 public sealed class DnsZoneTransferResult
 {
     [JsonPropertyName("domain")] public string Domain { get; set; } = "";
