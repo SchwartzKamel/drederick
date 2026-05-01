@@ -308,3 +308,43 @@ public sealed class EmpireModuleResultRecord
     [JsonPropertyName("executed_at")] public string? ExecutedAt { get; set; }
     [JsonPropertyName("success")] public bool Success { get; set; }
 }
+
+
+/// <summary>
+/// Result of an AD DCSync rights enumeration sweep. The tool reads the
+/// <c>nTSecurityDescriptor</c> of the domain root NC object and locates
+/// <c>ACCESS_ALLOWED_OBJECT_ACE</c> entries whose
+/// <c>ObjectType</c> GUID matches one of the three DS-Replication
+/// rights:
+/// <list type="bullet">
+///   <item><c>DS-Replication-Get-Changes</c> (1131f6aa-...)</item>
+///   <item><c>DS-Replication-Get-Changes-All</c> (1131f6ab-...)</item>
+///   <item><c>DS-Replication-Get-Changes-In-Filtered-Set</c> (89e95b76-...)</item>
+/// </list>
+/// Principals whose SIDs are well-known legitimate holders (Domain
+/// Controllers, Domain Admins, Enterprise Admins, Schema Admins, KRBTGT,
+/// SYSTEM, BUILTIN\Administrators) are silently filtered into
+/// <see cref="KnownLegitimate"/> so the operator can audit completeness.
+/// Unexpected holders appear in <see cref="SuspiciousPrincipals"/> with
+/// severity <c>red</c>.
+/// </summary>
+public sealed class DcSyncRightsResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("realm")] public string? Realm { get; set; }
+    [JsonPropertyName("base_dn")] public string? BaseDn { get; set; }
+    [JsonPropertyName("authenticated")] public bool Authenticated { get; set; }
+    [JsonPropertyName("suspicious_principals")]
+    public List<DcSyncPrincipal> SuspiciousPrincipals { get; set; } = new();
+    [JsonPropertyName("known_legitimate")]
+    public List<DcSyncPrincipal> KnownLegitimate { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class DcSyncPrincipal
+{
+    [JsonPropertyName("sid")] public string Sid { get; set; } = "";
+    [JsonPropertyName("rights")] public List<string> Rights { get; set; } = new();
+    [JsonPropertyName("severity")] public string Severity { get; set; } = "red";
+    [JsonPropertyName("hint")] public string Hint { get; set; } = "";
+}
