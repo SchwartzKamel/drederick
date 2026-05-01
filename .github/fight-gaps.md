@@ -213,17 +213,59 @@
   - Self-tuning: `planner-self-tune`, `fingerprint-grow`, `archetype-playbook`, `tool-forge`.
 - **Tracking:** todos `fight-telemetry`, `fight-corpus-loader`, `fight-corpus-writer`, `fight-archetype`, `fight-review`, `planner-self-tune`, `fingerprint-grow`, `archetype-playbook`, `tool-forge`.
 
+### GAP-020: Multi-Choice Response Parsing (Copilot API)
+- **Exposed by:** jobtwo-2026-05-01-rematch
+- **Severity:** critical
+- **Impact:** Copilot API returns tool_calls in separate choices (choice 0 = text, choices 1+ = individual tool_calls). ParseResponse only read choices[0], missing all tool calls.
+- **Status:** ✅ resolved
+- **Resolution:** Iterate ALL choices in ParseResponse(), merging text + tool_calls into single ChatMessage. Prefer tool_calls finish_reason over stop.
+
+### GAP-021: Copilot SDK SendAndWaitAsync Hang
+- **Exposed by:** jobtwo-2026-05-01-rematch
+- **Severity:** critical
+- **Impact:** SDK 0.3.0 SendAndWaitAsync hangs indefinitely — authenticates OK but never receives response.
+- **Status:** ✅ resolved (bypassed)
+- **Resolution:** Bypass SDK entirely. Route LlmProvider.Copilot to AzureOpenAiChatClient in copilotMode (direct HTTP to api.githubcopilot.com).
+
+### GAP-022: Nmap Exploit NSE Script Timeout
+- **Exposed by:** jobtwo-2026-05-01-rematch
+- **Severity:** high
+- **Impact:** LLM requests nmap with `--script exploit` which runs 30-60+ minutes on Windows hosts with many ports, blocking all other probes.
+- **Status:** ✅ resolved
+- **Resolution:** Removed `exploit` NSE category from NmapTool.BuildNseCategories(). Added `--host-timeout 300` to cap per-host runtime at 5 minutes.
+
+### GAP-023: Sequential Tool Execution Bottleneck
+- **Exposed by:** jobtwo-2026-05-01-rematch
+- **Severity:** medium
+- **Impact:** FunctionInvokingChatClient processes tools sequentially. Network-bound probes (nmap, http, smb) should run in parallel.
+- **Status:** ⚠️ blocked
+- **Resolution notes:** AllowConcurrentInvocation=true causes Claude via Copilot to reject conversation (strict tool_use→tool_result ordering). Needs custom parallel execution with ordered result assembly.
+
+### GAP-024: Multi-Result Tool Serialization
+- **Exposed by:** jobtwo-2026-05-01-R4
+- **Severity:** critical
+- **Impact:** BuildRequestBody only serialized first FunctionResultContent per ChatMessage. When FunctionInvokingChatClient batches 9 tool results in one message, 8 results were dropped. Claude rejected with "tool_use ids without tool_result blocks".
+- **Status:** ✅ resolved
+- **Resolution:** BuildRequestBody now expands ChatMessages with multiple FunctionResultContent into separate "role":"tool" messages.
+
+### GAP-025: LLM Stops After Enumeration
+- **Exposed by:** jobtwo-2026-05-01-R4
+- **Severity:** high
+- **Impact:** After completing enumeration (4 LLM calls, 21 tools), the LLM chose finish_reason=stop and generated a report instead of requesting exploitation tools (nuclei, msf-rc, cred attacks). The system prompt may need stronger guidance to attempt exploitation in lab/CTF mode.
+- **Status:** open
+- **Resolution plan:** Review system prompt to emphasize exploitation phase. Ensure exploit tools are clearly described and available. Consider adding "exploitation required" directive in lab mode.
+
 ---
 
 ## Statistics
 
 | Severity | Total | Open | In Progress | Resolved | Workaround | Planned |
 |----------|-------|------|-------------|----------|------------|---------|
-| Critical | 4     | 1    | 0           | 0        | 2 workaround | 1     |
-| High     | 6     | 3    | 0           | 2        |            | 1       |
-| Medium   | 7     | 5    | 0           | 1        |            | 1       |
+| Critical | 7     | 1    | 0           | 3        | 2 workaround | 1     |
+| High     | 8     | 4    | 0           | 3        |            | 1       |
+| Medium   | 8     | 5    | 1 blocked   | 1        |            | 1       |
 | Low      | 2     | 2    | 0           | 0        |            | 0       |
-| **Total**| **19**| **11**| **0**      | **3**    | **2 workaround** | **3** |
+| **Total**| **25**| **12**| **1**      | **7**    | **2 workaround** | **3** |
 
 ---
 
@@ -235,3 +277,4 @@
 - **2026-05-01:** GAP-010 resolved — Copilot SDK native sidecar now packaged in publish/install/release; GAP-015 added and resolved — autopilot now CVE-driven (NSE + findings.db → nuclei/msfrc above sprays)
 - **2026-05:** GAP-016 added and resolved — NativeScannerTool, NativeDnsTool, SharpSNMP SnmpTool, native DnsZoneTransferTool, ElfParser/PeParser, NativeHttpSprayTool, PathResolver eliminate 10+ external subprocess dependencies
 - **2026-05-01:** Added GAP-017 (plugin ecosystem hybridization), GAP-018 (Drederick-original signature capabilities), GAP-019 (self-improving feedback loop / training arc) — all planned.
+- **2026-05-01:** GAP-020→024 resolved — multi-choice parsing, SDK bypass, nmap timeout, multi-result serialization. GAP-023 blocked (Claude ordering). GAP-025 added (LLM won't exploit).
