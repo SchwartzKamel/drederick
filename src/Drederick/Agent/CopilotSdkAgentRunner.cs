@@ -109,9 +109,18 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
                 CreateSessionConfig(aiTools, modelDecision.SelectedModelId),
                 ct).ConfigureAwait(false);
 
+            var prompt = MicrosoftAgentRunner.BuildUserMessage(targets, prior);
+            _audit.Record("copilot.sdk.sending", new Dictionary<string, object?>
+            {
+                ["prompt_len"] = prompt.Length,
+                ["model"] = modelDecision.SelectedModelId,
+                ["streaming"] = true,
+                ["idle_timeout_s"] = 600,
+            });
+
             var response = await session.SendAndWaitAsync(
-                new MessageOptions { Prompt = MicrosoftAgentRunner.BuildUserMessage(targets, prior) },
-                timeout: TimeSpan.FromMinutes(10),
+                new MessageOptions { Prompt = prompt },
+                timeout: TimeSpan.FromMinutes(15),
                 ct).ConfigureAwait(false);
 
             var text = response?.Data?.Content;
@@ -167,7 +176,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         AvailableTools = aiTools.Select(t => t.Name).ToArray(),
         OnPermissionRequest = PermissionHandler.ApproveAll,
         WorkingDirectory = Directory.GetCurrentDirectory(),
-        Streaming = false,
+        Streaming = true,
         InfiniteSessions = new InfiniteSessionConfig { Enabled = false },
         GitHubToken = _githubToken,
         SystemMessage = new SystemMessageConfig
