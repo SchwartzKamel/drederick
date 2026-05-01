@@ -34,6 +34,7 @@ from the CLI's error messages, other docs, and issues stay valid.
 | `--agent` runner errors / timeouts | [llm-runner](#llm-runner) |
 | Copilot model unavailable / not tool-call compliant | [llm-runner](#llm-runner) (item 2) |
 | `--agent=hybrid` unexpectedly fell back to deterministic | [llm-runner](#llm-runner) (item 8) |
+| `Copilot CLI not found at .../runtimes/<rid>/native/copilot` | [llm-runner](#llm-runner) (item 9) |
 | PoC cache empty despite CVEs | [poc-cache](#poc-cache) |
 | Scanner crashed mid-run | [scanner-fail](#scanner-fail) |
 | Jeopardy: Docker sandbox unreachable | [jeopardy-docker](#jeopardy-docker) |
@@ -456,6 +457,30 @@ then rethrown.
    `--agent=hybrid`. `ScopeException`, `OperationCanceledException`, and
    Copilot model-compliance failures always propagate from hybrid mode —
    they are never swallowed by the fallback.
+
+9. **Copilot CLI not found at `<install>/runtimes/<rid>/native/copilot`.**
+   The `GitHub.Copilot.SDK` ships its native CLI as a sidecar that
+   must live next to the installed `drederick` binary. If the sidecar
+   is missing, `runner.agent_error` records:
+
+    ```text
+    Copilot CLI not found at '<prefix>/runtimes/linux-x64/native/copilot'.
+    ```
+
+   Verify and fix:
+
+    ```bash
+    ls "$(dirname "$(command -v drederick)")/runtimes/linux-x64/native/copilot"
+    # If missing:
+    cd /path/to/drederick && make install
+    # Or reinstall the released tarball:
+    curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | bash
+    ```
+
+   `make install`, `scripts/install.sh`, and the release tarball all
+   ship the `runtimes/<rid>/native/copilot` sidecar with the executable
+   bit preserved. Older builds installed only the single binary —
+   reinstall after upgrading.
 
 ---
 

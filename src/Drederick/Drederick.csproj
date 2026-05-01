@@ -14,4 +14,19 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.0" />
   </ItemGroup>
+
+  <Target Name="_CopyCopilotCliToPublishDir"
+          AfterTargets="Publish"
+          DependsOnTargets="_DownloadCopilotCli"
+          Condition="'$(CopilotSkipCliDownload)' != 'true' And '$(_CopilotPlatform)' != '' And '$(PublishDir)' != ''">
+    <PropertyGroup>
+      <_DrederickCopilotCacheDir>$(IntermediateOutputPath)copilot-cli\$(CopilotCliVersion)\$(_CopilotPlatform)</_DrederickCopilotCacheDir>
+      <_DrederickCopilotCliBinaryPath>$(_DrederickCopilotCacheDir)\$(_CopilotBinary)</_DrederickCopilotCliBinaryPath>
+      <_DrederickCopilotPublishDir>$(PublishDir)runtimes\$(_CopilotRid)\native</_DrederickCopilotPublishDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(_DrederickCopilotPublishDir)" />
+    <Copy SourceFiles="$(_DrederickCopilotCliBinaryPath)"
+          DestinationFolder="$(_DrederickCopilotPublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

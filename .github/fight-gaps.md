@@ -108,14 +108,13 @@
 
 ## High Gaps (continued)
 
-### GAP-010: LLM Hybrid Runner Silent Fallback
+### GAP-010: Copilot SDK Native Sidecar Missing From Installed Binary
 - **Exposed by:** jobtwo-2026-05-01
 - **Severity:** high
-- **Impact:** `--agent=hybrid --llm-provider copilot` had zero visible effect on exploit planning — autopilot still only generated password sprays
-- **Status:** open
-- **Description:** The hybrid runner is supposed to try the LLM first and fall back to deterministic on operational failure. On JobTwo, it either silently fell back without logging, or the LLM runner never engaged. No audit trail shows LLM prompts/responses. The result was identical to a pure deterministic run: 39 password sprays, 0 exploit actions.
-- **Suggested fix:** Add observable logging when the LLM runner engages/falls back. Record LLM prompts and responses in audit.jsonl. If the LLM runner is silently failing (no API key, auth error), surface this prominently in the report.
-- **Resolution:**
+- **Impact:** `--agent=hybrid --llm-provider copilot` audited `runner.agent_error` + `hybrid.llm_fallback`, then ran the deterministic planner. Operator-facing report did not surface the fallback, so it looked like the LLM had run.
+- **Status:** resolved
+- **Description:** `CopilotClientOptions` resolves the Copilot CLI under `AppContext.BaseDirectory/runtimes/<rid>/native/copilot`. The SDK target copies the binary into `bin/.../<rid>/runtimes/...`, but `make publish` produced a single-file binary and `make install` only installed `drederick` itself. Released tarballs and `scripts/install.sh` had the same hole.
+- **Resolution:** Added `_CopyCopilotCliToPublishDir` MSBuild target so the sidecar lands in `publish/<rid>/runtimes/<rid>/native/copilot`. `Makefile install`, `.github/workflows/release.yml`, and `scripts/install.sh` now ship and install the `runtimes/` tree with the executable bit preserved.
 
 ---
 
@@ -157,6 +156,14 @@
 - **Suggested fix:** Auto-extract hostnames from SSL certs and add to /etc/hosts. Re-run HTTP recon against those hostnames. Flag when vhost content differs from IP-based content.
 - **Resolution:**
 
+### GAP-015: Autopilot Did Not Drive CVEs Into Exploit Actions
+- **Exposed by:** jobtwo-2026-05-01
+- **Severity:** high
+- **Impact:** JobTwo recon found CVE evidence (NSE `vulners`/`http-*` script output, enriched `findings.db`), and the scope's known attack chain centred on Veeam CVE-2024-29849 — but autopilot emitted 39 password sprays and zero CVE/PoC actions because the planner only knew how to match nuclei templates by product token.
+- **Status:** resolved
+- **Description:** `ExploitationPlanner` only scanned `out/poc_cache/nuclei` for filename token matches against `port.Product`. It ignored NSE script CVE IDs, the enriched `findings.kind='cve'` rows, and the `poc_refs` table populated by `PocAggregator` (which already pulls Metasploit module names and nuclei template paths per CVE). It also had no `msfrc` execution path.
+- **Resolution:** `ExploitationPlanner` now extracts CVE IDs from NSE script output (`port.Scripts[].Id` and `.Output`) and from `findings.db` (joined to host+service), then queries `poc_refs` for matching `nuclei` templates and `metasploit` modules. It emits `nuclei` (priority 500) and `msfrc` (priority 490) actions strictly above credential sprays (300/200). `AutopilotRunner` gained an `msfrc` branch that drives `MsfRcRunner` (module + whitelisted options, host-bearing values re-validated). Action IDs are now content-addressed so iteration dedup persists across re-plans.
+
 ---
 
 ## Statistics
@@ -164,10 +171,10 @@
 | Severity | Total | Open | In Progress | Resolved | Workaround |
 |----------|-------|------|-------------|----------|------------|
 | Critical | 3     | 1    | 0           | 0        | 2 workaround |
-| High     | 4     | 4    | 0           | 0        | |
+| High     | 5     | 3    | 0           | 2        | |
 | Medium   | 5     | 5    | 0           | 0        | |
 | Low      | 2     | 2    | 0           | 0        | |
-| **Total**| **14**| **12**| **0**      | **0**    | **2 workaround** |
+| **Total**| **15**| **11**| **0**      | **2**    | **2 workaround** |
 
 ---
 
@@ -176,3 +183,4 @@
 - **2026-04-30:** Initial gaps from HTB Lame engagement (GAP-001 through GAP-009)
 - **2026-04-30:** GAP-001 and GAP-002 → workaround (Copilot fills as human-in-the-loop; lame-2026-04-30-rematch WIN)
 - **2026-05-01:** New gaps from HTB JobTwo engagement (GAP-010 through GAP-014) — hard Windows box exposed enumeration and LLM runner gaps
+- **2026-05-01:** GAP-010 resolved — Copilot SDK native sidecar now packaged in publish/install/release; GAP-015 added and resolved — autopilot now CVE-driven (NSE + findings.db → nuclei/msfrc above sprays)

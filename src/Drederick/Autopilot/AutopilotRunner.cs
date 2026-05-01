@@ -28,6 +28,7 @@ public sealed class AutopilotRunner
     private readonly RunPermissions _permissions;
     private readonly NucleiRunner? _nuclei;
     private readonly PasswordSprayTool? _spray;
+    private readonly MsfRcRunner? _msf;
     private readonly CredentialStore _creds;
     private readonly ExploitationPlanner _planner;
     private readonly FlagExtractor _flagExtractor;
@@ -45,6 +46,7 @@ public sealed class AutopilotRunner
         string outputRoot,
         NucleiRunner? nuclei = null,
         PasswordSprayTool? spray = null,
+        MsfRcRunner? msf = null,
         int maxIterations = 3,
         int maxActionsPerIteration = 64)
     {
@@ -57,6 +59,7 @@ public sealed class AutopilotRunner
         _outputRoot = outputRoot;
         _nuclei = nuclei;
         _spray = spray;
+        _msf = msf;
         _maxIterations = Math.Max(1, maxIterations);
         _maxActionsPerIteration = Math.Max(1, maxActionsPerIteration);
     }
@@ -159,6 +162,8 @@ public sealed class AutopilotRunner
             {
                 case "nuclei":
                     return await RunNucleiAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
+                case "msfrc":
+                    return await RunMsfRcAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
                 case "password-spray":
                     return await RunSprayAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
                 default:
@@ -189,6 +194,30 @@ public sealed class AutopilotRunner
         {
             Action = action,
             Succeeded = succeeded,
+            ExitCode = result.Run.ExitCode,
+            Error = result.Run.Error,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunMsfRcAsync(
+        ExploitAction action,
+        ConcurrentDictionary<string, FlagMatch> flagsSeen,
+        Stopwatch sw, CancellationToken ct)
+    {
+        if (_msf is null) return Skip(action, "msf runner not registered", sw);
+        if (string.IsNullOrWhiteSpace(action.Module)) return Skip(action, "missing metasploit module", sw);
+        if (action.Options.Count == 0) return Skip(action, "missing metasploit options", sw);
+
+        var result = await _msf.RunAsync(action.Target, action.Module!, action.Options, ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+
+        _flagExtractor.ScanText(result.Run.StdoutTruncated, $"msfrc:{action.Target}:{action.Port}", flagsSeen);
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = result.SessionOpened || result.Run.ExitCode == 0,
             ExitCode = result.Run.ExitCode,
             Error = result.Run.Error,
             DurationMs = sw.ElapsedMilliseconds,

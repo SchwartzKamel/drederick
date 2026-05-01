@@ -129,6 +129,17 @@ fi
 rm -f "${PREFIX}/.drederick.write-test"
 
 install -m 755 "${TMPDIR}/${BIN_NAME}" "${PREFIX}/${BIN_NAME}"
+if [ -d "${TMPDIR}/runtimes" ]; then
+    info "installing runtime sidecars to ${PREFIX}/runtimes"
+    mkdir -p "${PREFIX}/runtimes"
+    cp -R "${TMPDIR}/runtimes/." "${PREFIX}/runtimes/"
+    if [ -f "${PREFIX}/runtimes/${RID}/native/copilot" ]; then
+        chmod 755 "${PREFIX}/runtimes/${RID}/native/copilot"
+    fi
+    if [ -f "${PREFIX}/runtimes/${RID}/native/copilot.exe" ]; then
+        chmod 755 "${PREFIX}/runtimes/${RID}/native/copilot.exe"
+    fi
+fi
 ok "installed ${PREFIX}/${BIN_NAME}"
 
 # ---------- PATH check ----------

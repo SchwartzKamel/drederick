@@ -845,11 +845,12 @@ if (opts.Autopilot)
         var flagExtractor = new FlagExtractor(audit);
         var autopilot = new AutopilotRunner(
             scope, audit, permissions, planner, credStore, flagExtractor,
-            opts.OutputDir,
-            nuclei: nuclei,
-            spray: spray,
-            maxIterations: opts.AutopilotMaxIterations,
-            maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
+             opts.OutputDir,
+             nuclei: nuclei,
+             spray: spray,
+             msf: msf,
+             maxIterations: opts.AutopilotMaxIterations,
+             maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
 
         var apReport = await autopilot.RunAsync(allFindings, cts.Token);
         AutopilotReporter.Write(opts.OutputDir, apReport);

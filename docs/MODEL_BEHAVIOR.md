@@ -114,6 +114,44 @@ The lesson is not "avoid LLMs." The lesson is "make the first punch
 deterministic when the fingerprint is famous, then spend model tokens
 where they buy a new angle."
 
+<a id="jobtwo-lesson"></a>
+## Fight lesson: JobTwo
+
+JobTwo (hard Windows, Veeam Backup chain) is the rematch that forced
+the CVE-driven planner. Drederick's recon was fine — 15 services, 95
+NSE script results, hMailServer/SMB/WinRM/RDP/Veeam ports surfaced,
+SSL cert revealed `job2.vl` — but autopilot threw 39 password sprays
+and zero CVE actions. The known attack chain hinges on Veeam
+CVE-2024-29849, which the operator had on `findings.db` already; the
+planner just didn't look there.
+
+Two things failed at once:
+
+1. **Copilot SDK couldn't start.** The installed binary lacked the
+   native `runtimes/<rid>/native/copilot` sidecar, so the SDK threw
+   before the first model call. Audit logged `runner.agent_error` +
+   `hybrid.llm_fallback`, but the operator-facing report didn't
+   surface the fallback. Hybrid is supposed to fall back on
+   operational failure — the bug was packaging + reporting, not
+   policy.
+2. **Deterministic planner was spray-only.** `ExploitationPlanner`
+   only matched cached nuclei templates against `port.Product` token.
+   It ignored NSE script CVE IDs, the `findings.kind='cve'` rows
+   already enriched into `findings.db`, and the `poc_refs` table that
+   `PocAggregator` had populated with Metasploit module names per CVE.
+
+| Lesson | Coding implication |
+| ------ | ------------------ |
+| LLM packaging is a fight gate. | Treat the Copilot CLI sidecar as a first-class artefact. Verify `runtimes/<rid>/native/copilot` exists next to the installed binary in CI/install/release. |
+| Fallback must be loud. | When hybrid falls back, the operator-facing report should say so prominently — not just `audit.jsonl`. |
+| CVE evidence must drive actions, not annotate reports. | Read NSE script CVE IDs, `findings.kind='cve'`, and `poc_refs` straight into the planner. Emit `nuclei`/`msfrc` actions above sprays. |
+| MSF must be reachable from autopilot. | Wire `MsfRcRunner` into `AutopilotRunner` with a constrained `msfrc` action shape (module + whitelisted options, host-bearing values re-validated). |
+| Action IDs must dedupe across iterations. | Content-address actions on (tool, target, port, identifying tokens) so re-plans don't churn the same haymaker. |
+
+JobTwo's fix shipped a 500-priority `nuclei` band and a 490-priority
+`msfrc` band, both above the 300/200 spray bands. Next rematch should
+land at least the Veeam CVE-2024-29849 path before any spray fires.
+
 <a id="routing-card"></a>
 ## Model routing card
 

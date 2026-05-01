@@ -168,9 +168,22 @@ documentation lives in [`MODULES.md`](./MODULES.md).
   never logged because SDK errors can echo back prompts / URLs /
   token IDs).
 - `AutopilotRunner` — post-recon offensive loop (`src/Drederick/Autopilot/`):
-  walks the `ExploitationPlanner` card (`nuclei > spray-with-realm >
-  spray > msfrc > multi-stage`), hands sessions off to `SessionManager`,
-  and re-plans on each iteration up to `--autopilot-max-iterations`.
+  walks the `ExploitationPlanner` card and dispatches to `NucleiRunner`,
+  `MsfRcRunner`, or `PasswordSprayTool` based on `action.Tool`. Action
+  IDs are content-addressed (SHA-256 of tool/target/port/CVE/artifact),
+  so the iteration dedup persists across re-plans. Priority bands
+  (higher runs first):
+  - **500** — `nuclei` action keyed to a CVE recovered from NSE script
+    output (`vulners`, `http-*`) or `findings.kind='cve'` joined to
+    `poc_refs` (`source='nuclei'`). The haymaker.
+  - **490** — `msfrc` action against a Metasploit module recovered from
+    `poc_refs` (`source='metasploit'`). Module + whitelisted options
+    only; host-bearing values re-validated by `MsfRcRunner`.
+  - **400** — `nuclei` template matched by product/version token on an
+    HTTP(S) service (no CVE annotation needed).
+  - **300 / 200** — credential spray with captured / default
+    credentials. Sprays only fire if no higher band produced a hit.
+  Re-plans on each iteration up to `--autopilot-max-iterations`.
 - `HostWorkerPool` — bounded `Channel<ScanJob>` worker pool backing
   `--host-concurrency` (default 4, max 32). Inside each host worker,
   per-service probes fan out in parallel bounded by `--service-concurrency`

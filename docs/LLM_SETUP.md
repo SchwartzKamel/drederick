@@ -209,6 +209,27 @@ pure `--agent` and `--agent=hybrid` fail clearly. Drederick treats a
 non-tool Copilot model as operator-visible configuration, not an outage
 to hide behind deterministic fallback.
 
+### Native CLI sidecar (required next to the binary)
+
+`GitHub.Copilot.SDK` ships a native Copilot CLI as a sidecar. The SDK
+expects to find it at `<install-dir>/runtimes/<rid>/native/copilot`
+(e.g. `~/.local/bin/runtimes/linux-x64/native/copilot`). If the
+sidecar is missing, the SDK throws before the first model call and
+`audit.jsonl` records `runner.agent_error: Copilot CLI not found at
+'.../runtimes/<rid>/native/copilot'`.
+
+`make install`, `scripts/install.sh`, and the GitHub Releases tarball
+all ship the sidecar tree alongside the binary with the executable bit
+preserved. If you packaged a build before this fix, reinstall:
+
+```bash
+cd /path/to/drederick && make install
+# or
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | bash
+
+ls "$(dirname "$(command -v drederick)")/runtimes/linux-x64/native/copilot"
+```
+
 For `ctf-solve`, the default swarm roster is
 `claude-opus-4.7, gpt-5.4, gemini-3.1-pro`. Override with `--models`:
 
