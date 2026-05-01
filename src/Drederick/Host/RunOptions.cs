@@ -19,6 +19,7 @@ public sealed record RunOptions(
     bool LabMode = true,
     bool AllowBroad = false,
     bool UseAgent = false,
+    Drederick.Jeopardy.Llm.LlmProvider LlmProvider = Drederick.Jeopardy.Llm.LlmProvider.Copilot,
     int HostConcurrency = 4,
     int ServiceConcurrency = 8,
     bool ContentDiscovery = false,

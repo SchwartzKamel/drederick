@@ -371,3 +371,46 @@ duration_ms, output_digest). No plaintext secrets are logged; SHA-256 digests on
 
 Reference: [`docs/EMPIRE.md`](../docs/EMPIRE.md) (operational guide),
 [`docs/C2_INTEGRATION.md`](../docs/C2_INTEGRATION.md) (architecture/extension).
+
+## Fight history and learning loop
+
+Drederick is tested against real HTB machines. Every engagement — win or
+loss — is catalogued so Copilot can learn from past fights and prioritize
+development work that turns losses into wins.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `.github/fight-history/INDEX.md` | Master index of all fights with outcomes |
+| `.github/fight-history/<fight-id>.md` | Per-fight structured brief |
+| `.github/fight-gaps.md` | Aggregated gap tracker with stable IDs (GAP-NNN) |
+| `.github/FIGHT_FEEDBACK.md` | Process: fight → triage → develop → rematch → close |
+| `~/HTB/fight-log.yaml` | Structured YAML catalog of all engagements |
+| `~/HTB/SCOREBOARD.md` | Win/loss record and improvement tracking |
+| `~/HTB/REMATCH_PROTOCOL.md` | When and how to rematch |
+
+### Before working on features
+
+1. Read `fight-gaps.md` — know the open gaps and their severity
+2. Skim `fight-history/INDEX.md` — understand the win/loss record
+3. If your change addresses a gap, reference its GAP-ID in the commit message
+4. Prioritize Critical gaps that affect multiple fights over nice-to-haves
+
+### After an HTB engagement
+
+1. Add a fight entry to `~/HTB/fight-log.yaml`
+2. Create a fight brief in `.github/fight-history/<fight-id>.md`
+3. Update `.github/fight-history/INDEX.md`
+4. Triage new gaps into `.github/fight-gaps.md` with IDs and severity
+5. Update `~/HTB/SCOREBOARD.md` with the new record
+6. If it was a loss, add the box to the rematch queue in SCOREBOARD.md
+
+### Rematch protocol
+
+When gaps are fixed, schedule a rematch:
+1. Check `~/HTB/REMATCH_PROTOCOL.md` for the process
+2. Run drederick with the same flags as the original fight
+3. Add a new fight-log entry with `rematch_of` linking to the original
+4. Update gap statuses based on rematch results
+5. A loss is only a loss if we learn nothing from it

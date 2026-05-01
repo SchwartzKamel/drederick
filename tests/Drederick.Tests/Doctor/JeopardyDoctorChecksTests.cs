@@ -158,6 +158,7 @@ public class JeopardyDoctorChecksTests
         Assert.Contains("api.githubcopilot.com", http.Calls[0].Url);
         Assert.NotNull(http.Calls[0].Headers);
         Assert.True(http.Calls[0].Headers!.ContainsKey("Authorization"));
+        Assert.Equal("drederick-cli", http.Calls[0].Headers!["Copilot-Integration-Id"]);
     }
 
     // --- 7. ctfd.configured: warns (not fails) when unset ---------------

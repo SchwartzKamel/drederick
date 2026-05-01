@@ -88,7 +88,7 @@ public class CopilotLlmClientTests : IDisposable
     public void TryCreateFromEnvironment_WithNoToken_ReturnsNull()
     {
         using var scope = new EnvScope(("COPILOT_TOKEN", null), ("GH_TOKEN", null), ("GITHUB_TOKEN", null));
-        var client = CopilotLlmClient.TryCreateFromEnvironment(_audit);
+        var client = CopilotLlmClient.TryCreateFromEnvironment(_audit, allowGitHubCliAuth: false);
         Assert.Null(client);
     }
 
@@ -324,22 +324,32 @@ public class CopilotLlmClientTests : IDisposable
             ("GH_TOKEN", null),
             ("GITHUB_TOKEN", "ghp_patstyle_xxxxxxxxxxxxxxxxxxxx"),
             ("COPILOT_ENDPOINT", null));
-        var client = CopilotLlmClient.TryCreateFromEnvironment(_audit);
+        var client = CopilotLlmClient.TryCreateFromEnvironment(_audit, allowGitHubCliAuth: false);
         Assert.NotNull(client);
         client!.Dispose();
+    }
+
+    [Fact]
+    public void GitHubCliTokenResolver_ReadsAuthenticatedGhToken()
+    {
+        var gh = Path.Combine(_workDir, OperatingSystem.IsWindows() ? "gh.cmd" : "gh");
+        File.WriteAllText(gh, OperatingSystem.IsWindows()
+            ? "@echo off\r\nif \"%1 %2\"==\"auth token\" (echo gho_from_cli& exit /b 0)\r\nexit /b 1\r\n"
+            : "#!/bin/sh\nif [ \"$1 $2\" = \"auth token\" ]; then printf 'gho_from_cli\\n'; exit 0; fi\nexit 1\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(gh, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var token = CopilotAuthTokenResolver.TryReadGitHubCliToken(gh);
+
+        Assert.Equal("gho_from_cli", token);
     }
 
     // ---- helpers ----
 
     private static (string? Token, string Source) InvokeResolveToken()
     {
-        // Reflection into internal method so we can assert preference order directly.
-        var m = typeof(CopilotLlmClient).GetMethod("ResolveToken",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        var tuple = m.Invoke(null, null)!;
-        var t1 = tuple.GetType().GetField("Item1")!.GetValue(tuple) as string;
-        var t2 = tuple.GetType().GetField("Item2")!.GetValue(tuple)!.ToString()!;
-        return (t1, t2);
+        var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth: false);
+        return (token, source.ToString());
     }
 
     private sealed class EnvScope : IDisposable

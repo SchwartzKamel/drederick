@@ -633,16 +633,21 @@ if (!opts.Quiet)
 IReconAgentRunner runner;
 if (opts.UseAgent)
 {
-    var agentRunner = MicrosoftAgentRunner.TryCreateFromEnvironment(audit);
+    var agentRunner = MicrosoftAgentRunner.TryCreateFromProvider(
+        opts.LlmProvider,
+        opts.AzureDeploymentMap,
+        audit,
+        llmExploitTools);
     if (agentRunner is null)
     {
-        Console.Error.WriteLine("--agent requested but OPENAI_API_KEY is not set. Falling back to AdaptiveRunner.");
-        audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = "no_api_key" });
+        var providerName = opts.LlmProvider.ToString().ToLowerInvariant();
+        Console.Error.WriteLine($"--agent requested but LLM provider '{providerName}' is not configured. Falling back to AdaptiveRunner.");
+        audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = $"no_{providerName}_config" });
         runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency, opts.ContentDiscovery);
     }
     else
     {
-        runner = agentRunner.WithExploitTools(llmExploitTools);
+        runner = agentRunner;
     }
 }
 else
@@ -699,10 +704,14 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
 if (opts.UseHybridAgent)
 {
     IReconAgentRunner? llmInner = null;
-    var llmCandidate = MicrosoftAgentRunner.TryCreateFromEnvironment(audit);
+    var llmCandidate = MicrosoftAgentRunner.TryCreateFromProvider(
+        opts.LlmProvider,
+        opts.AzureDeploymentMap,
+        audit,
+        llmExploitTools);
     if (llmCandidate is not null)
     {
-        llmInner = llmCandidate.WithExploitTools(llmExploitTools);
+        llmInner = llmCandidate;
     }
 
     IReconAgentRunner deterministicInner;

@@ -145,24 +145,35 @@ public sealed class DoctorRunner
             }
             else if (t == "boofuzz")
             {
-                // boofuzz is a Python module — detect via `python3 -c "import boofuzz"`.
-                var python = _locator.Which("python3");
-                if (python is not null)
+                // boofuzz may be installed via pipx (binary: `boo` or `boofuzz`)
+                // or as a system Python module. Try binary detection first, then
+                // fall back to the import check.
+                path = _locator.Which("boofuzz") ?? _locator.Which("boo");
+                if (path is not null)
                 {
-                    try
+                    version = TryGetVersion(path, t);
+                }
+                else
+                {
+                    // Fallback: detect as a Python module via import.
+                    var python = _locator.Which("python3");
+                    if (python is not null)
                     {
-                        var (exit, stdout, stderr) = _runner.Run(
-                            python, "-c \"import boofuzz, sys; print(getattr(boofuzz, '__version__', 'installed'))\"", timeoutSeconds: 5);
-                        if (exit == 0)
+                        try
                         {
-                            path = python;
-                            var combined = (!string.IsNullOrWhiteSpace(stdout) ? stdout : stderr) ?? string.Empty;
-                            version = combined.Trim();
+                            var (exit, stdout, stderr) = _runner.Run(
+                                python, "-c \"import boofuzz, sys; print(getattr(boofuzz, '__version__', 'installed'))\"", timeoutSeconds: 5);
+                            if (exit == 0)
+                            {
+                                path = python;
+                                var combined = (!string.IsNullOrWhiteSpace(stdout) ? stdout : stderr) ?? string.Empty;
+                                version = combined.Trim();
+                            }
                         }
-                    }
-                    catch
-                    {
-                        // not installed
+                        catch
+                        {
+                            // not installed
+                        }
                     }
                 }
             }

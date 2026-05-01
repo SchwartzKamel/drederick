@@ -23,6 +23,8 @@ namespace Drederick.Agent;
 ///   • <see cref="OperationCanceledException"/> propagates unchanged so
 ///     Ctrl-C remains responsive and the deterministic runner is not
 ///     re-invoked after a user-requested cancel.
+///   • <see cref="CopilotModelComplianceException"/> propagates unchanged
+///     so a selected non-tool model is not hidden by deterministic fallback.
 ///   • Every fallback writes a <c>hybrid.llm_fallback</c> audit event
 ///     with the exception type + a SHA-256 digest of the message.
 ///     We deliberately do not log the full message or stack trace
@@ -88,6 +90,12 @@ public sealed class HybridAgentRunner : IReconAgentRunner
         {
             // User cancellation — propagate; do not invoke the
             // deterministic runner against a cancelled token.
+            throw;
+        }
+        catch (CopilotModelComplianceException)
+        {
+            // Explicit model non-compliance is operator-visible
+            // configuration, not an operational LLM outage to hide.
             throw;
         }
         catch (Exception ex)

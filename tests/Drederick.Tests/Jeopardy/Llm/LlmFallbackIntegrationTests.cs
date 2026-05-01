@@ -77,7 +77,12 @@ public sealed class LlmFallbackIntegrationTests : IDisposable
     {
         var opts = new CommandLineOptions { CtfSolveSubcommand = true };
         var err = new StringWriter();
-        var client = LlmProviderFactory.Create(LlmProvider.Copilot, opts, _audit, err);
+        var client = LlmProviderFactory.Create(
+            LlmProvider.Copilot,
+            opts,
+            _audit,
+            err,
+            allowGitHubCliAuth: false);
         Assert.Null(client);
         // Message must be actionable — operator should know what to set.
         var msg = err.ToString();

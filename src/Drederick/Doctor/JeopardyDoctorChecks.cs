@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Drederick.Audit;
+using Drederick.Jeopardy.Llm;
 using Drederick.Scope;
 
 namespace Drederick.Doctor;
@@ -125,7 +126,7 @@ public sealed record JeopardyDoctorDeps(
     string DockerfilePath = "sandbox/Dockerfile.jeopardy-sandbox",
     string SandboxBuildContext = "sandbox/",
     string CopilotHost = "api.githubcopilot.com",
-    string CopilotModelsUrl = "https://api.githubcopilot.com/v1/models",
+    string CopilotModelsUrl = "https://api.githubcopilot.com/models",
     string DockerRootDir = "/var/lib/docker",
     long MinFreeBytes = 10L * 1024 * 1024 * 1024,
     // --- jeopardy-llm-provider-deps ---
@@ -525,7 +526,7 @@ internal sealed class LlmTokenCheck : IDoctorCheck
     public string Id => "jeopardy.llm.token";
     public string Category => JeopardyDoctorChecks.CategoryName;
 
-    // Preference order is load-bearing: COPILOT_TOKEN beats GH_TOKEN beats GITHUB_TOKEN.
+    // Preference order is load-bearing: COPILOT_TOKEN beats GH_TOKEN beats GITHUB_TOKEN beats gh auth.
     internal static readonly string[] TokenVarsInPreferenceOrder =
         { "COPILOT_TOKEN", "GH_TOKEN", "GITHUB_TOKEN" };
 
@@ -604,10 +605,17 @@ internal sealed class LlmTokenCheck : IDoctorCheck
                             DoctorCheckStatus.Pass,
                             $"LLM token present via ${picked}"));
                     }
+                    var ghToken = CopilotAuthTokenResolver.TryReadGitHubCliToken();
+                    if (!string.IsNullOrWhiteSpace(ghToken))
+                    {
+                        return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                            DoctorCheckStatus.Pass,
+                            "LLM token present via authenticated GitHub CLI (`gh auth token`)"));
+                    }
                     return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
                         DoctorCheckStatus.Fail,
-                        "no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment",
-                        fixCommand: "export COPILOT_TOKEN=<token>   # or GH_TOKEN / GITHUB_TOKEN",
+                        "no COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN in environment and no authenticated gh CLI session",
+                        fixCommand: "gh auth login --web   # or export COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN",
                         fixRationale: "See docs/LLM_SETUP.md and docs/JEOPARDY.md for provisioning steps."));
                 }
         }
@@ -639,7 +647,10 @@ internal sealed class LlmReachableCheck : IDoctorCheck
     private async Task<DoctorCheckResult> CheckCopilotAsync(CancellationToken ct)
     {
         var picked = LlmTokenCheck.ResolveTokenVar(_d.Env);
-        if (picked is null)
+        var token = picked is not null
+            ? _d.Env.Get(picked)
+            : CopilotAuthTokenResolver.TryReadGitHubCliToken();
+        if (string.IsNullOrWhiteSpace(token))
         {
             return JeopardyDoctorChecks.Finish(_d.Audit, Id,
                 DoctorCheckStatus.Warn,
@@ -656,11 +667,11 @@ internal sealed class LlmReachableCheck : IDoctorCheck
                 fixRationale: "Network checks must go through scope.Require; api.githubcopilot.com is first-party Microsoft but still gated for auditability.");
         }
 
-        var token = _d.Env.Get(picked);
         var headers = new Dictionary<string, string>
         {
             ["Authorization"] = $"Bearer {token}",
             ["Accept"] = "application/json",
+            ["Copilot-Integration-Id"] = Environment.GetEnvironmentVariable("COPILOT_INTEGRATION_ID") ?? "drederick-cli",
             ["User-Agent"] = "drederick-doctor",
         };
         int status;

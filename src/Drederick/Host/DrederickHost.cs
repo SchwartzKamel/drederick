@@ -175,11 +175,12 @@ public sealed class DrederickHost
         IReconAgentRunner runner;
         if (options.UseAgent)
         {
-            var agentRunner = MicrosoftAgentRunner.TryCreateFromEnvironment(audit);
+            var agentRunner = MicrosoftAgentRunner.TryCreateFromProvider(options.LlmProvider, null, audit);
             if (agentRunner is null)
             {
-                audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = "no_api_key" });
-                Emit(progress, ScanEventKind.Info, message: "OPENAI_API_KEY not set; falling back to AdaptiveRunner.");
+                var providerName = options.LlmProvider.ToString().ToLowerInvariant();
+                audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = $"no_{providerName}_config" });
+                Emit(progress, ScanEventKind.Info, message: $"LLM provider '{providerName}' not configured; falling back to AdaptiveRunner.");
                 runner = new AdaptiveRunner(audit, options.HostConcurrency, options.ServiceConcurrency, options.ContentDiscovery);
             }
             else

@@ -65,7 +65,8 @@ public static class LlmProviderFactory
         LlmProvider provider,
         CommandLineOptions opts,
         AuditLog audit,
-        TextWriter? stderr = null)
+        TextWriter? stderr = null,
+        bool allowGitHubCliAuth = true)
     {
         ArgumentNullException.ThrowIfNull(opts);
         ArgumentNullException.ThrowIfNull(audit);
@@ -74,7 +75,7 @@ public static class LlmProviderFactory
         switch (provider)
         {
             case LlmProvider.Copilot:
-                return CreateCopilot(audit, stderr);
+                return CreateCopilot(audit, stderr, allowGitHubCliAuth);
             case LlmProvider.Azure:
                 return CreateAzure(opts, audit, stderr);
             case LlmProvider.LlamaCpp:
@@ -85,14 +86,17 @@ public static class LlmProviderFactory
         }
     }
 
-    private static ICopilotLlmClient? CreateCopilot(AuditLog audit, TextWriter stderr)
+    private static ICopilotLlmClient? CreateCopilot(
+        AuditLog audit,
+        TextWriter stderr,
+        bool allowGitHubCliAuth)
     {
-        var c = CopilotLlmClient.TryCreateFromEnvironment(audit);
+        var c = CopilotLlmClient.TryCreateFromEnvironment(audit, allowGitHubCliAuth);
         if (c is null)
         {
             stderr.WriteLine(
                 "llm-provider=copilot: no OAuth token found. "
-                + "Set one of COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN.");
+                + "Run `gh auth login --web` or set one of COPILOT_TOKEN, GH_TOKEN, or GITHUB_TOKEN.");
         }
         return c;
     }

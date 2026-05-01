@@ -32,7 +32,8 @@ from the CLI's error messages, other docs, and issues stay valid.
 | `.htb` hostname doesn't resolve | [htb-hostname](#htb-hostname) |
 | Scope rejected | [scope-parse](#scope-parse) |
 | `--agent` runner errors / timeouts | [llm-runner](#llm-runner) |
-| `--agent=hybrid` unexpectedly fell back to deterministic | [llm-runner](#llm-runner) (item 6) |
+| Copilot model unavailable / not tool-call compliant | [llm-runner](#llm-runner) (item 2) |
+| `--agent=hybrid` unexpectedly fell back to deterministic | [llm-runner](#llm-runner) (item 8) |
 | PoC cache empty despite CVEs | [poc-cache](#poc-cache) |
 | Scanner crashed mid-run | [scanner-fail](#scanner-fail) |
 | Jeopardy: Docker sandbox unreachable | [jeopardy-docker](#jeopardy-docker) |
@@ -379,50 +380,69 @@ Common mistakes:
 
 ## llm-runner
 
-`--agent` uses the Microsoft Agent Framework runner backed by OpenAI
-(see `src/Drederick/Agent/MicrosoftAgentRunner.cs`). It needs
-`OPENAI_API_KEY` in the environment and will use `DREDERICK_MODEL` if
-set (default `gpt-4o-mini`). Errors from the OpenAI client are recorded
-as `runner.agent_error` in the audit log and then rethrown.
-
-> This is the **legacy recon runner**. Azure OpenAI / Copilot / llama.cpp
-> setup for the Jeopardy solver lives in [`LLM_SETUP.md`](LLM_SETUP.md);
-> Jeopardy-specific failures are in [jeopardy-llm](#jeopardy-llm).
+`--agent` supports `--llm-provider=copilot|azure|openai`. Copilot uses
+the official `GitHub.Copilot.SDK` runner
+(`src/Drederick/Agent/CopilotSdkAgentRunner.cs`); Azure and raw OpenAI use
+`src/Drederick/Agent/MicrosoftAgentRunner.cs` with structured tool-call
+adapters. Errors are recorded as `runner.agent_error` in the audit log and
+then rethrown.
 
 1. Check the env vars are actually exported in the shell you're running
    `drederick` from:
 
     ```bash
-    env | grep -E 'OPENAI_API_KEY|DREDERICK_MODEL'
+    env | grep -E 'COPILOT_TOKEN|GH_TOKEN|GITHUB_TOKEN|AZURE_OPENAI|OPENAI_API_KEY|DREDERICK_MODEL'
     ```
 
-2. If `--agent` was requested but `OPENAI_API_KEY` is missing, drederick
-   logs `--agent requested but OPENAI_API_KEY is not set. Falling back to
-   AdaptiveRunner.` and continues — this is expected, not a failure.
+2. For Copilot model selection, the SDK runner checks
+   `https://api.githubcopilot.com/models` (no `/v1`) and only runs models
+   that are available to your token and tool/function-call compliant.
+   Preferred default is `claude-haiku-4.5`; override with
+   `DREDERICK_MODEL` only when the replacement is also compliant:
 
-3. Rate limits / timeouts / provider 5xx surface as
+    ```bash
+    export DREDERICK_MODEL=claude-haiku-4.5
+    ```
+
+   If an explicit model is missing or non-compliant, both pure `--agent`
+   and `--agent=hybrid` fail clearly. Drederick does not hide a selected
+   non-tool Copilot model behind deterministic fallback.
+
+3. If the selected provider cannot be created because auth/config is
+   missing, `--agent` falls back deterministically with a provider-specific
+   setup hint, and `--agent=hybrid` records the fallback path. For Copilot,
+   run `gh auth login --web` or export `COPILOT_TOKEN`, `GH_TOKEN`, or
+   `GITHUB_TOKEN`.
+
+4. Azure/OpenAI deployments are operator-managed. The configured model or
+   deployment must support structured tool calls; otherwise pure
+   `--agent` fails clearly and hybrid falls back.
+
+5. Rate limits / timeouts / provider 5xx surface as
    `runner.agent_error`. Inspect:
 
     ```bash
     jq 'select(.event=="runner.agent_error")' out/audit.jsonl
     ```
 
-4. Fall back to the deterministic adaptive runner (no LLM, no network
-   calls to OpenAI) by dropping the flag:
+6. Fall back to the deterministic adaptive runner (no LLM, no network
+   calls to an LLM provider) by dropping the flag:
 
     ```bash
     drederick <args>  # no --agent
     ```
 
-5. If the LLM succeeded but called no tools, the scope enforcement may
+7. If the LLM succeeded but called no tools, the scope enforcement may
    have rejected every target — check for `scope` errors in
    `out/audit.jsonl` before blaming the model.
 
-6. **Hybrid mode (`--agent=hybrid`) unexpectedly ran the deterministic
+8. **Hybrid mode (`--agent=hybrid`) unexpectedly ran the deterministic
    runner.** `HybridAgentRunner` falls back to `AdaptiveRunner` on any
    operational failure of the LLM planner — missing key, network
    error, auth, rate limit, timeout, transient SDK exception. This is
-   intentional. Look for the fallback audit event:
+   intentional. Copilot model-compliance refusals are different: selected
+   non-tool models propagate so the operator fixes `DREDERICK_MODEL`.
+   Look for the fallback audit event:
 
     ```bash
     jq 'select(.event=="hybrid.llm_fallback")' out/audit.jsonl
@@ -433,9 +453,9 @@ as `runner.agent_error` in the audit log and then rethrown.
    SDK/LLM errors can echo back prompt fragments, URLs, or token IDs.
    If you want the LLM planner to be load-bearing (abort the run when
    it can't run), use `--agent` / `--agent=llm`, not
-   `--agent=hybrid`. `ScopeException` and `OperationCanceledException`
-   always propagate from hybrid mode — they are never swallowed by
-   the fallback.
+   `--agent=hybrid`. `ScopeException`, `OperationCanceledException`, and
+   Copilot model-compliance failures always propagate from hybrid mode —
+   they are never swallowed by the fallback.
 
 ---
 
@@ -610,15 +630,18 @@ per-provider flag reference lives in
 
     ```bash
     # Preferred:
+    gh auth login --web
+    # Or, for automation:
     export COPILOT_TOKEN="ghu_..."
-    # Or:
     export GH_TOKEN="$(gh auth token)"
     # PAT fallback (routes to the GitHub Models endpoint):
     export GITHUB_TOKEN="ghp_..."
     ```
 
-   Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN`. A `GITHUB_TOKEN`
-   that looks like a PAT causes the client to use
+   Precedence is `COPILOT_TOKEN > GH_TOKEN > GITHUB_TOKEN > gh auth token`.
+   If no token is available and the terminal is interactive, Drederick starts
+   `gh auth login --web --skip-ssh-key` and retries. A `GITHUB_TOKEN` that
+   looks like a PAT causes the client to use
    `https://models.inference.ai.azure.com/v1` instead of the Copilot
    endpoint — see [LLM_SETUP.md#precedence](LLM_SETUP.md#precedence).
 

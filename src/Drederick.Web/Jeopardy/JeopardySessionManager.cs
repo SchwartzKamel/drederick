@@ -395,7 +395,7 @@ internal sealed class DefaultJeopardyCoordinatorFactory : IJeopardyCoordinatorFa
             ctfd.Dispose();
             sessionAudit.Dispose();
             throw new InvalidOperationException(
-                "no LLM client could be created from environment (set COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN "
+                "no LLM client could be created from environment (run `gh auth login --web` or set COPILOT_TOKEN / GH_TOKEN / GITHUB_TOKEN "
                 + "for copilot, or the provider-specific env vars for azure / llamacpp).");
         }
 

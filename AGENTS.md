@@ -59,7 +59,7 @@ not restrict what Drederick may do *inside* that boundary. See
 | `@invariant-id:scope-wildcard-refused` | `0.0.0.0/0` and `::/0` are always refused — even with `--allow-broad`. |
 | `@invariant-id:scope-prefix-cap` | Lab mode caps: `/8` v4, `/32` v6. Strict mode (`--no-lab`): `/16` v4, `/48` v6. `--allow-broad` lifts caps but not the wildcard refusal. |
 | `@invariant-id:scope-is-authorization` | Scope is the **sole** authorization signal. Exploitation, credential attacks, PoC execution, and payload delivery are permitted only against scope-resolved targets — and are otherwise unrestricted within that boundary. |
-| `@invariant-id:llm-cannot-escape-scope` | `MicrosoftAgentRunner` exposes tools as `AIFunction`s; every tool re-checks scope internally. The model cannot escape the allow-list regardless of prompt, jailbreak, or forged tool call. |
+| `@invariant-id:llm-cannot-escape-scope` | LLM runners (`CopilotSdkAgentRunner` for Copilot, `MicrosoftAgentRunner` for Azure/OpenAI) expose tools as `AIFunction`s; every tool re-checks scope internally. The model cannot escape the allow-list regardless of prompt, jailbreak, or forged tool call. |
 | `@invariant-id:subprocess-args-validated` | Any LLM-chosen or caller-chosen subprocess argument is validated before exec. Every host/IP/URL in argv is resolved through `_scope.Require`. Shell-metachar / path-traversal / scope-bypass argv is rejected. See `NmapTool.RejectUnsafePortSpec`, `SmbTool.AssertNoForbiddenScripts`, `ExploitRunner.AssertTargetsInScope`. |
 | `@invariant-id:audit-everything` | Every exploitation step (PoC fetch, PoC spawn, credential attempt, payload drop, session open/close) writes to `audit.jsonl` with target, tool, argv digest (SHA-256), and timestamp. Plaintext passwords are never logged; a SHA-256 of the attempted secret is recorded instead. The audit log is append-only. |
 | `@invariant-id:no-exfiltration` | Loot (credentials, hashes, tickets, captured secrets) stays local to `out/` and `audit.jsonl`. No telemetry, no cloud sync, no phone-home from the harness itself. |
@@ -87,7 +87,7 @@ Build, test, and run commands you can rely on.
 | `drederick --scope … --target … --no-lab` | Strict-mode run (exploitation categories opt-in per flag). | `src/Drederick/Cli/*` | `tests/Drederick.Tests/**` |
 | `drederick doctor [--install] [-y]` | Detect/install operator tooling. | `src/Drederick/Doctor/*` | `DoctorTests` |
 | `drederick serve --out out/` | Launch Datasette against `findings.db`. | `src/Drederick/Cli/ServeCommand*` | `ServeCommandTests` (if present) |
-| `drederick --scope … --target … --agent` | LLM-driven planner (requires `OPENAI_API_KEY`). | `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
+| `drederick --scope … --target … --agent` | LLM-driven planner. Supports `--llm-provider=copilot\|azure\|openai` (default `copilot`); Copilot uses the official `GitHub.Copilot.SDK`, checks `/models`, and prefers compliant `claude-haiku-4.5` unless `DREDERICK_MODEL` overrides it. | `src/Drederick/Agent/CopilotSdkAgentRunner.cs`, `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
 | `DREDERICK_SKIP_CVE=1 drederick …` | Skip CVE enrichment. | `src/Drederick/Enrichment/CveAnnotator.cs` | `CveAnnotatorTests` |
 | `drederick --no-fetch-poc` | Skip PoC source caching. | `src/Drederick/Enrichment/PocAggregator.cs` | `PocAggregatorTests` |
 | `drederick --allow-dos` / `--allow-destructive` / `--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` / `--acknowledge-lockout-risk` | Per-run opt-ins for high-blast-radius categories (required in strict mode; defaults on in lab mode except `--allow-dos`). | `src/Drederick/Cli/*` | `OptInFlagTests` |
@@ -95,7 +95,7 @@ Build, test, and run commands you can rely on.
 | `drederick ctf-solve --scope … --ctfd <url> [--models <csv>]` | Jeopardy CTF swarm: race multiple LLMs across every challenge, auto-submit flags. | `src/Drederick/Jeopardy/**`, `src/Drederick/Cli/CommandLineOptions.cs` | `tests/Drederick.Tests/Jeopardy/**` |
 | `drederick ctf-msg --kind <hint\|focus\|skip\|stop\|shutdown> [--chal …] [--body …]` | Inject mid-run operator hint / control signal into a live `ctf-solve` session. | `src/Drederick/Jeopardy/Cli/**`, `src/Drederick/Jeopardy/Bus/**` | `tests/Drederick.Tests/Jeopardy/**` |
 | `drederick --autopilot` | End-to-end recon → exploit → loot → session chain driven by `AutopilotRunner`. | `src/Drederick/Autopilot/**` | `AutopilotRunnerTests` |
-| `drederick --agent=hybrid` | LLM-first runner with deterministic fallback on any operational failure (no key, network, auth, rate-limit, transient SDK error). `ScopeException` always propagates. | `src/Drederick/Agent/HybridAgentRunner.cs` | `HybridAgentRunnerTests` |
+| `drederick --agent=hybrid` | LLM-first runner with deterministic fallback on operational provider failures (no key, network, auth, rate-limit, transient SDK error). `ScopeException` and Copilot model-compliance refusals propagate. | `src/Drederick/Agent/HybridAgentRunner.cs` | `HybridAgentRunnerTests` |
 | `drederick ctf-solve … --llm-provider={copilot,azure,llamacpp}` | Pick the Jeopardy solver swarm backend at runtime. Copilot default; `--azure-endpoint` / `--azure-deployment` / `--llamacpp-url` / `--llamacpp-model` supply per-provider config. | `src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs` | `LlmProviderFactoryTests` |
 | `drederick doctor --category=jeopardy [--llm-provider=…]` | Provider-aware Jeopardy preflight: Docker, sandbox image, `jeopardy.llm.token`, `jeopardy.llm.reachable`. | `src/Drederick/Doctor/JeopardyDoctorChecks.cs` | `JeopardyDoctorChecksTests` |
 | `drederick web [--web-bind <host>] [--web-port <int>] [--web-token <value>]` | Launch the browser operator pane (ASP.NET Core + SignalR + React SPA). Loopback + no-auth by default; non-loopback binds require a bearer token (auto-generated to `out/web-token.txt` if not supplied). | `src/Drederick.Web/**`, `web/**` | `tests/Drederick.Tests/Web/**`, `web/e2e/**` |
@@ -121,7 +121,9 @@ surgical edits, identify the owning concept first.
 | `docs/EMPIRE.md` | Empire C2 operational guide: agent types, deployment, modules, troubleshooting. | empire-c2 |
 | `docs/C2_INTEGRATION.md` | Architecture, thread-safety, audit invariants, and extension points for C2 frameworks. | empire-c2 |
 | `src/Drederick/Agent/AdaptiveRunner.cs` | Deterministic rule-based planner (recon + exploit). | orchestration |
-| `src/Drederick/Agent/MicrosoftAgentRunner.cs` | LLM-driven planner (Microsoft Agent Framework). | orchestration-llm |
+| `src/Drederick/Agent/MicrosoftAgentRunner.cs` | LLM-driven planner for Azure/OpenAI through Microsoft Agent Framework. Accepts `IChatClient`; provider factory selects provider-specific runners. | orchestration-llm |
+| `src/Drederick/Agent/CopilotSdkAgentRunner.cs` | Official `GitHub.Copilot.SDK` runner for `--agent --llm-provider=copilot`; registers Drederick scoped tools as `AIFunction`s and only selects available tool/function-call compliant Copilot `/models` entries. | orchestration-llm |
+| `src/Drederick/Agent/AzureOpenAiChatClient.cs` | `IChatClient` for Azure OpenAI — deployment mapping + full tool-call round-trips for `--agent`. | orchestration-llm |
 | `src/Drederick/Agent/HostWorkerPool.cs` | Bounded `Channel<ScanJob>` pool. | concurrency |
 | `src/Drederick/Audit/AuditLog.cs` | Append-only JSONL audit log (thread-safe). | audit |
 | `src/Drederick/Cli/` | Command-line options, subcommands, help text. | cli |
@@ -164,7 +166,7 @@ surgical edits, identify the owning concept first.
 | `src/Drederick/Autopilot/` | `AutopilotRunner`, `ExploitationPlanner`, `CredentialStore`, `FlagExtractor`, `AutopilotReporter`. | autopilot |
 | `src/Drederick/Ops/` | Operational helpers: `HtbRanges`, `VpnDetector`. | ops |
 | `src/Drederick/Bundling/` | `DatasetteBootstrap`, `BootstrapOptions` (bundled Datasette bring-up). | bundling |
-| `src/Drederick/Agent/HybridAgentRunner.cs` | LLM-first recon runner with automatic fallback to the deterministic runner on operational failure; `ScopeException` / `OperationCanceledException` always propagate. Wired via `--agent=hybrid`. | orchestration-hybrid |
+| `src/Drederick/Agent/HybridAgentRunner.cs` | LLM-first recon runner with automatic fallback to the deterministic runner on operational failure; `ScopeException` / `OperationCanceledException` / Copilot model-compliance refusals always propagate. Wired via `--agent=hybrid`. | orchestration-hybrid |
 | `src/Drederick/Agent/LlmExploitTools.cs` | LLM-visible `AIFunction` wrappers around the exploit toolbox for `MicrosoftAgentRunner`. Every wrapper re-checks scope + `RunPermissions` before dispatch. | orchestration-llm |
 | `src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs` | Provider switch for `ctf-solve` and `drederick doctor --category=jeopardy`. Parses `--llm-provider={copilot,azure,llamacpp}` and builds the matching `ICopilotLlmClient`. | jeopardy-llm |
 | `src/Drederick.Web/` | ASP.NET Core minimal API + SignalR hub (`EventsHub`) serving the React SPA from `wwwroot/`. Bearer-token middleware on non-loopback binds. Owned by `ui-shell`. | ui-shell |

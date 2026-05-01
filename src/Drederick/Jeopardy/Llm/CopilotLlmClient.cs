@@ -72,7 +72,7 @@ public interface ICopilotLlmClient
 /// <list type="bullet">
 ///   <item><c>COPILOT_TOKEN</c>, <c>GH_TOKEN</c>, <c>GITHUB_TOKEN</c> — OAuth token (fall through in that order).</item>
 ///   <item><c>COPILOT_INTEGRATION_ID</c> — required header, default <c>drederick-cli</c>.</item>
-///   <item><c>COPILOT_ENDPOINT</c> — base URL override, default <c>https://api.githubcopilot.com/v1</c>.</item>
+///   <item><c>COPILOT_ENDPOINT</c> — base URL override, default <c>https://api.githubcopilot.com</c>.</item>
 /// </list>
 ///
 /// <para>Audit: every chat emits <c>copilot.chat.start</c> and
@@ -81,7 +81,7 @@ public interface ICopilotLlmClient
 /// </summary>
 public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
 {
-    public static readonly Uri DefaultCopilotEndpoint = new("https://api.githubcopilot.com/v1");
+    public static readonly Uri DefaultCopilotEndpoint = new("https://api.githubcopilot.com");
     public static readonly Uri DefaultGithubModelsEndpoint = new("https://models.inference.ai.azure.com/v1");
 
     private const string DefaultIntegrationId = "drederick-cli";
@@ -126,16 +126,22 @@ public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
     }
 
     /// <summary>
-    /// Construct a client from environment variables. Returns <c>null</c> if
-    /// no usable token is present. Token preference order:
-    /// <c>COPILOT_TOKEN</c> &gt; <c>GH_TOKEN</c> &gt; <c>GITHUB_TOKEN</c>.
+    /// Construct a client from environment variables or the authenticated
+    /// GitHub CLI session. Returns <c>null</c> if no usable token is present.
+    /// Token preference order:
+    /// <c>COPILOT_TOKEN</c> &gt; <c>GH_TOKEN</c> &gt; <c>GITHUB_TOKEN</c> &gt;
+    /// <c>gh auth token</c>. If no <c>gh</c> session is present and an
+    /// interactive terminal is available, starts
+    /// <c>gh auth login --web --skip-ssh-key</c>.
     /// If only <c>GITHUB_TOKEN</c> is set and looks like a PAT
     /// (<c>ghp_</c> / <c>github_pat_</c>), the endpoint falls back to the
     /// GitHub Models (Azure AI) inference endpoint.
     /// </summary>
-    public static CopilotLlmClient? TryCreateFromEnvironment(AuditLog audit)
+    public static CopilotLlmClient? TryCreateFromEnvironment(
+        AuditLog audit,
+        bool allowGitHubCliAuth = true)
     {
-        var (token, source) = ResolveToken();
+        var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
         if (string.IsNullOrWhiteSpace(token)) return null;
 
         var integrationId = Environment.GetEnvironmentVariable("COPILOT_INTEGRATION_ID");
@@ -147,7 +153,7 @@ public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
         {
             endpoint = parsed;
         }
-        else if (source == TokenSource.GithubToken && LooksLikeGithubPat(token!))
+        else if (source == CopilotTokenSource.GithubToken && LooksLikeGithubPat(token!))
         {
             endpoint = DefaultGithubModelsEndpoint;
         }
@@ -157,19 +163,6 @@ public sealed class CopilotLlmClient : ICopilotLlmClient, IDisposable
         }
 
         return new CopilotLlmClient(token!, integrationId!, audit, http: null, endpoint: endpoint);
-    }
-
-    internal enum TokenSource { None, CopilotToken, GhToken, GithubToken }
-
-    internal static (string? Token, TokenSource Source) ResolveToken()
-    {
-        var c = Environment.GetEnvironmentVariable("COPILOT_TOKEN");
-        if (!string.IsNullOrWhiteSpace(c)) return (c, TokenSource.CopilotToken);
-        var g = Environment.GetEnvironmentVariable("GH_TOKEN");
-        if (!string.IsNullOrWhiteSpace(g)) return (g, TokenSource.GhToken);
-        var h = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
-        if (!string.IsNullOrWhiteSpace(h)) return (h, TokenSource.GithubToken);
-        return (null, TokenSource.None);
     }
 
     internal static bool LooksLikeGithubPat(string token)

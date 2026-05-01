@@ -99,20 +99,25 @@ public static class InstallRecipes
                     Rationale: "datasette requires a Python CLI installer; bootstrap pipx via the system package manager first.");
 
             case "searchsploit":
-                // Debian/Ubuntu/Kali ship Exploit-DB as the exploitdb package.
-                if (pm == PackageManager.Apt)
-                    return new InstallRecipe(tool, "apt-get install -y exploitdb",
-                        NeedsSudo: true,
-                        "searchsploit is provided by the exploitdb package on Debian/Ubuntu/Kali.");
-                // Fallback: git clone to ~/.local/share/exploitdb and symlink the binary.
-                var home = Environment.GetEnvironmentVariable("HOME") ?? "~";
-                var dest = System.IO.Path.Combine(home, ".local", "share", "exploitdb");
-                var bin = System.IO.Path.Combine(home, ".local", "bin");
-                return new InstallRecipe(tool,
-                    $"mkdir -p {bin} && git clone https://github.com/offensive-security/exploitdb.git {dest} " +
-                    $"&& ln -sf {dest}/searchsploit {bin}/searchsploit",
-                    NeedsSudo: false,
-                    "No system package for searchsploit; clone Exploit-DB and symlink the launcher into ~/.local/bin.");
+                {
+                    // Git-clone recipe works everywhere (Kali, Ubuntu, Fedora, …).
+                    var ssHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var ssDest = System.IO.Path.Combine(ssHome, ".local", "share", "exploitdb");
+                    var ssBin = System.IO.Path.Combine(ssHome, ".local", "bin");
+                    var gitCloneCmd =
+                        $"mkdir -p {ssBin} && git clone https://github.com/offensive-security/exploitdb.git {ssDest} " +
+                        $"&& ln -sf {ssDest}/searchsploit {ssBin}/searchsploit";
+                    if (pm == PackageManager.Apt)
+                        return new InstallRecipe(tool, "apt-get install -y exploitdb",
+                            NeedsSudo: true,
+                            "searchsploit is provided by the exploitdb package on Kali/Debian.",
+                            FallbackCommand: gitCloneCmd,
+                            FallbackNeedsSudo: false,
+                            FallbackRationale: "exploitdb apt package is Kali-only; fallback: git clone Exploit-DB and symlink.");
+                    return new InstallRecipe(tool, gitCloneCmd,
+                        NeedsSudo: false,
+                        "No system package for searchsploit; clone Exploit-DB and symlink the launcher into ~/.local/bin.");
+                }
 
             // --- HTB / CTF tooling -----------------------------------------
 
@@ -143,12 +148,16 @@ public static class InstallRecipes
                 return SystemPmRecipe(tool, "john", pm, "John the Ripper password cracker.");
 
             case "responder":
-                if (pm == PackageManager.Apt)
-                    return new InstallRecipe(tool, "apt-get install -y responder", true,
-                        "Kali/Debian package responder.");
+                // pipx is the cleanest cross-distro path.
                 if (hasPipx)
                     return new InstallRecipe(tool, "pipx install responder", false,
-                        "responder via pipx (no system package on this distro).");
+                        "responder via pipx (works on all distros).");
+                if (pm == PackageManager.Apt)
+                    return new InstallRecipe(tool, "apt-get install -y responder", true,
+                        "Kali/Debian package responder.",
+                        FallbackCommand: "apt-get install -y pipx && pipx ensurepath && pipx install responder",
+                        FallbackNeedsSudo: true,
+                        FallbackRationale: "responder apt package is Kali-only; fallback: bootstrap pipx then install.");
                 return PipxBootstrapRecipe(tool, "responder", pm,
                     "responder via pipx; bootstrap pipx from the system package manager.");
 
@@ -216,14 +225,17 @@ public static class InstallRecipes
                     "kerbrute via `go install` (no system package on any supported distro; bootstraps upstream Go if too old).");
 
             case "seclists":
-                if (pm == PackageManager.Apt)
-                    return new InstallRecipe(tool, "apt-get install -y seclists", true,
-                        "SecLists wordlists via apt.");
                 {
-                    var sHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
-                    var sDest = System.IO.Path.Combine(sHome, "seclists");
-                    return new InstallRecipe(tool,
-                        $"git clone https://github.com/danielmiessler/SecLists {sDest}",
+                    var slHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var slDest = System.IO.Path.Combine(slHome, "seclists");
+                    var gitClone = $"git clone --depth=1 https://github.com/danielmiessler/SecLists {slDest}";
+                    if (pm == PackageManager.Apt)
+                        return new InstallRecipe(tool, "apt-get install -y seclists", true,
+                            "SecLists wordlists via apt (Kali).",
+                            FallbackCommand: gitClone,
+                            FallbackNeedsSudo: false,
+                            FallbackRationale: "seclists apt package is Kali-only; fallback: shallow git clone.");
+                    return new InstallRecipe(tool, gitClone,
                         NeedsSudo: false,
                         "SecLists wordlists via git clone (no system package on this distro).");
                 }
@@ -231,7 +243,10 @@ public static class InstallRecipes
             case "evil-winrm":
                 if (pm == PackageManager.Apt)
                     return new InstallRecipe(tool, "apt-get install -y evil-winrm", true,
-                        "evil-winrm via apt (Kali/Debian).");
+                        "evil-winrm via apt (Kali/Debian).",
+                        FallbackCommand: "gem install evil-winrm",
+                        FallbackNeedsSudo: false,
+                        FallbackRationale: "evil-winrm apt package is Kali-only; fallback: RubyGems.");
                 return new InstallRecipe(tool, "gem install evil-winrm", NeedsSudo: false,
                     "evil-winrm via RubyGems (no system package on this distro; requires Ruby).");
 
@@ -267,6 +282,73 @@ public static class InstallRecipes
                         FallbackRationale: "fallback: cargo install magika (Rust CLI; requires a Rust toolchain).");
                 return PipxBootstrapRecipe(tool, "magika", pm,
                     "magika via pipx; bootstrap pipx from the system package manager. Alternate path: `cargo install magika`.");
+
+            // --- Fuzzing tools (Recon/Fuzz/* subsystem) -----------------------
+
+            case "arjun":
+                if (hasPipx)
+                    return new InstallRecipe(tool, "pipx install arjun", false,
+                        "arjun HTTP parameter discovery via pipx.");
+                return PipxBootstrapRecipe(tool, "arjun", pm,
+                    "arjun via pipx; bootstrap pipx from the system package manager.");
+
+            case "x8":
+                // x8 is a Rust binary; cargo install is the canonical path.
+                return new InstallRecipe(tool,
+                    "cargo install x8",
+                    NeedsSudo: false,
+                    "x8 hidden-parameter discovery via cargo install (requires Rust toolchain).",
+                    FallbackCommand: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && . \"$HOME/.cargo/env\" && cargo install x8",
+                    FallbackNeedsSudo: false,
+                    FallbackRationale: "fallback: bootstrap Rust toolchain via rustup, then cargo install x8.");
+
+            case "kr":
+                {
+                    // kiterunner ships release binaries; go install does not work
+                    // (the root module is not a main package). Download from GitHub
+                    // releases as the primary path.
+                    var krHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var krBin = System.IO.Path.Combine(krHome, ".local", "bin");
+                    return new InstallRecipe(tool,
+                        $"arch=$(uname -m); case \"$arch\" in x86_64) a=amd64;; aarch64|arm64) a=arm64;; *) echo \"doctor: unsupported arch for kr: $arch\" >&2; exit 1;; esac; " +
+                        $"tmp=$(mktemp -d); " +
+                        $"curl -fsSL \"https://github.com/assetnote/kiterunner/releases/latest/download/kiterunner_1.0.2_linux_${{a}}.tar.gz\" -o \"${{tmp}}/kr.tar.gz\" && " +
+                        $"tar -xzf \"${{tmp}}/kr.tar.gz\" -C \"${{tmp}}\" && mkdir -p {krBin} && cp \"${{tmp}}/kr\" {krBin}/kr && chmod +x {krBin}/kr && rm -rf \"${{tmp}}\"",
+                        NeedsSudo: false,
+                        "kiterunner API content-discovery via GitHub release binary.");
+                }
+
+            case "graphql-cop":
+                if (hasPipx)
+                    return new InstallRecipe(tool, "pipx install graphql-cop", false,
+                        "graphql-cop GraphQL security auditor via pipx.");
+                return PipxBootstrapRecipe(tool, "graphql-cop", pm,
+                    "graphql-cop via pipx; bootstrap pipx from the system package manager.");
+
+            case "jwt_tool":
+                if (hasPipx)
+                    return new InstallRecipe(tool, "pipx install jwt-tool", false,
+                        "jwt_tool JWT testing toolkit via pipx (PyPI package: jwt-tool).");
+                return PipxBootstrapRecipe(tool, "jwt-tool", pm,
+                    "jwt_tool via pipx; bootstrap pipx from the system package manager.");
+
+            case "radamsa":
+                {
+                    var radHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var radDest = System.IO.Path.Combine(radHome, ".local", "src", "radamsa");
+                    var radBin = System.IO.Path.Combine(radHome, ".local", "bin");
+                    return new InstallRecipe(tool,
+                        $"apt-get install -y gcc make git && git clone https://gitlab.com/akihe/radamsa.git {radDest} && cd {radDest} && make && mkdir -p {radBin} && cp bin/radamsa {radBin}/radamsa",
+                        NeedsSudo: true,
+                        "radamsa general-purpose fuzzer built from source (needs gcc, make, git).");
+                }
+
+            case "boofuzz":
+                if (hasPipx)
+                    return new InstallRecipe(tool, "pipx install boofuzz", false,
+                        "boofuzz protocol fuzzing framework via pipx.");
+                return PipxBootstrapRecipe(tool, "boofuzz", pm,
+                    "boofuzz via pipx; bootstrap pipx from the system package manager.");
 
             case "python2":
                 // Brew still has a real py2 package; use it.
