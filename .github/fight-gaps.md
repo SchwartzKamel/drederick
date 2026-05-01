@@ -174,15 +174,56 @@
 
 ---
 
+## Roadmap Gaps
+
+### GAP-017: Plugin Ecosystem Hybridization Strategy
+- **Exposed by:** roadmap 2026-05 (Tier 3)
+- **Severity:** medium
+- **Impact:** Without a structured strategy for incorporating community work, Drederick risks reinventing capability while missing well-tested community knowledge (NSE scripts, vendor MIBs, libmagic signatures, YARA rules, NetExec modules)
+- **Status:** planned
+- **Description:** Drederick's native-first internalization (GAP-016) eliminated subprocess dependencies, but the community plugin ecosystems (NSE scripts, vendor MIBs, libmagic signatures, YARA rules, NetExec modules) still hold significant accumulated value. Without a structured strategy for incorporating community work, Drederick risks reinventing capability while missing well-tested community knowledge.
+- **Resolution plan:**
+  - Document four-pattern capability strategy in `docs/PLUGIN_STRATEGY.md` (graceful enrichment / embedded data / ported logic / original tooling).
+  - Implement Tier-3 todos: `nse-proxy` (Pattern 1), `mib-bundle` / `magic-bundle` / `yara-integration` (Pattern 2), `nse-port-top` (Pattern 3).
+- **Tracking:** todos `nse-proxy`, `nse-port-top`, `mib-bundle`, `magic-bundle`, `yara-integration` in project todo store.
+
+### GAP-018: Drederick-Original Signature Capabilities
+- **Exposed by:** roadmap 2026-05 (Tier 4)
+- **Severity:** high
+- **Impact:** Drederick currently re-implements capabilities that exist elsewhere; to become the heavyweight champ pick rather than a wrapper, it needs original capabilities no other tool does cleanly
+- **Status:** planned
+- **Description:** Drederick currently re-implements capabilities that exist elsewhere. To become the heavyweight champ pick rather than a wrapper, it needs original capabilities no other tool does cleanly: cross-protocol credential replay, multi-signal fingerprinting → CVE inference, global lockout-aware spray scheduling, and multi-stage attack chain reasoning.
+- **Resolution plan:**
+  - `xprotocol-replay` — Replay creds in parallel across SMB/WinRM/MSSQL/LDAP/SSH/HTTP/RDP.
+  - `fingerprint-stack` — port + banner + TLS cert + HTTP headers + favicon + JA3/JA4 → ranked CPE → CVE.
+  - `lockout-scheduler` — Global AD-lockout-aware throttling shared across all spray tools.
+  - `chain-reasoner` — Multi-stage attack chain proposer with explainability.
+- **Tracking:** todos `xprotocol-replay`, `fingerprint-stack`, `lockout-scheduler`, `chain-reasoner`.
+
+### GAP-019: Self-Improving Feedback Loop (Training Arc)
+- **Exposed by:** roadmap 2026-05 (Tier 5)
+- **Severity:** critical
+- **Impact:** Drederick currently does not learn between fights — each engagement starts from the same baseline priorities, fingerprints, and tool inventory; lessons from prior fights do not feed back into tool selection or priority adjustment
+- **Status:** planned
+- **Description:** Drederick currently does not learn between fights. Each engagement starts from the same baseline priorities, fingerprints, and tool inventory — none of the lessons from prior fights (`~/HTB/fight-log.yaml`, `.github/fight-history/`) feed back into tool selection or priority adjustment. The harness should review every fight, record what worked, tune its own priorities, grow its fingerprint corpus, and scaffold new tools from observed patterns.
+- **Resolution plan:**
+  - Document training arc in `docs/LEARNING_LOOP.md`.
+  - Foundation: `fight-telemetry` (per-attempt structured telemetry → `out/telemetry.db`), `fight-corpus-loader` (read `~/HTB/fight-log.yaml` schema v1).
+  - Layer: `fight-archetype` (target archetype classifier), `fight-review` (`drederick review` subcommand), `fight-corpus-writer` (drafts post-fight entries; never auto-commits).
+  - Self-tuning: `planner-self-tune`, `fingerprint-grow`, `archetype-playbook`, `tool-forge`.
+- **Tracking:** todos `fight-telemetry`, `fight-corpus-loader`, `fight-corpus-writer`, `fight-archetype`, `fight-review`, `planner-self-tune`, `fingerprint-grow`, `archetype-playbook`, `tool-forge`.
+
+---
+
 ## Statistics
 
-| Severity | Total | Open | In Progress | Resolved | Workaround |
-|----------|-------|------|-------------|----------|------------|
-| Critical | 3     | 1    | 0           | 0        | 2 workaround |
-| High     | 5     | 3    | 0           | 2        | |
-| Medium   | 6     | 5    | 0           | 1        | |
-| Low      | 2     | 2    | 0           | 0        | |
-| **Total**| **16**| **11**| **0**      | **3**    | **2 workaround** |
+| Severity | Total | Open | In Progress | Resolved | Workaround | Planned |
+|----------|-------|------|-------------|----------|------------|---------|
+| Critical | 4     | 1    | 0           | 0        | 2 workaround | 1     |
+| High     | 6     | 3    | 0           | 2        |            | 1       |
+| Medium   | 7     | 5    | 0           | 1        |            | 1       |
+| Low      | 2     | 2    | 0           | 0        |            | 0       |
+| **Total**| **19**| **11**| **0**      | **3**    | **2 workaround** | **3** |
 
 ---
 
@@ -193,3 +234,4 @@
 - **2026-05-01:** New gaps from HTB JobTwo engagement (GAP-010 through GAP-014) — hard Windows box exposed enumeration and LLM runner gaps
 - **2026-05-01:** GAP-010 resolved — Copilot SDK native sidecar now packaged in publish/install/release; GAP-015 added and resolved — autopilot now CVE-driven (NSE + findings.db → nuclei/msfrc above sprays)
 - **2026-05:** GAP-016 added and resolved — NativeScannerTool, NativeDnsTool, SharpSNMP SnmpTool, native DnsZoneTransferTool, ElfParser/PeParser, NativeHttpSprayTool, PathResolver eliminate 10+ external subprocess dependencies
+- **2026-05-01:** Added GAP-017 (plugin ecosystem hybridization), GAP-018 (Drederick-original signature capabilities), GAP-019 (self-improving feedback loop / training arc) — all planned.

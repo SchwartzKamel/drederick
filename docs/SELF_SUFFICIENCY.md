@@ -125,6 +125,138 @@ enrichment layer on top of the native baseline:
 | `impacket` | Kerberos attacks, SMB relay, PtH |
 | `magika` | ML-based file-type hints as pre-pass for `BinaryAnalyzer` |
 
+<a id="performance-gains"></a>
+## Performance gains
+
+The native-first internalization pass (commit ~`15ecfb4`) replaced 5+
+subprocess shellouts with 2,204 lines of in-process C#. The numbers
+below are analytical estimates — the `scan-bench` task in the Tier-2
+roadmap will produce measured BenchmarkDotNet figures and replace this
+table.
+
+### Per-call speedup (estimates pending `scan-bench`)
+
+| Replacement | Per-call before | Per-call after | Speedup | Why |
+|---|---|---|---|---|
+| `which` → `PathResolver` | ~10–20 ms (process spawn) | ~0.1–1 ms (file checks) | 10–100× | No fork/exec, no pipe |
+| `dig` → `DnsClient` | ~30–50 ms | ~2–10 ms | 5–25× | In-process UDP, no text parse |
+| `snmpwalk` → `SharpSNMP` | ~50–150 ms (spawn + walk) | ~10–40 ms | 3–10× | Eliminates spawn; same wire protocol |
+| `file/readelf/nm/strings/objdump` → `ElfParser/PeParser` | ~150–250 ms (5 spawns) | ~5–20 ms | 10–50× | Single mmap+parse vs 5 subprocesses |
+| `netexec` (HTTP) → `NativeHttpSprayTool` | ~200–500 ms (Python startup + per-attempt) | ~10–50 ms | 10–50× | HttpClient connection pool, persistent TLS |
+| nmap (basic scan) → `NativeScannerTool` | ~1–2 s for `-F` | ~2–4 s for 57 ports @ 500 conc | 1–3× cold-start | Skips nmap discovery phases; loses NSE corpus |
+
+> **Note**: These are analytical estimates. The `scan-bench` task in the
+> Tier-2 roadmap will produce measured numbers via BenchmarkDotNet to
+> replace this table.
+
+### Compounding wins
+
+- **Concurrency**: Subprocess-based tools were fork-bound (~`RLIMIT_NPROC`,
+  ~10–50 MB Python interpreter RSS each). Native tools are `Task`s on a
+  shared heap. The `HostWorkerPool` `Channel<ScanJob>` can run 500–1000
+  in-flight scans without thrashing.
+- **CTF/HTB recon phase**: A typical "lame target" sweep cuts from ~5–7 s
+  to ~1–2 s of overhead — roughly 3–5× faster recon overhead per host.
+  On a /24 sweep that's ~15 minutes shaved.
+- **Post-exploitation binary triage**: Enumerating `/usr/bin` (≈3,000
+  binaries) drops from 30–60 minutes of fork overhead to ~30–60 seconds
+  of pure I/O + parse — 30–60× faster.
+- **Tests**: Subprocess-based tests waited for `/bin/true` stubs
+  (~50–200 ms each). Native tests run in-memory (~1–10 ms) — 5–10×
+  faster suite on affected tools.
+- **Cross-platform**: Drederick now works on Windows without WSL for the
+  native paths.
+
+### Risks & gotchas (honest accounting)
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| **NSE corpus gap** — `NativeScannerTool` has no NSE; banner-grab fingerprints chatty protocols only | Medium | nmap kept as enrichment layer when present (`nse-proxy` task formalizes this) |
+| **Crash blast radius** — bug in `ElfParser` crashes Drederick; bug in `readelf` only kills that subprocess | Medium | Wrap parsers in try/catch with structured error in result; never let parse exceptions propagate to `AutopilotRunner` |
+| **TLS quirks on weird targets** — `SslStream` is stricter than nmap re: SNI, SSLv3, weak ciphers | Low | `NativeHttpSprayTool` already disables cert validation; for scanning, fallback to `--no-verify` mode |
+| **GC pauses at scale** — 1000 in-flight scans share the heap | Low | Server GC + `<ConcurrentGCEnabled>true</ConcurrentGCEnabled>` (likely already set) |
+| **Connect-scan footprint** — TCP connect leaves traces; nmap SYN scan is stealthier | Low for lab/CTF | `scan-syn-raw` task adds raw-socket SYN scan with `CAP_NET_RAW` |
+| **Cold-port timeout amplification** — closed ports still cost full timeout (default 2s) | Medium | RST-on-connect closes immediately; only filtered/dropped ports cost the full 2s |
+
+<a id="roadmap"></a>
+## Roadmap: Tier 2 / Tier 3 / Tier 4 / Tier 5
+
+Drederick gets stronger over time through five complementary patterns:
+
+1. **Graceful enrichment** — use external tools when present, native is
+   the floor.
+2. **Embedded community data** — bundle MIBs, libmagic, fingerprint
+   corpora, YARA rules as in-process resources.
+3. **Ported community logic** — translate top NSE / NetExec scripts to
+   native C#, citing the originals.
+4. **Original Drederick tooling** — capabilities we design that no
+   existing tool does cleanly.
+5. **Self-improving feedback loop** — review every fight, learn what
+   worked, tune priorities, grow fingerprints, scaffold new tools. The
+   training arc — the champ studies the tape between bouts.
+
+See [PLUGIN_STRATEGY.md](PLUGIN_STRATEGY.md) for patterns 1–4 and
+[LEARNING_LOOP.md](LEARNING_LOOP.md) for pattern 5.
+
+### Tier 2 — Performance hardening
+
+- `scan-syn-raw` — Raw-socket SYN scan with CAP_NET_RAW; falls back to
+  connect-scan.
+- `http-pool-persistent` — Per-target HttpClient cache in
+  NativeHttpSprayTool (connection reuse).
+- `elf-cache-host` — KnowledgeBase-backed ELF parse cache keyed on
+  (host, path, sha256, mtime).
+- `scan-bench` — BenchmarkDotNet harness that replaces the estimated
+  speedup table with measurements.
+
+### Tier 3 — Community plugin reuse (Patterns 1+2+3)
+
+- `nse-proxy` — Formalize NSE enrichment when nmap is present.
+- `nse-port-top` — Port the top 20–30 NSE scripts to native C#
+  IReconTool implementations.
+- `mib-bundle` — Bundle ~50 vendor MIBs as embedded resources for
+  SnmpTool.
+- `magic-bundle` — Expand BinaryAnalyzer magic-byte signatures (ZIP,
+  PDF, JAR, ISO, RPM, DEB, etc.).
+- `yara-integration` — dnYara for binary classification with curated
+  offsec rule set.
+
+### Tier 4 — Drederick-original tooling (Pattern 4)
+
+- `xprotocol-replay` — Cross-protocol credential replay
+  (SMB/WinRM/MSSQL/LDAP/SSH/HTTP/RDP in parallel).
+- `fingerprint-stack` — Multi-signal host fingerprinter → ranked CPE →
+  CVE matches.
+- `lockout-scheduler` — Global AD-lockout-aware spray scheduler shared
+  across all spray tools.
+- `chain-reasoner` — Multi-stage attack chain proposer with
+  explainability.
+
+### Tier 5 — Self-improving training arc (Pattern 5)
+
+- `fight-telemetry` — Per-attempt structured telemetry →
+  `out/telemetry.db`.
+- `fight-corpus-loader` — Read `~/HTB/fight-log.yaml` (schema v1) as
+  long-term curated corpus.
+- `fight-corpus-writer` — Draft post-fight corpus entries
+  (operator-reviewed, never auto-committed).
+- `fight-archetype` — Target archetype classifier (htb-linux-easy,
+  htb-windows-ad, ctf-jeopardy-*).
+- `fight-review` — `drederick review` subcommand for between-fight
+  analysis.
+- `planner-self-tune` — ExploitationPlanner priorities learn from
+  telemetry + corpus.
+- `fingerprint-grow` — fingerprint-stack auto-extends from observed
+  fights.
+- `archetype-playbook` — Pre-tuned playbooks per archetype loaded via
+  `drederick warmup`.
+- `tool-forge` — `drederick forge --from <fight>` generates IReconTool
+  / IExploitTool scaffolds.
+
+Track these in the project's todo store; cross-reference with
+`.github/fight-gaps.md` GAP-016 (resolved), GAP-017, GAP-018, GAP-019
+(planned).
+
 <a id="nuget-packages"></a>
 ## NuGet packages added
 
