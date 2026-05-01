@@ -99,25 +99,25 @@ public static class InstallRecipes
                     Rationale: "datasette requires a Python CLI installer; bootstrap pipx via the system package manager first.");
 
             case "searchsploit":
-            {
-                // Git-clone recipe works everywhere (Kali, Ubuntu, Fedora, …).
-                var ssHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
-                var ssDest = System.IO.Path.Combine(ssHome, ".local", "share", "exploitdb");
-                var ssBin = System.IO.Path.Combine(ssHome, ".local", "bin");
-                var gitCloneCmd =
-                    $"mkdir -p {ssBin} && git clone https://github.com/offensive-security/exploitdb.git {ssDest} " +
-                    $"&& ln -sf {ssDest}/searchsploit {ssBin}/searchsploit";
-                if (pm == PackageManager.Apt)
-                    return new InstallRecipe(tool, "apt-get install -y exploitdb",
-                        NeedsSudo: true,
-                        "searchsploit is provided by the exploitdb package on Kali/Debian.",
-                        FallbackCommand: gitCloneCmd,
-                        FallbackNeedsSudo: false,
-                        FallbackRationale: "exploitdb apt package is Kali-only; fallback: git clone Exploit-DB and symlink.");
-                return new InstallRecipe(tool, gitCloneCmd,
-                    NeedsSudo: false,
-                    "No system package for searchsploit; clone Exploit-DB and symlink the launcher into ~/.local/bin.");
-            }
+                {
+                    // Git-clone recipe works everywhere (Kali, Ubuntu, Fedora, …).
+                    var ssHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var ssDest = System.IO.Path.Combine(ssHome, ".local", "share", "exploitdb");
+                    var ssBin = System.IO.Path.Combine(ssHome, ".local", "bin");
+                    var gitCloneCmd =
+                        $"mkdir -p {ssBin} && git clone https://github.com/offensive-security/exploitdb.git {ssDest} " +
+                        $"&& ln -sf {ssDest}/searchsploit {ssBin}/searchsploit";
+                    if (pm == PackageManager.Apt)
+                        return new InstallRecipe(tool, "apt-get install -y exploitdb",
+                            NeedsSudo: true,
+                            "searchsploit is provided by the exploitdb package on Kali/Debian.",
+                            FallbackCommand: gitCloneCmd,
+                            FallbackNeedsSudo: false,
+                            FallbackRationale: "exploitdb apt package is Kali-only; fallback: git clone Exploit-DB and symlink.");
+                    return new InstallRecipe(tool, gitCloneCmd,
+                        NeedsSudo: false,
+                        "No system package for searchsploit; clone Exploit-DB and symlink the launcher into ~/.local/bin.");
+                }
 
             // --- HTB / CTF tooling -----------------------------------------
 
@@ -303,20 +303,20 @@ public static class InstallRecipes
                     FallbackRationale: "fallback: bootstrap Rust toolchain via rustup, then cargo install x8.");
 
             case "kr":
-            {
-                // kiterunner ships release binaries; go install does not work
-                // (the root module is not a main package). Download from GitHub
-                // releases as the primary path.
-                var krHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
-                var krBin = System.IO.Path.Combine(krHome, ".local", "bin");
-                return new InstallRecipe(tool,
-                    $"arch=$(uname -m); case \"$arch\" in x86_64) a=amd64;; aarch64|arm64) a=arm64;; *) echo \"doctor: unsupported arch for kr: $arch\" >&2; exit 1;; esac; " +
-                    $"tmp=$(mktemp -d); " +
-                    $"curl -fsSL \"https://github.com/assetnote/kiterunner/releases/latest/download/kiterunner_1.0.2_linux_${{a}}.tar.gz\" -o \"${{tmp}}/kr.tar.gz\" && " +
-                    $"tar -xzf \"${{tmp}}/kr.tar.gz\" -C \"${{tmp}}\" && mkdir -p {krBin} && cp \"${{tmp}}/kr\" {krBin}/kr && chmod +x {krBin}/kr && rm -rf \"${{tmp}}\"",
-                    NeedsSudo: false,
-                    "kiterunner API content-discovery via GitHub release binary.");
-            }
+                {
+                    // kiterunner ships release binaries; go install does not work
+                    // (the root module is not a main package). Download from GitHub
+                    // releases as the primary path.
+                    var krHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var krBin = System.IO.Path.Combine(krHome, ".local", "bin");
+                    return new InstallRecipe(tool,
+                        $"arch=$(uname -m); case \"$arch\" in x86_64) a=amd64;; aarch64|arm64) a=arm64;; *) echo \"doctor: unsupported arch for kr: $arch\" >&2; exit 1;; esac; " +
+                        $"tmp=$(mktemp -d); " +
+                        $"curl -fsSL \"https://github.com/assetnote/kiterunner/releases/latest/download/kiterunner_1.0.2_linux_${{a}}.tar.gz\" -o \"${{tmp}}/kr.tar.gz\" && " +
+                        $"tar -xzf \"${{tmp}}/kr.tar.gz\" -C \"${{tmp}}\" && mkdir -p {krBin} && cp \"${{tmp}}/kr\" {krBin}/kr && chmod +x {krBin}/kr && rm -rf \"${{tmp}}\"",
+                        NeedsSudo: false,
+                        "kiterunner API content-discovery via GitHub release binary.");
+                }
 
             case "graphql-cop":
                 if (hasPipx)
@@ -333,15 +333,15 @@ public static class InstallRecipes
                     "jwt_tool via pipx; bootstrap pipx from the system package manager.");
 
             case "radamsa":
-            {
-                var radHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
-                var radDest = System.IO.Path.Combine(radHome, ".local", "src", "radamsa");
-                var radBin = System.IO.Path.Combine(radHome, ".local", "bin");
-                return new InstallRecipe(tool,
-                    $"apt-get install -y gcc make git && git clone https://gitlab.com/akihe/radamsa.git {radDest} && cd {radDest} && make && mkdir -p {radBin} && cp bin/radamsa {radBin}/radamsa",
-                    NeedsSudo: true,
-                    "radamsa general-purpose fuzzer built from source (needs gcc, make, git).");
-            }
+                {
+                    var radHome = Environment.GetEnvironmentVariable("HOME") ?? "~";
+                    var radDest = System.IO.Path.Combine(radHome, ".local", "src", "radamsa");
+                    var radBin = System.IO.Path.Combine(radHome, ".local", "bin");
+                    return new InstallRecipe(tool,
+                        $"apt-get install -y gcc make git && git clone https://gitlab.com/akihe/radamsa.git {radDest} && cd {radDest} && make && mkdir -p {radBin} && cp bin/radamsa {radBin}/radamsa",
+                        NeedsSudo: true,
+                        "radamsa general-purpose fuzzer built from source (needs gcc, make, git).");
+                }
 
             case "boofuzz":
                 if (hasPipx)

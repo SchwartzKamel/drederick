@@ -259,7 +259,7 @@ public sealed class CommandLineOptions
     public string? CtfMsgBody { get; set; }
 
     // --- jeopardy-llm-provider-options ---
-    /// <summary>Which LLM backend the ctf-solve swarm talks to. Default <see cref="LlmProvider.Copilot"/>.</summary>
+    /// <summary>Which LLM backend to use. Applies to both ctf-solve swarm and --agent recon mode. Default <see cref="LlmProvider.Copilot"/>.</summary>
     public LlmProvider LlmProvider { get; set; } = LlmProvider.Copilot;
 
     /// <summary>Azure OpenAI endpoint override (e.g. https://my-resource.openai.azure.com). Falls back to $AZURE_OPENAI_ENDPOINT.</summary>
@@ -404,23 +404,23 @@ public sealed class CommandLineOptions
                         switch (head)
                         {
                             case "--llm-provider":
-                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.LlmProvider = LlmProviderFactory.Parse(val);
                                 break;
                             case "--azure-endpoint":
-                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.AzureEndpoint = val;
                                 break;
                             case "--azure-api-version":
-                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                                if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                                     throw new ArgumentException($"Unknown argument: {a}");
                                 o.AzureApiVersion = val;
                                 break;
                             case "--azure-deployment":
                                 {
-                                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                                         throw new ArgumentException($"Unknown argument: {a}");
                                     var eq2 = val.IndexOf('=');
                                     if (eq2 <= 0 || eq2 == val.Length - 1)
@@ -871,25 +871,25 @@ public sealed class CommandLineOptions
                 // --- jeopardy-llm-provider-flag-parse ---
                 case "--llm-provider":
                     {
-                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                             throw new ArgumentException($"Unknown argument: {a}");
                         var v = RequireNext(args, ref i, a);
                         o.LlmProvider = LlmProviderFactory.Parse(v);
                         break;
                     }
                 case "--azure-endpoint":
-                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.AzureEndpoint = RequireNext(args, ref i, a);
                     break;
                 case "--azure-api-version":
-                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.AzureApiVersion = RequireNext(args, ref i, a);
                     break;
                 case "--azure-deployment":
                     {
-                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                             throw new ArgumentException($"Unknown argument: {a}");
                         var v = RequireNext(args, ref i, a);
                         var eq = v.IndexOf('=');
@@ -900,13 +900,13 @@ public sealed class CommandLineOptions
                         break;
                     }
                 case "--llamacpp-url":
-                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                    if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.LlamaCppUrl = RequireNext(args, ref i, a);
                     break;
                 case "--llamacpp-model":
                     {
-                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand)
+                        if (!o.CtfSolveSubcommand && !o.DoctorSubcommand && !o.UseAgent && !o.UseHybridAgent)
                             throw new ArgumentException($"Unknown argument: {a}");
                         var v = RequireNext(args, ref i, a);
                         var eq = v.IndexOf('=');

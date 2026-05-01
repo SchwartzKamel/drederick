@@ -1,5 +1,6 @@
 using System.Text;
 using Drederick.Audit;
+using Drederick.Jeopardy.Llm;
 using Drederick.Memory;
 using Drederick.Recon;
 using Microsoft.Agents.AI;
@@ -10,10 +11,10 @@ using OpenAI.Chat;
 namespace Drederick.Agent;
 
 /// <summary>
-/// Microsoft Agent Framework runner. Wraps an OpenAI <see cref="ChatClient"/>
-/// as an <see cref="AIAgent"/>, exposes the four recon tools as
+/// Microsoft Agent Framework runner. Wraps an <see cref="IChatClient"/>
+/// as an <see cref="AIAgent"/>, exposes recon and exploit tools as
 /// <see cref="AIFunction"/>s, and gives the agent a strongly-worded system
-/// prompt pinning it to scoped, non-exploitative reconnaissance.
+/// prompt pinning it to scoped reconnaissance and exploitation.
 ///
 /// Scope enforcement lives inside every tool, not in this class. The LLM
 /// cannot circumvent the allow-list by instructing itself to ignore it.
@@ -21,13 +22,13 @@ namespace Drederick.Agent;
 public sealed class MicrosoftAgentRunner : IReconAgentRunner
 {
     private readonly AuditLog _audit;
-    private readonly ChatClient _chatClient;
+    private readonly IChatClient _chatClient;
     private readonly string _modelId;
     private readonly LlmExploitTools? _exploitTools;
 
     public MicrosoftAgentRunner(
         AuditLog audit,
-        ChatClient chatClient,
+        IChatClient chatClient,
         string modelId,
         LlmExploitTools? exploitTools = null)
     {
@@ -44,7 +45,54 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     public MicrosoftAgentRunner WithExploitTools(LlmExploitTools exploitTools) =>
         new(_audit, _chatClient, _modelId, exploitTools);
 
-    /// <summary>Factory: build an OpenAI-backed runner from environment configuration.</summary>
+    /// <summary>
+    /// Factory: build a runner from the selected LLM provider. Supports Copilot
+    /// SDK, Azure OpenAI, and legacy raw OpenAI. Returns <c>null</c> if the
+    /// provider's required environment is not configured.
+    /// </summary>
+    public static MicrosoftAgentRunner? TryCreateFromProvider(
+        LlmProvider provider,
+        IReadOnlyDictionary<string, string>? azureDeploymentMap,
+        AuditLog audit)
+    {
+        var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
+
+        switch (provider)
+        {
+            case LlmProvider.Copilot:
+                {
+                    var copilot = CopilotChatClient.TryCreateFromEnvironment(audit, model);
+                    if (copilot is null) return null;
+                    return new MicrosoftAgentRunner(audit, copilot, copilot.ModelId);
+                }
+
+            case LlmProvider.Azure:
+                {
+                    var azure = AzureOpenAiChatClient.TryCreateFromEnvironment(audit, azureDeploymentMap, model);
+                    if (azure is null) return null;
+                    return new MicrosoftAgentRunner(audit, azure, azure.ModelId);
+                }
+
+            case LlmProvider.LlamaCpp:
+                // Most local models lack reliable function calling. Fail fast
+                // rather than silently dropping tools in agent mode.
+                return null;
+
+            default:
+                {
+                    // Legacy OpenAI path
+                    var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                    if (string.IsNullOrWhiteSpace(apiKey)) return null;
+                    model ??= "gpt-4o-mini";
+                    var openAi = new OpenAIClient(apiKey);
+                    var chat = openAi.GetChatClient(model);
+                    return new MicrosoftAgentRunner(audit, chat.AsIChatClient(), model);
+                }
+        }
+    }
+
+    /// <summary>Legacy factory: build an OpenAI-backed runner from environment configuration.</summary>
+    [Obsolete("Use TryCreateFromProvider for multi-provider support.")]
     public static MicrosoftAgentRunner? TryCreateFromEnvironment(AuditLog audit)
     {
         var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
@@ -52,7 +100,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL") ?? "gpt-4o-mini";
         var openAi = new OpenAIClient(apiKey);
         var chat = openAi.GetChatClient(model);
-        return new MicrosoftAgentRunner(audit, chat, model);
+        return new MicrosoftAgentRunner(audit, chat.AsIChatClient(), model);
     }
 
     public async Task RunAsync(
