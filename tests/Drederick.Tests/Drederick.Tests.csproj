@@ -15,6 +15,12 @@
     <ProjectReference Include="..\..\src\Drederick\Drederick.csproj" />
   </ItemGroup>
 
+  <!-- Exclude work-in-progress test files placed by parallel agents under
+       a *.skip/ subdirectory until their backing types land. -->
+  <ItemGroup>
+    <Compile Remove="**/*.skip/**/*.cs" />
+  </ItemGroup>
+
   <!-- Copy fuzz fixtures into the test output dir so tests that load them
        via a relative "tests/Drederick.Tests/Fuzz/fixtures/..." path resolve
        (cwd at test time is the bin/.../net10.0/ directory). The Link keeps
