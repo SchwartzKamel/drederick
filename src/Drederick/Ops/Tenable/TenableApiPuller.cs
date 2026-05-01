@@ -81,13 +81,13 @@ public sealed class TenableApiPullResult
 /// </summary>
 public sealed class TenableApiPuller
 {
-    private readonly TenableApiClient _client;
+    private readonly ITenableExportBackend _client;
     private readonly AuditLog _audit;
     private readonly Func<DateTimeOffset> _utcNow;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
     public TenableApiPuller(
-        TenableApiClient client,
+        ITenableExportBackend client,
         AuditLog audit,
         Func<DateTimeOffset>? utcNow = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null)
@@ -130,6 +130,7 @@ public sealed class TenableApiPuller
                 ["path"] = cachedPath,
                 ["last_modification_date"] = scan.LastModificationDate,
                 ["key_digest"] = _client.AccessKeyDigest,
+                ["backend"] = _client.BackendName,
             });
             return new TenableApiPullResult
             {
@@ -152,6 +153,7 @@ public sealed class TenableApiPuller
             ["file_id"] = fileId,
             ["format"] = options.Format,
             ["key_digest"] = _client.AccessKeyDigest,
+            ["backend"] = _client.BackendName,
         });
 
         await PollUntilReadyAsync(scan.Id, fileId, options, ct);
@@ -167,6 +169,7 @@ public sealed class TenableApiPuller
             ["bytes"] = bytes.LongLength,
             ["path"] = cachedPath,
             ["key_digest"] = _client.AccessKeyDigest,
+            ["backend"] = _client.BackendName,
         });
 
         return new TenableApiPullResult
@@ -188,6 +191,7 @@ public sealed class TenableApiPuller
         {
             ["count"] = scans.Count,
             ["key_digest"] = _client.AccessKeyDigest,
+            ["backend"] = _client.BackendName,
         });
 
         TenableScanSummary? chosen = null;
@@ -226,6 +230,7 @@ public sealed class TenableApiPuller
             ["status"] = pick.Status,
             ["last_modification_date"] = pick.LastModificationDate,
             ["key_digest"] = _client.AccessKeyDigest,
+            ["backend"] = _client.BackendName,
         });
         return pick;
     }
@@ -252,6 +257,7 @@ public sealed class TenableApiPuller
                     ["file_id"] = fileId,
                     ["attempts"] = attempts,
                     ["key_digest"] = _client.AccessKeyDigest,
+                    ["backend"] = _client.BackendName,
                 });
                 return;
             }

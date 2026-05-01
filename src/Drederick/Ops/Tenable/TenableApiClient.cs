@@ -43,7 +43,7 @@ public sealed class TenableExportStatus
 /// <c>Drederick.Enrichment.NvdCache</c> and <c>GhsaSource</c> reach external
 /// services without participating in the per-target scope check.
 /// </summary>
-public sealed class TenableApiClient : IDisposable
+public sealed class TenableApiClient : ITenableExportBackend
 {
     private readonly HttpClient _http;
     private readonly bool _ownsClient;
@@ -52,14 +52,27 @@ public sealed class TenableApiClient : IDisposable
     /// <summary>SHA-256 prefix of the access key, suitable for audit correlation.</summary>
     public string AccessKeyDigest { get; }
 
+    /// <summary>Backend identifier — <c>tenable.io</c> by default, <c>nessus</c> when constructed via <see cref="ForNessusProfessional"/>.</summary>
+    public string BackendName { get; }
+
     /// <summary>
     /// Construct a client with the given <paramref name="baseUrl"/> (e.g.
-    /// <c>https://cloud.tenable.com</c>), <paramref name="accessKey"/> and
-    /// <paramref name="secretKey"/>. Optionally accept an injected
-    /// <paramref name="httpClient"/> for tests; if null, a fresh client with a
-    /// 60-second timeout is constructed and owned by this instance.
+    /// <c>https://cloud.tenable.com</c> for Tenable.io, or
+    /// <c>https://&lt;nessus-host&gt;:8834</c> for Nessus Professional),
+    /// <paramref name="accessKey"/> and <paramref name="secretKey"/>.
+    /// Optionally accept an injected <paramref name="httpClient"/> for tests;
+    /// if null, a fresh client with a 60-second timeout is constructed and
+    /// owned by this instance. Set <paramref name="insecureTls"/> to <c>true</c>
+    /// to skip server certificate validation — required for typical Nessus
+    /// Professional deployments which ship with self-signed certs.
     /// </summary>
-    public TenableApiClient(string baseUrl, string accessKey, string secretKey, HttpClient? httpClient = null)
+    public TenableApiClient(
+        string baseUrl,
+        string accessKey,
+        string secretKey,
+        HttpClient? httpClient = null,
+        bool insecureTls = false,
+        string backendName = "tenable.io")
     {
         if (string.IsNullOrWhiteSpace(baseUrl)) throw new ArgumentException("baseUrl required", nameof(baseUrl));
         if (string.IsNullOrWhiteSpace(accessKey)) throw new ArgumentException("accessKey required", nameof(accessKey));
@@ -67,7 +80,22 @@ public sealed class TenableApiClient : IDisposable
 
         _baseUrl = baseUrl.TrimEnd('/');
         _ownsClient = httpClient is null;
-        _http = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        if (httpClient is null)
+        {
+            var handler = new HttpClientHandler();
+            if (insecureTls)
+            {
+                // Nessus Professional and Tenable.sc on-prem default to a
+                // self-signed cert. Operators must opt in via --tenable-insecure;
+                // we never silently accept invalid certs for Tenable.io.
+                handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            }
+            _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+        }
+        else
+        {
+            _http = httpClient;
+        }
         // X-ApiKeys is Tenable's documented header. Format is "accessKey=AAAA;secretKey=BBBB".
         _http.DefaultRequestHeaders.Remove("X-ApiKeys");
         _http.DefaultRequestHeaders.TryAddWithoutValidation(
@@ -77,7 +105,22 @@ public sealed class TenableApiClient : IDisposable
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("drederick", "1.0"));
 
         AccessKeyDigest = ComputeKeyDigest(accessKey);
+        BackendName = backendName;
     }
+
+    /// <summary>
+    /// Convenience factory for Nessus Professional (on-prem). Defaults to
+    /// <c>insecureTls=true</c> because Nessus Pro ships with a self-signed
+    /// cert by default. Operators with a properly issued cert can pass
+    /// <paramref name="insecureTls"/>=<c>false</c>.
+    /// </summary>
+    public static TenableApiClient ForNessusProfessional(
+        string baseUrl,
+        string accessKey,
+        string secretKey,
+        bool insecureTls = true,
+        HttpClient? httpClient = null) =>
+        new(baseUrl, accessKey, secretKey, httpClient, insecureTls, backendName: "nessus");
 
     private static string ComputeKeyDigest(string accessKey)
     {

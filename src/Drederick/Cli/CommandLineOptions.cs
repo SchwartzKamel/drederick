@@ -87,6 +87,24 @@ public sealed class CommandLineOptions
     public string TenableFormat { get; set; } = "nessus";
     /// <summary>When true, ignore the on-disk export cache and force a fresh export.</summary>
     public bool TenableNoCache { get; set; }
+
+    /// <summary>
+    /// Backend dialect: <c>io</c> (Tenable.io, default), <c>nessus</c>
+    /// (Nessus Professional on-prem), or <c>sc</c> (Tenable.sc / SecurityCenter).
+    /// </summary>
+    public string TenableBackend { get; set; } = "io";
+
+    /// <summary>SC/Nessus username (SC only requires this when API keys are not set).</summary>
+    public string? TenableUsername { get; set; }
+    /// <summary>SC/Nessus password (paired with <see cref="TenableUsername"/>).</summary>
+    public string? TenablePassword { get; set; }
+
+    /// <summary>
+    /// Skip TLS server certificate validation. Default <c>false</c> for Tenable.io,
+    /// auto-on for the <c>nessus</c> and <c>sc</c> backends because both ship with
+    /// self-signed certs out of the box. Set explicitly to override.
+    /// </summary>
+    public bool? TenableInsecureTls { get; set; }
     // --- end tenable-import options ---
 
     // ANCHOR: vpn-preflight-options (owned by vpn-htb-ergonomics task)
@@ -608,6 +626,21 @@ public sealed class CommandLineOptions
                     }
                 case "--tenable-no-cache":
                     o.TenableNoCache = true; break;
+                case "--tenable-backend":
+                    {
+                        var v = RequireNext(args, ref i, a).ToLowerInvariant();
+                        if (v != "io" && v != "nessus" && v != "sc")
+                            throw new ArgumentException($"--tenable-backend must be 'io', 'nessus', or 'sc'; got '{v}'.");
+                        o.TenableBackend = v; break;
+                    }
+                case "--tenable-username":
+                    o.TenableUsername = RequireNext(args, ref i, a); break;
+                case "--tenable-password":
+                    o.TenablePassword = RequireNext(args, ref i, a); break;
+                case "--tenable-insecure":
+                    o.TenableInsecureTls = true; break;
+                case "--tenable-secure":
+                    o.TenableInsecureTls = false; break;
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;
@@ -1117,16 +1150,36 @@ public sealed class CommandLineOptions
                                Service data is pre-seeded into the cross-run knowledge
                                base so the adaptive runner focuses on unexplored surface.
                                IPs outside the scope are logged and skipped.
-          --tenable-api-url <url>     Tenable.io base URL. Default https://cloud.tenable.com.
-                                      Env: $TENABLE_URL.
-          --tenable-access-key <key>  Tenable.io API access key. Env: $TENABLE_ACCESS_KEY.
-          --tenable-secret-key <key>  Tenable.io API secret key. Env: $TENABLE_SECRET_KEY.
+          --tenable-backend <io|nessus|sc>
+                                      Tenable backend dialect. Default 'io'
+                                      (Tenable.io cloud). 'nessus' = Nessus
+                                      Professional on-prem (same wire protocol
+                                      as Tenable.io, default URL
+                                      https://localhost:8834, self-signed TLS
+                                      tolerated by default). 'sc' = Tenable.sc
+                                      / SecurityCenter (REST /rest/scanResult,
+                                      ZIP-of-.nessus download, supports either
+                                      API-key auth or username+password).
+          --tenable-api-url <url>     Tenable management plane URL.
+                                      Default https://cloud.tenable.com (io),
+                                      https://localhost:8834 (nessus), or
+                                      $TENABLE_URL.
+          --tenable-access-key <key>  API access key. Env: $TENABLE_ACCESS_KEY.
+          --tenable-secret-key <key>  API secret key. Env: $TENABLE_SECRET_KEY.
+          --tenable-username <user>   SC username (when API keys are not set).
+                                      Env: $TENABLE_USERNAME.
+          --tenable-password <pw>     SC password. Env: $TENABLE_PASSWORD.
+          --tenable-insecure          Skip TLS server-certificate validation.
+                                      Default off for io, on for nessus and sc.
+          --tenable-secure            Force TLS verification on (overrides the
+                                      default-on behavior for nessus / sc).
           --tenable-scan-id <n>       Pull the export for scan id <n>.
           --tenable-scan-name <name>  Pull the most recently completed scan whose name
                                       matches (case-insensitive).
           --tenable-latest            Pull the most recently completed scan visible
                                       to the API key.
           --tenable-format <fmt>      Export format: nessus (default) or csv.
+                                      SC backend supports nessus only.
           --tenable-no-cache          Force a fresh export, bypassing
                                       <out>/tenable_cache/. Cached exports are
                                       keyed by scan id + last_modification_date,

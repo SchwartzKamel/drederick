@@ -375,27 +375,32 @@ catch (ScopeException ex)
 }
 
 // --- tenable-api-pull ---
-// "Smart" Tenable.io API pulling: when --tenable-scan-id / --tenable-scan-name /
-// --tenable-latest is set (and --tenable-import is not), authenticate against the
-// configured Tenable management plane, select the right scan, request an export,
-// poll until ready, cache the bytes under <out>/tenable_cache/, and feed the path
-// into the file-based ingest path below. Exports are cached keyed by
-// scan_id + last_modification_date so re-running with the same flags is free.
+// "Smart" Tenable API pulling against any of three backends: Tenable.io
+// (cloud), Nessus Professional (on-prem, same wire protocol), or Tenable.sc /
+// SecurityCenter (REST /rest/scanResult). Picks the right client from
+// --tenable-backend, authenticates, selects the scan, polls until ready,
+// caches the bytes under <out>/tenable_cache/, and feeds the path into the
+// existing file-based ingest path below.
 if (string.IsNullOrEmpty(opts.TenableImportPath) &&
     (opts.TenableScanId.HasValue || !string.IsNullOrEmpty(opts.TenableScanName) || opts.TenableLatest))
 {
+    var backend = (opts.TenableBackend ?? "io").ToLowerInvariant();
+    var defaultUrl = backend switch
+    {
+        "nessus" => "https://localhost:8834",
+        "sc" => "https://localhost",
+        _ => "https://cloud.tenable.com",
+    };
     var apiUrl = opts.TenableApiUrl
         ?? Environment.GetEnvironmentVariable("TENABLE_URL")
-        ?? "https://cloud.tenable.com";
+        ?? defaultUrl;
     var accessKey = opts.TenableAccessKey ?? Environment.GetEnvironmentVariable("TENABLE_ACCESS_KEY");
     var secretKey = opts.TenableSecretKey ?? Environment.GetEnvironmentVariable("TENABLE_SECRET_KEY");
-    if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
-    {
-        Console.Error.WriteLine(
-            "tenable-api: --tenable-access-key and --tenable-secret-key (or " +
-            "$TENABLE_ACCESS_KEY / $TENABLE_SECRET_KEY) are required.");
-        return 2;
-    }
+    var username = opts.TenableUsername ?? Environment.GetEnvironmentVariable("TENABLE_USERNAME");
+    var password = opts.TenablePassword ?? Environment.GetEnvironmentVariable("TENABLE_PASSWORD");
+
+    // Default-on insecure TLS for on-prem backends (self-signed certs); off for cloud.
+    var insecure = opts.TenableInsecureTls ?? (backend == "nessus" || backend == "sc");
 
     Directory.CreateDirectory(opts.OutputDir);
     var pullAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
@@ -416,13 +421,67 @@ if (string.IsNullOrEmpty(opts.TenableImportPath) &&
 
     try
     {
-        using var apiClient = new Drederick.Ops.Tenable.TenableApiClient(apiUrl, accessKey, secretKey);
-        var puller = new Drederick.Ops.Tenable.TenableApiPuller(apiClient, pullAudit);
-        var pullResult = await puller.PullAsync(selector, pullOpts);
-        Console.WriteLine(
-            $"tenable-api: pulled scan {pullResult.ScanId} ('{pullResult.ScanName}') " +
-            $"format={pullResult.Format} from-cache={pullResult.FromCache} → {pullResult.CachedPath}");
-        opts.TenableImportPath = pullResult.CachedPath;
+        Drederick.Ops.Tenable.ITenableExportBackend client;
+        switch (backend)
+        {
+            case "io":
+                if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
+                {
+                    Console.Error.WriteLine(
+                        "tenable-api (io): --tenable-access-key and --tenable-secret-key " +
+                        "(or $TENABLE_ACCESS_KEY / $TENABLE_SECRET_KEY) are required.");
+                    return 2;
+                }
+                client = new Drederick.Ops.Tenable.TenableApiClient(
+                    apiUrl, accessKey, secretKey, insecureTls: insecure);
+                break;
+            case "nessus":
+                if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
+                {
+                    Console.Error.WriteLine(
+                        "tenable-api (nessus): --tenable-access-key and --tenable-secret-key " +
+                        "(or $TENABLE_ACCESS_KEY / $TENABLE_SECRET_KEY) are required. " +
+                        "Generate them in the Nessus UI under Settings → My Account → API Keys.");
+                    return 2;
+                }
+                client = Drederick.Ops.Tenable.TenableApiClient.ForNessusProfessional(
+                    apiUrl, accessKey, secretKey, insecureTls: insecure);
+                break;
+            case "sc":
+                if (!string.IsNullOrEmpty(accessKey) && !string.IsNullOrEmpty(secretKey))
+                {
+                    client = Drederick.Ops.Tenable.TenableScClient.WithApiKey(
+                        apiUrl, accessKey, secretKey, insecureTls: insecure);
+                }
+                else if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+                {
+                    client = Drederick.Ops.Tenable.TenableScClient.WithUserPass(
+                        apiUrl, username, password, insecureTls: insecure);
+                }
+                else
+                {
+                    Console.Error.WriteLine(
+                        "tenable-api (sc): provide either --tenable-access-key + --tenable-secret-key " +
+                        "or --tenable-username + --tenable-password (env: $TENABLE_ACCESS_KEY/$TENABLE_SECRET_KEY " +
+                        "or $TENABLE_USERNAME/$TENABLE_PASSWORD).");
+                    return 2;
+                }
+                break;
+            default:
+                Console.Error.WriteLine($"tenable-api: unknown backend '{backend}'.");
+                return 2;
+        }
+
+        using (client)
+        {
+            var puller = new Drederick.Ops.Tenable.TenableApiPuller(client, pullAudit);
+            var pullResult = await puller.PullAsync(selector, pullOpts);
+            Console.WriteLine(
+                $"tenable-api ({client.BackendName}): pulled scan {pullResult.ScanId} " +
+                $"('{pullResult.ScanName}') format={pullResult.Format} " +
+                $"from-cache={pullResult.FromCache} → {pullResult.CachedPath}");
+            opts.TenableImportPath = pullResult.CachedPath;
+        }
     }
     catch (Drederick.Ops.Tenable.TenableApiException ex)
     {
