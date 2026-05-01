@@ -131,6 +131,7 @@ public sealed class LdapResult
     [JsonPropertyName("anonymous_bind")] public bool AnonymousBind { get; set; }
     [JsonPropertyName("naming_contexts")] public List<string> NamingContexts { get; set; } = new();
     [JsonPropertyName("supported_controls")] public List<string> SupportedControls { get; set; } = new();
+    [JsonPropertyName("realm")] public string? Realm { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
 

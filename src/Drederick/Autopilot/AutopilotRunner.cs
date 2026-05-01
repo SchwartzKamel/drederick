@@ -35,6 +35,13 @@ public sealed class AutopilotRunner
     private readonly int _maxIterations;
     private readonly int _maxActionsPerIteration;
 
+    // --- AD-specific tools (optional; wired when in-scope DC detected) ---
+    private readonly AsRepRoastTool? _asrep;
+    private readonly KerberoastTool? _kerberoast;
+    private readonly DelegationEnumTool? _delegationEnum;
+    private readonly DcSyncDetectionTool? _dcSyncDetect;
+    private readonly CertVulnerabilityEnumTool? _certVulnEnum;
+
     public AutopilotRunner(
         Scope.Scope scope,
         AuditLog audit,
@@ -46,7 +53,12 @@ public sealed class AutopilotRunner
         NucleiRunner? nuclei = null,
         PasswordSprayTool? spray = null,
         int maxIterations = 3,
-        int maxActionsPerIteration = 64)
+        int maxActionsPerIteration = 64,
+        AsRepRoastTool? asrep = null,
+        KerberoastTool? kerberoast = null,
+        DelegationEnumTool? delegationEnum = null,
+        DcSyncDetectionTool? dcSyncDetect = null,
+        CertVulnerabilityEnumTool? certVulnEnum = null)
     {
         _scope = scope;
         _audit = audit;
@@ -59,6 +71,11 @@ public sealed class AutopilotRunner
         _spray = spray;
         _maxIterations = Math.Max(1, maxIterations);
         _maxActionsPerIteration = Math.Max(1, maxActionsPerIteration);
+        _asrep = asrep;
+        _kerberoast = kerberoast;
+        _delegationEnum = delegationEnum;
+        _dcSyncDetect = dcSyncDetect;
+        _certVulnEnum = certVulnEnum;
     }
 
     /// <summary>Run the autopilot loop. Returns an aggregate summary.</summary>
@@ -161,6 +178,16 @@ public sealed class AutopilotRunner
                     return await RunNucleiAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
                 case "password-spray":
                     return await RunSprayAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
+                case "asrep-roast":
+                    return await RunAsRepRoastAsync(action, sw, ct).ConfigureAwait(false);
+                case "kerberoast":
+                    return await RunKerberoastAsync(action, sw, ct).ConfigureAwait(false);
+                case "delegation-enum":
+                    return await RunDelegationEnumAsync(action, sw, ct).ConfigureAwait(false);
+                case "dcsync-detect":
+                    return await RunDcSyncDetectAsync(action, sw, ct).ConfigureAwait(false);
+                case "cert-vuln-enum":
+                    return await RunCertVulnEnumAsync(action, sw, ct).ConfigureAwait(false);
                 default:
                     return Skip(action, $"unknown tool '{action.Tool}'", sw);
             }
@@ -220,6 +247,97 @@ public sealed class AutopilotRunner
             Succeeded = result.Succeeded,
             ExitCode = result.Run.ExitCode,
             Error = result.Run.Error,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunAsRepRoastAsync(
+        ExploitAction action, Stopwatch sw, CancellationToken ct)
+    {
+        if (_asrep is null) return Skip(action, "asrep-roast tool not registered", sw);
+        if (string.IsNullOrEmpty(action.Realm)) return Skip(action, "missing realm", sw);
+
+        // Unauthenticated mode when no cred — still useful for bulk AS-REQ scan.
+        var result = await _asrep.RunAsync(action.Target, action.Realm!, ct: ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = result.Hashes.Count > 0,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunKerberoastAsync(
+        ExploitAction action, Stopwatch sw, CancellationToken ct)
+    {
+        if (_kerberoast is null) return Skip(action, "kerberoast tool not registered", sw);
+        if (string.IsNullOrEmpty(action.Realm)) return Skip(action, "missing realm", sw);
+        if (action.Cred is null) return Skip(action, "missing credential ref", sw);
+
+        var secret = _creds.TryGetSecret(action.Cred);
+        if (secret is null) return Skip(action, "credential not in store", sw);
+
+        var result = await _kerberoast.RunAsync(
+            action.Target, action.Realm!, action.Cred.User, secret, ct: ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = result.Tickets.Count > 0,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunDelegationEnumAsync(
+        ExploitAction action, Stopwatch sw, CancellationToken ct)
+    {
+        if (_delegationEnum is null) return Skip(action, "delegation-enum tool not registered", sw);
+        var result = await _delegationEnum.ProbeAsync(action.Target, action.Port, ct: ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+        var found = result.Unconstrained.Count + result.Constrained.Count +
+                    result.ConstrainedWithProtocolTransition.Count + result.Rbcd.Count;
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = found > 0,
+            Error = result.Error,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunDcSyncDetectAsync(
+        ExploitAction action, Stopwatch sw, CancellationToken ct)
+    {
+        if (_dcSyncDetect is null) return Skip(action, "dcsync-detect tool not registered", sw);
+        var result = await _dcSyncDetect.ProbeAsync(action.Target, action.Port, ct: ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = result.SuspiciousPrincipals.Count > 0,
+            Error = result.Error,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunCertVulnEnumAsync(
+        ExploitAction action, Stopwatch sw, CancellationToken ct)
+    {
+        if (_certVulnEnum is null) return Skip(action, "cert-vuln-enum tool not registered", sw);
+        var result = await _certVulnEnum.ProbeAsync(action.Target, action.Port, ct: ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+        var found = result.VulnerableTemplates.Count + result.EnrollmentServices.Count;
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = found > 0,
+            Error = result.Error,
             DurationMs = sw.ElapsedMilliseconds,
         };
     }
