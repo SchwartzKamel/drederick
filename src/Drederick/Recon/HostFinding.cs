@@ -25,7 +25,28 @@ public sealed class HostFinding
     [JsonPropertyName("empire_module_results")] public List<EmpireModuleResultRecord>? EmpireModuleResults { get; set; }
     [JsonPropertyName("native_scan")] public NativeScanResult? NativeScan { get; set; }
     [JsonPropertyName("fingerprint")] public List<Drederick.Enrichment.FingerprintStack.FingerprintReport> Fingerprint { get; set; } = new();
+    [JsonPropertyName("nse_findings")] public List<NseFinding> NseFindings { get; set; } = new();
+    [JsonPropertyName("http_title")] public List<HttpTitleResult> HttpTitle { get; set; } = new();
+    [JsonPropertyName("http_headers")] public List<HttpHeadersResult> HttpHeaders { get; set; } = new();
+    [JsonPropertyName("http_robots")] public List<HttpRobotsResult> HttpRobots { get; set; } = new();
+    [JsonPropertyName("http_methods")] public List<HttpMethodsResult> HttpMethods { get; set; } = new();
+    [JsonPropertyName("ssl_cert")] public List<SslCertResult> SslCert { get; set; } = new();
+    [JsonPropertyName("ssh_hostkey")] public List<SshHostkeyResult> SshHostkey { get; set; } = new();
+    [JsonPropertyName("ftp_anon")] public List<FtpAnonResult> FtpAnon { get; set; } = new();
+    [JsonPropertyName("ldap_rootdse")] public List<LdapRootDseResult> LdapRootDse { get; set; } = new();
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
+}
+
+/// <summary>
+/// Pattern 1 graceful enrichment record: per-script output produced by
+/// <see cref="NseProxy"/> when an <c>nmap</c> binary is available on PATH.
+/// Drederick's native scanners always run; this is purely additive depth.
+/// </summary>
+public sealed class NseFinding
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("script")] public string Script { get; set; } = "";
+    [JsonPropertyName("output")] public string Output { get; set; } = "";
 }
 
 public sealed class NmapResult
@@ -223,4 +244,90 @@ public sealed class NativeScanResult
     [JsonPropertyName("started")] public string? Started { get; set; }
     [JsonPropertyName("finished")] public string? Finished { get; set; }
     [JsonPropertyName("open_ports")] public List<NmapPort> OpenPorts { get; set; } = new();
+}
+
+public sealed class HttpTitleResult
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("status")] public int? Status { get; set; }
+    [JsonPropertyName("title")] public string? Title { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class HttpHeadersResult
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("status")] public int? Status { get; set; }
+    [JsonPropertyName("method")] public string Method { get; set; } = "HEAD";
+    [JsonPropertyName("headers")] public Dictionary<string, List<string>> Headers { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class HttpRobotsResult
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("status")] public int? Status { get; set; }
+    [JsonPropertyName("disallowed")] public List<string> Disallowed { get; set; } = new();
+    [JsonPropertyName("allowed")] public List<string> Allowed { get; set; } = new();
+    [JsonPropertyName("sitemaps")] public List<string> Sitemaps { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class HttpMethodsResult
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("status")] public int? Status { get; set; }
+    [JsonPropertyName("allow")] public List<string> Allow { get; set; } = new();
+    [JsonPropertyName("public")] public List<string> Public { get; set; } = new();
+    [JsonPropertyName("risky_methods")] public List<string> RiskyMethods { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class SslCertResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("subject")] public string? Subject { get; set; }
+    [JsonPropertyName("issuer")] public string? Issuer { get; set; }
+    [JsonPropertyName("subject_alt_names")] public List<string> SubjectAltNames { get; set; } = new();
+    [JsonPropertyName("not_before")] public string? NotBefore { get; set; }
+    [JsonPropertyName("not_after")] public string? NotAfter { get; set; }
+    [JsonPropertyName("days_until_expiry")] public int? DaysUntilExpiry { get; set; }
+    [JsonPropertyName("serial_number")] public string? SerialNumber { get; set; }
+    [JsonPropertyName("signature_algorithm")] public string? SignatureAlgorithm { get; set; }
+    [JsonPropertyName("public_key_algorithm")] public string? PublicKeyAlgorithm { get; set; }
+    [JsonPropertyName("public_key_bits")] public int? PublicKeyBits { get; set; }
+    [JsonPropertyName("sha256_fingerprint")] public string? Sha256Fingerprint { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class SshHostkeyResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("banner")] public string? Banner { get; set; }
+    [JsonPropertyName("host_key_algorithms")] public List<string> HostKeyAlgorithms { get; set; } = new();
+    [JsonPropertyName("kex_algorithms")] public List<string> KexAlgorithms { get; set; } = new();
+    [JsonPropertyName("encryption_algorithms")] public List<string> EncryptionAlgorithms { get; set; } = new();
+    [JsonPropertyName("mac_algorithms")] public List<string> MacAlgorithms { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class FtpAnonResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("banner")] public string? Banner { get; set; }
+    [JsonPropertyName("anonymous_allowed")] public bool AnonymousAllowed { get; set; }
+    [JsonPropertyName("login_response")] public string? LoginResponse { get; set; }
+    [JsonPropertyName("root_listing")] public List<string> RootListing { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class LdapRootDseResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("anonymous_bind")] public bool AnonymousBind { get; set; }
+    [JsonPropertyName("naming_contexts")] public List<string> NamingContexts { get; set; } = new();
+    [JsonPropertyName("supported_controls")] public List<string> SupportedControls { get; set; } = new();
+    [JsonPropertyName("supported_ldap_versions")] public List<string> SupportedLdapVersions { get; set; } = new();
+    [JsonPropertyName("supported_sasl_mechanisms")] public List<string> SupportedSaslMechanisms { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
 }

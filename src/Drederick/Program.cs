@@ -414,6 +414,38 @@ audit.Record("session.start", new Dictionary<string, object?>
     ["lab_mode"] = opts.LabMode,
 });
 
+// --- learning -----------------------------------------------------------
+// Read-only access to the operator-curated fight corpus
+// (~/HTB/fight-log.yaml). Discovery precedence: --fight-corpus > env
+// DREDERICK_FIGHT_CORPUS > ~/HTB/fight-log.yaml > graceful no-op.
+// Schema mismatch is fatal (exit code 4); a missing file is INFO-only.
+{
+    var fightCorpus = new Drederick.Learning.FightCorpus(opts.FightCorpusPath, audit);
+    try
+    {
+        var log = await fightCorpus.LoadAsync();
+        audit.Record("learning.fight_corpus.loaded", new Dictionary<string, object?>
+        {
+            ["path"] = fightCorpus.ResolvedPath,
+            ["fight_count"] = log.Fights.Count,
+            ["schema_version"] = log.SchemaVersion,
+        });
+    }
+    catch (Drederick.Learning.FightCorpusSchemaException ex)
+    {
+        audit.Record("learning.fight_corpus.error", new Dictionary<string, object?>
+        {
+            ["path"] = ex.CorpusPath,
+            ["found_version"] = ex.FoundVersion,
+            ["expected_version"] = ex.ExpectedVersion,
+            ["message"] = ex.Message,
+        });
+        Console.Error.WriteLine(ex.Message);
+        return 4;
+    }
+}
+// --- end learning -------------------------------------------------------
+
 Console.WriteLine(opts.LabMode
     ? "drederick: lab/CTF mode ENABLED (default). Authorized lab/CTF targets only."
     : "drederick: strict mode. Lab-mode affordances disabled.");
@@ -516,6 +548,7 @@ var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
 var nativeScanner = new NativeScannerTool(scope, audit);
 var nativeDns = new NativeDnsTool(scope, audit);
 var fingerprintStack = new Drederick.Enrichment.FingerprintStack.FingerprintStackTool(scope, audit);
+var nseProxy = new NseProxy(scope, audit, labMode: opts.LabMode, permissions: permissions);
 var toolbox = new ReconToolbox(
     new IReconTool[]
     {
@@ -524,6 +557,7 @@ var toolbox = new ReconToolbox(
         dnsAxfr, httpContentDiscovery, tlsCipherEnum,
         nativeScanner, nativeDns,
         fingerprintStack,
+        nseProxy,
     },
     audit);
 toolbox.SeedFromKnowledgeBase(kb, targets);

@@ -51,7 +51,7 @@ public class NmapToolTests
     }
 
     [Fact]
-    public void NseCategories_ExecPocs_Adds_Intrusive_Vuln_Exploit()
+    public void NseCategories_ExecPocs_Adds_Intrusive_Vuln_NotExploit()
     {
         var scope = ScopeLoader.Parse("10.10.10.5");
         using var audit = new AuditLog(Path.Combine(Path.GetTempPath(),
@@ -61,7 +61,10 @@ public class NmapToolTests
         var cats = nmap.NseCategories;
         Assert.Contains("intrusive", cats);
         Assert.Contains("vuln", cats);
-        Assert.Contains("exploit", cats);
+        // GAP-022: 'exploit' category deliberately excluded — too slow on Windows
+        // hosts with many ports (30-60+ min). Real exploitation is handled by
+        // nuclei/msf/manual tools, not nmap NSE.
+        Assert.DoesNotContain("exploit", cats);
         // auth is still off (no CredAttacks, no lab).
         Assert.DoesNotContain("auth", cats);
         // dos/malware still gated.

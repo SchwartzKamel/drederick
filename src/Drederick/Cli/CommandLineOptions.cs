@@ -8,6 +8,41 @@ public sealed class CommandLineOptions
     public List<string> Targets { get; } = new();
     public string OutputDir { get; set; } = "out";
     public string MemoryPath { get; set; } = "memory/findings.json";
+
+    // --- learning -----------------------------------------------------------
+    /// <summary>Override path to the operator-curated fight corpus
+    /// (<c>~/HTB/fight-log.yaml</c>). When null, discovery falls through to
+    /// <c>DREDERICK_FIGHT_CORPUS</c> and the default <c>~/HTB/fight-log.yaml</c>.
+    /// CLI: <c>--fight-corpus &lt;path&gt;</c>. See docs/LEARNING_LOOP.md.</summary>
+    public string? FightCorpusPath { get; set; }
+    // --- end learning -------------------------------------------------------
+
+    /// <summary>Use raw-socket TCP SYN scan (CAP_NET_RAW) before connect-scan;
+    /// transparently falls back to connect-scan when raw sockets unavailable.
+    /// CLI: <c>--scan-syn</c>. See <c>src/Drederick/Recon/Scanning/SynScanner.cs</c>.</summary>
+    public bool ScanSyn { get; set; }
+
+    // --- telemetry ----------------------------------------------------------
+    /// <summary>Whether to record per-attempt structured telemetry to
+    /// <see cref="TelemetryDbPath"/>. Default true. CLI: <c>--telemetry</c> /
+    /// <c>--no-telemetry</c>. See <c>docs/LEARNING_LOOP.md</c>.</summary>
+    public bool Telemetry { get; set; } = true;
+    /// <summary>Override path to the telemetry SQLite database. When null
+    /// (default), <c>{OutputDir}/telemetry.db</c> is used. CLI:
+    /// <c>--telemetry-db &lt;path&gt;</c>.</summary>
+    public string? TelemetryDbPath { get; set; }
+    // --- end telemetry ------------------------------------------------------
+
+    // --- chain-reasoner-cli-options ---
+    /// <summary>chain subcommand selected: prints ranked AttackChain[] from KnowledgeBase.</summary>
+    public bool ChainSubcommand { get; set; }
+    /// <summary>If true, emit per-step explainability (rationale + confidence + cost).</summary>
+    public bool ChainExplain { get; set; }
+    /// <summary>If true, emit JSON instead of human-readable text.</summary>
+    public bool ChainJson { get; set; }
+    /// <summary>How many top-ranked chains to print. Default 5.</summary>
+    public int ChainTopN { get; set; } = 5;
+    // --- end chain-reasoner-cli-options ---
     public bool AllowBroad { get; set; }
     public bool UseAgent { get; set; } // -a / --agent: use MS Agent Framework
 
@@ -374,6 +409,13 @@ public sealed class CommandLineOptions
             start = 1;
         }
         // --- end web-cli-subcommand-dispatch ---
+        // --- chain-reasoner-cli-subcommand-dispatch ---
+        else if (args.Length > 0 && args[0] == "chain")
+        {
+            o.ChainSubcommand = true;
+            start = 1;
+        }
+        // --- end chain-reasoner-cli-subcommand-dispatch ---
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -487,6 +529,34 @@ public sealed class CommandLineOptions
                     o.OutputDir = RequireNext(args, ref i, a); break;
                 case "--memory":
                     o.MemoryPath = RequireNext(args, ref i, a); break;
+                // --- learning flag parse ---
+                case "--fight-corpus":
+                    o.FightCorpusPath = RequireNext(args, ref i, a); break;
+                // --- end learning flag parse ---
+                // --- telemetry flag parse ---
+                case "--telemetry":
+                    o.Telemetry = true; break;
+                case "--no-telemetry":
+                    o.Telemetry = false; break;
+                case "--telemetry-db":
+                    o.TelemetryDbPath = RequireNext(args, ref i, a); break;
+                // --- end telemetry flag parse ---
+                // --- scan-syn flag parse ---
+                case "--scan-syn":
+                    o.ScanSyn = true; break;
+                case "--no-scan-syn":
+                    o.ScanSyn = false; break;
+                // --- end scan-syn flag parse ---
+                // --- chain-reasoner-flag-parse ---
+                case "--explain":
+                    if (!o.ChainSubcommand) throw new ArgumentException($"--explain only valid with `chain` subcommand");
+                    o.ChainExplain = true; break;
+                case "--top":
+                    if (!o.ChainSubcommand) throw new ArgumentException($"--top only valid with `chain` subcommand");
+                    if (!int.TryParse(RequireNext(args, ref i, a), out var topN) || topN < 1)
+                        throw new ArgumentException("--top requires a positive integer");
+                    o.ChainTopN = topN; break;
+                // --- end chain-reasoner-flag-parse ---
                 case "--allow-broad":
                     o.AllowBroad = true; break;
                 case "--lab":
@@ -666,6 +736,10 @@ public sealed class CommandLineOptions
                     else if (o.NoteSubcommand != null)
                     {
                         o.NoteJson = true;
+                    }
+                    else if (o.ChainSubcommand)
+                    {
+                        o.ChainJson = true;
                     }
                     else
                     {

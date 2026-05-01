@@ -62,11 +62,24 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         switch (provider)
         {
             case LlmProvider.Copilot:
-                return CopilotSdkAgentRunner.TryCreateFromEnvironment(
+            {
+                // Bypass broken Copilot SDK 0.3.0 (GAP-021). Use direct HTTP
+                // to api.githubcopilot.com which is OpenAI-wire-compatible.
+                var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
+                if (string.IsNullOrWhiteSpace(token)) return null;
+                audit.Record("copilot.direct.auth.ready", new Dictionary<string, object?>
+                {
+                    ["source"] = source.ToString(),
+                });
+                model ??= CopilotSdkAgentRunner.DefaultModelId;
+                var copilotChat = new AzureOpenAiChatClient(
+                    "https://api.githubcopilot.com",
+                    new AzureOpenAiAuth.Bearer(token),
                     audit,
                     model,
-                    exploitTools,
-                    allowGitHubCliAuth);
+                    copilotMode: true);
+                return new MicrosoftAgentRunner(audit, copilotChat, model, exploitTools);
+            }
 
             case LlmProvider.Azure:
                 {
@@ -120,7 +133,12 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
 
         IList<AITool> aiTools = LlmToolCatalog.BuildAiTools(tools, _exploitTools);
 
-        AIAgent agent = _chatClient.AsAIAgent(
+        // Wrap the chat client with FunctionInvokingChatClient.
+        // NOTE: AllowConcurrentInvocation disabled — Claude via Copilot API
+        // requires strict tool_use→tool_result ordering in conversation history.
+        var funcClient = new FunctionInvokingChatClient(_chatClient);
+
+        AIAgent agent = funcClient.AsAIAgent(
             instructions: BuildSystemPrompt(),
             name: "drederick",
             description: "Authorized-lab recon agent",

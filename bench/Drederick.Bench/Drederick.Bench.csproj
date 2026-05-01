@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Drederick.Bench</RootNamespace>
+    <AssemblyName>Drederick.Bench</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- BenchmarkDotNet emits its own optimization warnings; suppress in this harness. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Drederick\Drederick.csproj" />
+  </ItemGroup>
+</Project>

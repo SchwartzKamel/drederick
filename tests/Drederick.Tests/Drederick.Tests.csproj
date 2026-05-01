@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Drederick\Drederick.csproj" />
+    <ProjectReference Include="..\..\bench\Drederick.Bench\Drederick.Bench.csproj" />
   </ItemGroup>
 
   <!-- Exclude work-in-progress test files placed by parallel agents under
