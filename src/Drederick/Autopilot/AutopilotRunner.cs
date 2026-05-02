@@ -166,6 +166,15 @@ public sealed class AutopilotRunner
                     return await RunMsfRcAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
                 case "password-spray":
                     return await RunSprayAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
+                case "cve-lead":
+                    // GAP-031 — record-only action: a CVE matched but no
+                    // cached nuclei/msf artifact resolved. Skip cleanly so
+                    // the audit log keeps the lead and the LLM/operator
+                    // can route it (PoC fetch, manual exploit). Never
+                    // executed by the deterministic dispatcher.
+                    return Skip(action,
+                        $"cve-lead: {action.CveId ?? "unknown"} — no cached PoC artifact, route to PoC fetch / LLM",
+                        sw);
                 default:
                     return Skip(action, $"unknown tool '{action.Tool}'", sw);
             }
