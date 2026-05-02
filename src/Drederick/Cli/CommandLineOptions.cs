@@ -205,6 +205,8 @@ public sealed class CommandLineOptions
     /// <summary>Permit NSE <c>dos</c>/<c>malware</c> categories and anything
     /// intentionally denial-of-service. CLI: <c>--allow-dos</c>.</summary>
     public bool AllowDos { get; set; }
+    public bool AllowExecShell { get; set; }
+    public bool AllowExecShellBash { get; set; }
     /// <summary>Explicit acknowledgement that credential attacks can lock
     /// accounts. Required in addition to <see cref="AllowCredAttacks"/>. CLI:
     /// <c>--acknowledge-lockout-risk</c>.</summary>
@@ -743,6 +745,12 @@ public sealed class CommandLineOptions
                     o.AllowDestructive = true; break;
                 case "--allow-dos":
                     o.AllowDos = true; break;
+                case "--allow-exec-shell":
+                    o.AllowExecShell = true; break;
+                case "--no-allow-exec-shell":
+                    o.AllowExecShell = false; break;
+                case "--allow-exec-shell-bash":
+                    o.AllowExecShellBash = true; break;
                 case "--acknowledge-lockout-risk":
                     o.AcknowledgeLockoutRisk = true; break;
                 case "--cred-spray-timeout":

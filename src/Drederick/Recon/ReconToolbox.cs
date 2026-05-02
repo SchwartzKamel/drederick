@@ -30,6 +30,7 @@ public sealed class ReconToolbox
     private readonly NativeScannerTool? _nativeScanner;
     private readonly NativeDnsTool? _nativeDns;
     private readonly Drederick.Enrichment.FingerprintStack.FingerprintStackTool? _fingerprintStack;
+    private readonly S3MinioProbeTool? _s3;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -74,6 +75,7 @@ public sealed class ReconToolbox
         _nativeScanner = materialized.OfType<NativeScannerTool>().SingleOrDefault();
         _nativeDns = materialized.OfType<NativeDnsTool>().SingleOrDefault();
         _fingerprintStack = materialized.OfType<Drederick.Enrichment.FingerprintStack.FingerprintStackTool>().SingleOrDefault();
+        _s3 = materialized.OfType<S3MinioProbeTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -202,6 +204,23 @@ public sealed class ReconToolbox
         Charge(target, "http");
         var r = await _http.ProbeAsync(target, port, useTls, ct).ConfigureAwait(false);
         GetOrCreate(target).Http.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Probe a target for an S3-compatible / MinIO service. Detects via " +
+                 "MinIO health endpoint, Server header, anonymous bucket listing, and " +
+                 "AccessDenied error fingerprint. When AWS-style credentials with " +
+                 "realm='s3' are present in the credential store, also lists buckets and " +
+                 "object metadata. Read-only metadata only — never downloads payloads.")]
+    public async Task<string> S3ProbeAsync(
+        [Description("Target IP or hostname (must resolve to an in-scope IP).")] string target,
+        [Description("TCP port (MinIO default 9000; AWS S3 typically 443).")] int port = 9000,
+        CancellationToken ct = default)
+    {
+        if (_s3 is null) throw new InvalidOperationException("S3MinioProbeTool not registered.");
+        Charge(target, "s3");
+        var r = await _s3.ProbeAsync(target, port, ct).ConfigureAwait(false);
+        GetOrCreate(target).S3.Add(r);
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
 

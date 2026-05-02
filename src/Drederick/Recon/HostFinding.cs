@@ -35,6 +35,8 @@ public sealed class HostFinding
     [JsonPropertyName("ftp_anon")] public List<FtpAnonResult> FtpAnon { get; set; } = new();
     [JsonPropertyName("ldap_rootdse")] public List<LdapRootDseResult> LdapRootDse { get; set; } = new();
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
+    // --- s3 --- (GAP-037)
+    [JsonPropertyName("s3")] public List<S3Finding> S3 { get; set; } = new();
 }
 
 /// <summary>
@@ -340,4 +342,33 @@ public sealed class LdapRootDseResult
     [JsonPropertyName("supported_ldap_versions")] public List<string> SupportedLdapVersions { get; set; } = new();
     [JsonPropertyName("supported_sasl_mechanisms")] public List<string> SupportedSaslMechanisms { get; set; } = new();
     [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+// --- s3 --- (GAP-037: MinIO / S3-compatible service finding)
+public sealed record S3Finding
+{
+    [JsonPropertyName("target")] public required string Target { get; init; }
+    [JsonPropertyName("port")] public int Port { get; init; }
+    [JsonPropertyName("is_s3")] public bool IsS3 { get; init; }
+    [JsonPropertyName("is_minio")] public bool IsMinio { get; init; }
+    [JsonPropertyName("anonymous_list_allowed")] public bool AnonymousListAllowed { get; init; }
+    [JsonPropertyName("anonymous_buckets")] public IReadOnlyList<string> AnonymousBuckets { get; init; } = [];
+    [JsonPropertyName("authenticated_buckets")] public IReadOnlyList<S3BucketEntry> AuthenticatedBuckets { get; init; } = [];
+    [JsonPropertyName("server")] public string? Server { get; init; }
+    [JsonPropertyName("minio_version")] public string? MinioVersion { get; init; }
+    [JsonPropertyName("error")] public string? Error { get; init; }
+}
+
+public sealed record S3BucketEntry
+{
+    [JsonPropertyName("name")] public required string Name { get; init; }
+    [JsonPropertyName("object_count")] public int ObjectCount { get; init; }
+    [JsonPropertyName("objects")] public IReadOnlyList<S3ObjectEntry> Objects { get; init; } = [];
+}
+
+public sealed record S3ObjectEntry
+{
+    [JsonPropertyName("key")] public required string Key { get; init; }
+    [JsonPropertyName("size")] public long Size { get; init; }
+    [JsonPropertyName("last_modified")] public string? LastModified { get; init; }
 }
