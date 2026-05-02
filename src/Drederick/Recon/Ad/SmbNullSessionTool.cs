@@ -383,39 +383,39 @@ public sealed class SmbNullSessionTool : IReconTool
         {
             if (ldap is not null)
             {
-            var ldapResult = await ldap.QueryAsync(
-                resolved.ResolvedIp, port: 389, timeout: _connectTimeout, ct).ConfigureAwait(false);
-            if (ldapResult is not null)
-            {
-                ldapAnonOk = ldapResult.AnonymousBindOk;
-                defaultNc = ldapResult.DefaultNamingContext;
-                rootNc = ldapResult.RootDomainNamingContext;
-                if (ldapResult.SupportedSaslMechanisms is not null)
+                var ldapResult = await ldap.QueryAsync(
+                    resolved.ResolvedIp, port: 389, timeout: _connectTimeout, ct).ConfigureAwait(false);
+                if (ldapResult is not null)
                 {
-                    saslMechs.AddRange(ldapResult.SupportedSaslMechanisms);
-                }
-                if (ldapAnonOk && ldapResult.Users is not null)
-                {
-                    foreach (var u in ldapResult.Users.Take(MaxLdapUsers))
+                    ldapAnonOk = ldapResult.AnonymousBindOk;
+                    defaultNc = ldapResult.DefaultNamingContext;
+                    rootNc = ldapResult.RootDomainNamingContext;
+                    if (ldapResult.SupportedSaslMechanisms is not null)
                     {
-                        if (ct.IsCancellationRequested) break;
-                        // De-dupe by SAM name vs SAMR/RID-cycle output.
-                        if (users.Any(x => string.Equals(x.SamAccountName, u.SamAccountName,
-                            StringComparison.OrdinalIgnoreCase)))
+                        saslMechs.AddRange(ldapResult.SupportedSaslMechanisms);
+                    }
+                    if (ldapAnonOk && ldapResult.Users is not null)
+                    {
+                        foreach (var u in ldapResult.Users.Take(MaxLdapUsers))
                         {
-                            continue;
+                            if (ct.IsCancellationRequested) break;
+                            // De-dupe by SAM name vs SAMR/RID-cycle output.
+                            if (users.Any(x => string.Equals(x.SamAccountName, u.SamAccountName,
+                                StringComparison.OrdinalIgnoreCase)))
+                            {
+                                continue;
+                            }
+                            users.Add(u);
+                            _audit.Record("smb-null-session.user_found", new Dictionary<string, object?>
+                            {
+                                ["target"] = target,
+                                ["sam"] = u.SamAccountName,
+                                ["rid"] = u.Rid,
+                                ["source"] = "ldap",
+                            });
                         }
-                        users.Add(u);
-                        _audit.Record("smb-null-session.user_found", new Dictionary<string, object?>
-                        {
-                            ["target"] = target,
-                            ["sam"] = u.SamAccountName,
-                            ["rid"] = u.Rid,
-                            ["source"] = "ldap",
-                        });
                     }
                 }
-            }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
