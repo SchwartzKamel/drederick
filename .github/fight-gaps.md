@@ -252,9 +252,10 @@
 - **Exposed by:** jobtwo-2026-05-01-R4
 - **Severity:** high
 - **Impact:** After completing enumeration (4 LLM calls, 21 tools), the LLM chose finish_reason=stop and generated a report instead of requesting exploitation tools (nuclei, msf-rc, cred attacks). The system prompt may need stronger guidance to attempt exploitation in lab/CTF mode.
-- **Status:** ⚠️ partially resolved (R5)
+- **Status:** ✅ resolved (facts-2026-05-02-R1/R2)
 - **Resolution plan:** Review system prompt to emphasize exploitation phase. Ensure exploit tools are clearly described and available. Consider adding "exploitation required" directive in lab mode.
-- **Resolution (R5):** `claude-sonnet-4.6` via Copilot (hybrid agent) on jobtwo-2026-05-02-R5 called `exploit_plan`, `run_multi_stage`, and `execute_cred_spray` ×5 without prompting — the willingness half of GAP-025 is closed. **Remaining:** the LLM stayed inside the spray subset and did not select `nuclei` or `msf-rc` against matched Veeam CVE candidates. Tracking the depth half via GAP-031 (CVE-driven action emission). Gap stays alive until an LLM-driven fight produces a non-spray exploit selection.
+- **Resolution (R5):** `claude-sonnet-4.6` via Copilot (hybrid agent) on jobtwo-2026-05-02-R5 called `exploit_plan`, `run_multi_stage`, and `execute_cred_spray` ×5 without prompting — the willingness half of GAP-025 closed.
+- **Resolution (facts R1/R2):** On facts-2026-05-02-R1/R2 the same model called `exploit_plan` (returned `ok=true` for the first time on this box), `run_multi_stage` (×3), `execute_cred_spray` (×5), **and `extract_flags_from_dir` proactively** — the model now plans exploitation, executes exploitation, and looks for results without prompting. The "non-spray exploit selection" depth concern is now correctly attributed downstream of GAP-031 (cache breadth) and GAP-033 (cve-lead routing), not GAP-025 (LLM willingness). Operator hot-fix `b9bbdb5` *"Remove nmap from LLM tools, prefer native probes in system prompt"* is the load-bearing piece of the resolution: the LLM's hands are now free for exploitation and follow-through instead of looping on nmap. Status: closed.
 
 ### GAP-026: Nmap-vs-Native Port-Truth Divergence
 - **Exposed by:** jobtwo-2026-05-01-R4
@@ -297,6 +298,30 @@
 - **Code path:** none — new subsystem. Owner zone: `exploit-*` (extend, do not touch `empire-c2` subdirectory). `src/Drederick/Exploit/IPayloadTool.cs` is the existing interface to mirror.
 - **Resolution:**
 
+### GAP-032: Native HTTP Probes Can't Use Host Header / Hostname Targets
+- **Exposed by:** facts-2026-05-02-R1, facts-2026-05-02-R2
+- **Severity:** critical
+- **Impact:** The Facts box serves its app behind the `facts.htb` vhost; raw-IP requests return `302 Location: http://facts.htb/`. Native `http_probe` accepts `(target, port)` and emits `Host: <ip>:<port>` — there is no parameter for a vhost hostname or a custom `Host` header. R2 had twenty-one LLM calls in six minutes with the model **correctly identifying** the vhost requirement (it read the 302) and **unable to act on it** because the toolbox could not type the right request. 35 of 42 R2 `http.start` events errored. The application content was unreachable from the harness's recon stack the entire fight, even after the operator added `facts.htb` to `/etc/hosts` for R2. Affects every vhost-gated app behind nginx / Apache / IIS where IP-only requests redirect or 404.
+- **Status:** open
+- **Description:** The native HTTP probe stack under `src/Drederick/Recon/Native/` and the LLM-visible `http_probe` `AIFunction` in `src/Drederick/Agent/LlmReconTools.cs` both treat the target as an `(ip, port)` pair. Vhost hostnames extracted from 302 `Location` headers and TLS `CN`/`SAN` are not auto-followed; there is no `host=` parameter on the probe; and the system prompt does not teach the planner that a 302 → `Location` is a vhost lead with a specific tool follow-up.
+- **Suggested fix:** Add an optional `Host` header / hostname target to native HTTP probes (default = target IP; override per call). Auto-extract vhost hostnames from 302 `Location`, TLS `CN`/`SAN`, and HTML `<meta>` tags into `findings.db`. Teach `AdaptiveRunner` to re-probe discovered vhosts. Surface `host=` on the LLM `http_probe` `AIFunction` parameter set with a clear `[Description(…)]` hint that 302 / vhost cert reveals are the trigger to set it. Scope-validate every hostname against its resolved IP before issuing the probe (the IP must already be in scope). Mirror on `https_probe` and `http_content_discovery`.
+- **Code path:** `src/Drederick/Recon/Native/` (HTTP probe stack); `src/Drederick/Agent/LlmReconTools.cs` (LLM tool surface); `MicrosoftAgentRunner.BuildSystemPrompt` / `BuildUserMessage` (planner hint).
+- **Resolution:**
+
+### GAP-033: cve-lead Autopilot Actions All Skipped (No Router)
+- **Exposed by:** facts-2026-05-02-R2
+- **Severity:** high
+- **Impact:** R2's second plan iteration recorded `autopilot.plan.built total=1291 nuclei=0 spray=20 msfrc=0 cve_lead=1271 cve_driven=1271`. Of 640 actions actually executed, **640 of 640 were `autopilot.action.skip`** with `reason="cve-lead: <CVE-ID> — no cached PoC artifact, route to PoC fetch / LLM"`. The autopilot's `case "cve-lead":` records the lead in audit and skips the action. The "route to PoC fetch / LLM" the skip reason references **does not exist** — nothing fetches the artifact on demand, nothing hands the lead to the LLM with sufficient context. 31 CVEs matched on the box (incl. CVE-2026-27944 Nginx UI CVSS 9.8 and CVE-2023-23596 NPM OS-cmd-injection CVSS 8.8); none were exploited. This supersedes the session-end note `gap-032-cve-lead-routing`; GAP-033 is the canonical ID.
+- **Status:** open
+- **Description:** `ExploitationPlanner` correctly emits `cve-lead` actions when a `findings.kind='cve'` row exists and no `poc_refs` row matches in the local cache. The action type is honest about what it is — a lead, not an exploit. But the executor leg in `AutopilotRunner` is skip-only. The cache-priming fix `d773904` (GAP-031b) closes part of this loop *before* plan time by warming msf modules + nuclei templates; an on-demand fetch + LLM-handoff path closes the rest *at* plan time.
+- **Suggested fix:** Promote `cve-lead` from skip to real action.
+  1. `PocAggregator.FetchForCveAsync(cveId)` — single-CVE on-demand fetch against the configured sources (Metasploit module index, nuclei templates, ExploitDB, GitHub PoC-in-CVE). Respect rate limits + global PoC byte cap.
+  2. On cache hit, the action self-promotes to `nuclei` or `msfrc` and re-enters the action queue via the next plan iteration (action ID stable so dedup holds).
+  3. On cache miss, hand the CVE to the LLM with `(service, version, CVE, NVD description, NSE script output)` context and let it plan a manual exploit via `exploit_plan` / `run_multi_stage`.
+  4. Audit every step: `cve_lead.fetch.start/finish`, `cve_lead.promote`, `cve_lead.llm_handoff` so future tape studies can distinguish the failure modes.
+- **Code path:** `src/Drederick/Autopilot/AutopilotRunner.cs` (`case "cve-lead":` — replace skip-only with the dispatch above); `src/Drederick/Enrichment/PocAggregator.cs` (add `FetchForCveAsync`); `src/Drederick/Autopilot/ExploitationPlanner.cs` (re-emit promoted actions on next iteration).
+- **Resolution:**
+
 ### GAP-031: Autopilot Plan 100% Spray-Based Despite CVE Evidence
 - **Exposed by:** jobtwo-2026-05-02-R5
 - **Severity:** high
@@ -313,11 +338,11 @@
 
 | Severity | Total | Open | In Progress | Resolved | Workaround | Planned | Partial |
 |----------|-------|------|-------------|----------|------------|---------|---------|
-| Critical | 10    | 2    | 0           | 5        | 2 workaround | 1     | 0       |
-| High     | 11    | 6    | 0           | 4        |            | 1       | 1       |
+| Critical | 11    | 3    | 0           | 5        | 2 workaround | 1     | 0       |
+| High     | 12    | 7    | 0           | 5        |            | 1       | 0       |
 | Medium   | 8     | 5    | 1 blocked   | 1        |            | 1       | 0       |
 | Low      | 2     | 2    | 0           | 0        |            | 0       | 0       |
-| **Total**| **31**| **15**| **1**      | **10**   | **2 workaround** | **3** | **1**   |
+| **Total**| **33**| **17**| **1**      | **11**   | **2 workaround** | **3** | **0**   |
 
 ---
 
@@ -332,3 +357,4 @@
 - **2026-05-01:** GAP-020→024 resolved — multi-choice parsing, SDK bypass, nmap timeout, multi-result serialization. GAP-023 blocked (Claude ordering). GAP-025 added (LLM won't exploit).
 - **2026-05-01:** GAP-026, GAP-027, GAP-028 added and resolved — JobTwo r4 tape revealed nmap-vs-native port-truth divergence, SslStream double-set ctor callback, and autopilot planner ignoring non-nmap port signals. Unified port harvest + single-source TLS callback. The champ studied the tape.
 - **2026-05-02:** GAP-029 (high — tool budget caps starve Hard boxes), GAP-030 (critical — no phishing/macro subsystem), GAP-031 (high — autopilot plan 100% spray-based despite CVE evidence) added from JobTwo r5 tape (30 sprays / 0 connects / 34 min). GAP-025 status moves `open` → `partially resolved` — `claude-sonnet-4.6` via Copilot called `exploit_plan` / `run_multi_stage` / `execute_cred_spray` ×5 unprompted; depth half tracked under GAP-031.
+- **2026-05-02:** GAP-032 (critical — native HTTP probes can't use Host header / hostname targets) and GAP-033 (high — `cve-lead` autopilot actions all skipped, no router from lead → PoC fetch → LLM handoff) added from facts-2026-05-02-R1/R2 (two losses, 6 min each, 0 errors / 0 budget denials, 1,611 audit events on R2 — densest fight on file; 1,271 cve-leads slipped on R2 with 31 CVEs matched). GAP-025 status moves `partially resolved` → `resolved` — facts-R2 had `claude-sonnet-4.6` calling `exploit_plan` (`ok=true`), `run_multi_stage`, `execute_cred_spray`, **and `extract_flags_from_dir` proactively**; remaining "non-spray exploit selection" reattributed to GAP-031 (cache breadth) + GAP-033 (cve-lead routing). Production-tape credit landings: `26f72e4` (GAP-029 tunable per-tool budget — 0 denials), `b9bbdb5` (no-nmap-from-LLM — 0 LLM-issued nmap calls), `1808cea` (tunable native HTTP timeout), `d773904` (GAP-031b PoC cache priming — 31 CVEs into the planner).

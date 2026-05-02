@@ -15,6 +15,8 @@
 | [jobtwo-2026-05-01-rematch](jobtwo-2026-05-01-rematch.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss (rematch) | GAP-022,024,025 | ⏳ Pending |
 | [jobtwo-2026-05-01-r4](jobtwo-2026-05-01-r4.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss-by-no-punch (r4) | GAP-026,027,028 | ⏳ Pending |
 | [jobtwo-2026-05-02-r5](jobtwo-2026-05-02-r5.md) | JobTwo | 2026-05-02 | Hard | ❌ Loss (r5) — 30 sprays, 0 connects | GAP-029,030,031 (GAP-025 partial) | ⏳ Pending |
+| [facts-2026-05-02 (R1)](facts-2026-05-02.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R1) — cleanest tape, 6 min, 0 errors, 0 denials | GAP-032 | ⏳ Same-day rematch (R2) |
+| [facts-2026-05-02 (R2)](facts-2026-05-02.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R2) — 1611 events / 6 min, 31 CVEs, 1271 cve-leads slipped | GAP-032,033 (GAP-025 resolved) | ⏳ Pending |
 
 ---
 
