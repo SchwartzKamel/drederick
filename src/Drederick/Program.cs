@@ -745,7 +745,16 @@ var s3Probe = new S3MinioProbeTool(scope, audit);
 // --- cms fingerprint (gap-036) ---
 var cmsFingerprint = new CmsFingerprintTool(scope, audit);
 // --- smb null-session + anon ldap (gap-042) ---
-var smbNullSession = new Drederick.Recon.Ad.SmbNullSessionTool(scope, audit);
+// Wire the production SMBLibrary + Novell.Directory.Ldap backends.
+// Each EnumerateAsync call gets a fresh backend (factory pattern) so
+// concurrent host fan-out does not share connection state.
+var smbNullSession = new Drederick.Recon.Ad.SmbNullSessionTool(
+    scope,
+    audit,
+    dnsResolver: null,
+    smbBackendFactory: () => new Drederick.Recon.Ad.SmbLibraryBackend(scope, audit),
+    ldapBackendFactory: () => new Drederick.Recon.Ad.SmbLibraryLdapBackend(scope, audit),
+    connectTimeout: TimeSpan.FromSeconds(10));
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
