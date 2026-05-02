@@ -121,43 +121,43 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         switch (provider)
         {
             case LlmProvider.Copilot:
-            {
-                var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
-                if (string.IsNullOrWhiteSpace(token)) return null;
-                audit.Record("copilot.direct.auth.ready", new Dictionary<string, object?>
                 {
-                    ["source"] = source.ToString(),
-                });
-                model ??= CopilotSdkAgentRunner.DefaultModelId;
-                var copilotChat = new AzureOpenAiChatClient(
-                    "https://api.githubcopilot.com",
-                    new AzureOpenAiAuth.Bearer(token),
-                    audit,
-                    model,
-                    copilotMode: true);
-                return (copilotChat, model);
-            }
+                    var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
+                    if (string.IsNullOrWhiteSpace(token)) return null;
+                    audit.Record("copilot.direct.auth.ready", new Dictionary<string, object?>
+                    {
+                        ["source"] = source.ToString(),
+                    });
+                    model ??= CopilotSdkAgentRunner.DefaultModelId;
+                    var copilotChat = new AzureOpenAiChatClient(
+                        "https://api.githubcopilot.com",
+                        new AzureOpenAiAuth.Bearer(token),
+                        audit,
+                        model,
+                        copilotMode: true);
+                    return (copilotChat, model);
+                }
 
             case LlmProvider.Azure:
-            {
-                var azure = AzureOpenAiChatClient.TryCreateFromEnvironment(audit, azureDeploymentMap, model);
-                if (azure is null) return null;
-                return (azure, azure.ModelId);
-            }
+                {
+                    var azure = AzureOpenAiChatClient.TryCreateFromEnvironment(audit, azureDeploymentMap, model);
+                    if (azure is null) return null;
+                    return (azure, azure.ModelId);
+                }
 
             case LlmProvider.LlamaCpp:
                 return null;
 
             case LlmProvider.OpenAi:
             default:
-            {
-                var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-                if (string.IsNullOrWhiteSpace(apiKey)) return null;
-                model ??= "gpt-4o-mini";
-                var openAi = new OpenAIClient(apiKey);
-                var chat = openAi.GetChatClient(model);
-                return (chat.AsIChatClient(), model);
-            }
+                {
+                    var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                    if (string.IsNullOrWhiteSpace(apiKey)) return null;
+                    model ??= "gpt-4o-mini";
+                    var openAi = new OpenAIClient(apiKey);
+                    var chat = openAi.GetChatClient(model);
+                    return (chat.AsIChatClient(), model);
+                }
         }
     }
 
