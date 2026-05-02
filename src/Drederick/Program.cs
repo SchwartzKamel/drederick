@@ -752,7 +752,8 @@ var smbNullSession = new Drederick.Recon.Ad.SmbNullSessionTool(
     scope,
     audit,
     dnsResolver: null,
-    smbBackendFactory: () => new Drederick.Recon.Ad.SmbLibraryBackend(scope, audit),
+    smbBackendFactory: () => new Drederick.Recon.Ad.SmbLibraryBackend(
+        scope, audit, samr: new Drederick.Recon.Ad.SmbSamrEnumerator(scope, audit)),
     ldapBackendFactory: () => new Drederick.Recon.Ad.SmbLibraryLdapBackend(scope, audit),
     connectTimeout: TimeSpan.FromSeconds(10));
 
@@ -846,6 +847,20 @@ var sshKeyBrute = new Drederick.Exploit.PostEx.SshKeyBruteTool(
 var sudoGtfoBins = new Drederick.Exploit.PostEx.SudoGtfoBinsTool(
     scope, audit, permissions, opts.OutputDir, credentialStore: null);
 
+// GAP-046: WinRM Windows post-ex. Authenticated WinRM/PSRP enumeration
+// against scope-resolved Windows hosts using captured Windows creds
+// (password, NT hash for PtH, or Kerberos ticket). Runs an embedded
+// 20+ entry enumeration corpus; pushes structured findings (local
+// users, admin group members, network interfaces, SeImpersonate
+// privesc candidates) onto WinRmPostExResult. Master gate is
+// ExploitCategory.ExecPocs (--allow-exec-pocs); CredAttacks is
+// intentionally NOT required because we authenticate once with
+// known-good material rather than spraying. v1 transport is the
+// subprocess-wrap path via the default EvilWinrmExecutor; production
+// operators inject a wired-up IWinRmExecutor at construction time.
+var winrmPostEx = new Drederick.Exploit.PostEx.WinRmPostExTool(
+    scope, audit, permissions);
+
 // --- replay-timeout config (cross-protocol replay) ---
 // CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by
 // callers via CrossProtocolReplay.BuildDefault(...) — but we resolve the
@@ -901,7 +916,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sudoGtfoBins },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sudoGtfoBins, winrmPostEx },
     audit,
     exploitBudget);
 
