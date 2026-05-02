@@ -156,13 +156,13 @@ SELECT id, timestamp, fight_id, technique_id, target_archetype, target_host,
        service, port, outcome, time_ms, llm_cost_tokens, audit_correlation_id, notes
 FROM telemetry_events
 WHERE 1=1");
-        if (q.FightId is not null)        { sql.Append(" AND fight_id = $fid");          cmd.Parameters.AddWithValue("$fid", q.FightId); }
-        if (q.TechniqueId is not null)    { sql.Append(" AND technique_id = $tid");      cmd.Parameters.AddWithValue("$tid", q.TechniqueId); }
-        if (q.TargetArchetype is not null){ sql.Append(" AND target_archetype = $arch"); cmd.Parameters.AddWithValue("$arch", q.TargetArchetype); }
-        if (q.Service is not null)        { sql.Append(" AND service = $svc");           cmd.Parameters.AddWithValue("$svc", q.Service); }
-        if (q.Outcome is not null)        { sql.Append(" AND outcome = $out");           cmd.Parameters.AddWithValue("$out", q.Outcome); }
-        if (q.SinceTimestamp is not null) { sql.Append(" AND timestamp >= $since");      cmd.Parameters.AddWithValue("$since", q.SinceTimestamp); }
-        if (q.UntilTimestamp is not null) { sql.Append(" AND timestamp <  $until");      cmd.Parameters.AddWithValue("$until", q.UntilTimestamp); }
+        if (q.FightId is not null) { sql.Append(" AND fight_id = $fid"); cmd.Parameters.AddWithValue("$fid", q.FightId); }
+        if (q.TechniqueId is not null) { sql.Append(" AND technique_id = $tid"); cmd.Parameters.AddWithValue("$tid", q.TechniqueId); }
+        if (q.TargetArchetype is not null) { sql.Append(" AND target_archetype = $arch"); cmd.Parameters.AddWithValue("$arch", q.TargetArchetype); }
+        if (q.Service is not null) { sql.Append(" AND service = $svc"); cmd.Parameters.AddWithValue("$svc", q.Service); }
+        if (q.Outcome is not null) { sql.Append(" AND outcome = $out"); cmd.Parameters.AddWithValue("$out", q.Outcome); }
+        if (q.SinceTimestamp is not null) { sql.Append(" AND timestamp >= $since"); cmd.Parameters.AddWithValue("$since", q.SinceTimestamp); }
+        if (q.UntilTimestamp is not null) { sql.Append(" AND timestamp <  $until"); cmd.Parameters.AddWithValue("$until", q.UntilTimestamp); }
         sql.Append(" ORDER BY id ASC LIMIT $limit");
         cmd.Parameters.AddWithValue("$limit", Math.Max(0, q.Limit));
         cmd.CommandText = sql.ToString();

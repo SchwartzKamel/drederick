@@ -58,7 +58,8 @@ public sealed partial class FtpAnonTool : IReconTool
         _scope.Require(target);
         _audit.Record("ftp-anon.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
         });
 
         var result = new FtpAnonResult { Port = port };
@@ -110,7 +111,8 @@ public sealed partial class FtpAnonTool : IReconTool
 
         _audit.Record("ftp-anon.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
             ["anonymous_allowed"] = result.AnonymousAllowed,
             ["listing_count"] = result.RootListing.Count,
             ["error"] = result.Error,

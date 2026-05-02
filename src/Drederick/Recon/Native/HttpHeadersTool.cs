@@ -33,7 +33,10 @@ public sealed class HttpHeadersTool : IReconTool
         var url = NativeHttpClientFactory.BuildUrl(target, port, tls);
         _audit.Record("http-headers.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["tls"] = tls, ["url"] = url,
+            ["target"] = target,
+            ["port"] = port,
+            ["tls"] = tls,
+            ["url"] = url,
         });
 
         var result = new HttpHeadersResult { Url = url, Method = "HEAD" };
@@ -72,8 +75,11 @@ public sealed class HttpHeadersTool : IReconTool
 
         _audit.Record("http-headers.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["status"] = result.Status,
-            ["method"] = result.Method, ["header_count"] = result.Headers.Count,
+            ["target"] = target,
+            ["port"] = port,
+            ["status"] = result.Status,
+            ["method"] = result.Method,
+            ["header_count"] = result.Headers.Count,
             ["error"] = result.Error,
         });
         return result;

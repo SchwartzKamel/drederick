@@ -79,7 +79,7 @@ public sealed class TelemetryRecorderTests : IDisposable
     {
         await using var rec = new TelemetryRecorder(DbPath());
         await rec.RecordAsync(new TelemetryEvent { TechniqueId = "a", Service = "http", Outcome = "success", TimeMs = 1, FightId = "f1" });
-        await rec.RecordAsync(new TelemetryEvent { TechniqueId = "b", Service = "ssh",  Outcome = "fail",    TimeMs = 2, FightId = "f1" });
+        await rec.RecordAsync(new TelemetryEvent { TechniqueId = "b", Service = "ssh", Outcome = "fail", TimeMs = 2, FightId = "f1" });
         await rec.RecordAsync(new TelemetryEvent { TechniqueId = "a", Service = "http", Outcome = "success", TimeMs = 3, FightId = "f2" });
 
         var byTechnique = await CollectAsync(rec, new TelemetryQuery { TechniqueId = "a" });

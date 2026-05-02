@@ -107,7 +107,7 @@ public sealed class YaraScanner
         if (s is TextYaraString tx)
         {
             if (tx.Ascii) ScanText(data, s.Identifier, tx, hits, wide: false);
-            if (tx.Wide)  ScanText(data, s.Identifier, tx, hits, wide: true);
+            if (tx.Wide) ScanText(data, s.Identifier, tx, hits, wide: true);
         }
         return hits;
     }
@@ -662,8 +662,12 @@ internal static class YaraRuleParser
                         char esc = src[e + 1];
                         sb.Append(esc switch
                         {
-                            'n' => '\n', 'r' => '\r', 't' => '\t',
-                            '\\' => '\\', '"' => '"', '0' => '\0',
+                            'n' => '\n',
+                            'r' => '\r',
+                            't' => '\t',
+                            '\\' => '\\',
+                            '"' => '"',
+                            '0' => '\0',
                             _ => esc,
                         });
                         e += 2;

@@ -86,7 +86,7 @@ public class BudgetTuningTests
     public void Parses_PerTool_Spec_Single_Entry_With_Whitespace()
     {
         var o = CommandLineOptions.Parse(new[] { "--budget=  nuclei : 25  " });
-        Assert.Equal(1, o.BudgetPerToolOverrides.Count);
+        Assert.Single(o.BudgetPerToolOverrides);
         Assert.Equal(25, o.BudgetPerToolOverrides["nuclei"]);
     }
 

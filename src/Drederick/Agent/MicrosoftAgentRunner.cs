@@ -62,24 +62,11 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         switch (provider)
         {
             case LlmProvider.Copilot:
-            {
-                // Bypass broken Copilot SDK 0.3.0 (GAP-021). Use direct HTTP
-                // to api.githubcopilot.com which is OpenAI-wire-compatible.
-                var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
-                if (string.IsNullOrWhiteSpace(token)) return null;
-                audit.Record("copilot.direct.auth.ready", new Dictionary<string, object?>
-                {
-                    ["source"] = source.ToString(),
-                });
-                model ??= CopilotSdkAgentRunner.DefaultModelId;
-                var copilotChat = new AzureOpenAiChatClient(
-                    "https://api.githubcopilot.com",
-                    new AzureOpenAiAuth.Bearer(token),
+                return CopilotSdkAgentRunner.TryCreateFromEnvironment(
                     audit,
                     model,
-                    copilotMode: true);
-                return new MicrosoftAgentRunner(audit, copilotChat, model, exploitTools);
-            }
+                    exploitTools,
+                    allowGitHubCliAuth);
 
             case LlmProvider.Azure:
                 {

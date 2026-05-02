@@ -68,6 +68,6 @@ public class FingerprintAggregatorTests
         };
         var cands = agg.Aggregate(hits);
         Assert.Equal("apache", cands[0].Product);
-        Assert.Equal("nginx",  cands[1].Product);
+        Assert.Equal("nginx", cands[1].Product);
     }
 }

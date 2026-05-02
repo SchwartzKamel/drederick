@@ -48,7 +48,8 @@ public sealed class LdapRootDseTool : IReconTool
         _scope.Require(target);
         _audit.Record("ldap-rootdse.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
         });
 
         var result = new LdapRootDseResult { Port = port };
@@ -80,7 +81,8 @@ public sealed class LdapRootDseTool : IReconTool
     finish:
         _audit.Record("ldap-rootdse.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
             ["anonymous_bind"] = result.AnonymousBind,
             ["naming_contexts"] = result.NamingContexts.Count,
             ["error"] = result.Error,
