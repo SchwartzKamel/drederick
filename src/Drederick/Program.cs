@@ -816,6 +816,10 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
     }
     var adaptivePlanner = new ExploitationPlanner(audit, opts.OutputDir);
     var adaptiveFlags = new FlagExtractor(audit);
+    // GAP-033 — share an on-demand PoC fetcher with AdaptiveExploitRunner
+    // so cve-lead actions emitted by the deterministic path also route to
+    // the aggregator instead of dead-ending.
+    var adaptivePocAggregator = new Drederick.Enrichment.PocAggregator(audit: audit);
     runner = new AdaptiveExploitRunner(
         adaptive, audit, scope, permissions,
         adaptivePlanner, adaptiveCreds, adaptiveFlags,
@@ -823,6 +827,8 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
         nuclei: nuclei,
         spray: spray,
         multiStage: multiStage,
+        pocAggregator: adaptivePocAggregator,
+        fetchPoc: opts.FetchPoc,
         maxIterations: opts.AutopilotMaxIterations,
         maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
 }
@@ -977,12 +983,17 @@ if (opts.Autopilot)
 
         var planner = new ExploitationPlanner(audit, opts.OutputDir);
         var flagExtractor = new FlagExtractor(audit);
+        // GAP-033 — wire the on-demand PoC fetcher so cve-lead actions
+        // route to the aggregator when the recon-time cache was empty.
+        var autopilotPocAggregator = new PocAggregator(audit: audit);
         var autopilot = new AutopilotRunner(
             scope, audit, permissions, planner, credStore, flagExtractor,
              opts.OutputDir,
              nuclei: nuclei,
              spray: spray,
              msf: msf,
+             pocAggregator: autopilotPocAggregator,
+             fetchPoc: opts.FetchPoc,
              maxIterations: opts.AutopilotMaxIterations,
              maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
 
