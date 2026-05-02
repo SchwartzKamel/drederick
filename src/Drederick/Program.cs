@@ -834,6 +834,11 @@ var httpSpray = new NativeHttpSprayTool(
 var dbPillage = new Drederick.Exploit.PostEx.DbPillageTool(
     scope, audit, permissions, opts.OutputDir, credentialStore: null);
 
+// GAP-039: SSH key brute — captured-key (key, user, host) attempts.
+// Pushes successful auths into CredentialStore as ssh-key:<digest>.
+var sshKeyBrute = new Drederick.Exploit.PostEx.SshKeyBruteTool(
+    scope, audit, permissions, opts.OutputDir, credentialStore: null);
+
 // --- replay-timeout config (cross-protocol replay) ---
 // CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by
 // callers via CrossProtocolReplay.BuildDefault(...) — but we resolve the
@@ -878,7 +883,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, sshKeyBrute },
     audit,
     exploitBudget);
 
@@ -1222,10 +1227,32 @@ if (opts.Autopilot)
         {
             autopilotExecShell = new LlmExecShellTool(scope, audit, permissions, opts.OutputDir);
         }
+        // Production LLM adapter: when --autopilot + AllowCveLeadLlmAuthor
+        // are on AND a chat client can be built from the configured provider,
+        // wire the IChatClient-backed adapter into the bridge. The bridge
+        // still owns audit emissions, permission gates, scope re-validation,
+        // and the 1-LLM-call/1-exec_shell budget. With no provider key, this
+        // resolves to null and the bridge audits no_llm_key as before.
+        Drederick.Autopilot.CveLeadLlmAuthorFunc? cveLeadLlmFunc = null;
+        if (permissions.AllowCveLeadLlmAuthor && autopilotExecShell != null)
+        {
+            var built = MicrosoftAgentRunner.TryCreateChatClient(
+                opts.LlmProvider, opts.AzureDeploymentMap, audit);
+            if (built is { } b)
+            {
+                var adapter = new CveLeadLlmAuthorChatClient(b.Client, b.ModelId);
+                cveLeadLlmFunc = adapter.AsFunc();
+                audit.Record("cve.lead.llm_author.adapter_ready", new Dictionary<string, object?>
+                {
+                    ["provider"] = opts.LlmProvider,
+                    ["model"] = b.ModelId,
+                });
+            }
+        }
         var cveLeadLlmAuthor = new CveLeadLlmAuthor(
             scope, audit, permissions,
             execShell: autopilotExecShell,
-            llm: null);
+            llm: cveLeadLlmFunc);
 
         var autopilot = new AutopilotRunner(
             scope, audit, permissions, planner, credStore, flagExtractor,

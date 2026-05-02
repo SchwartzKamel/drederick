@@ -106,6 +106,64 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         }
     }
 
+    /// <summary>
+    /// Factory: build an <see cref="IChatClient"/> from the selected LLM provider
+    /// without wrapping it in a runner. Used by ancillary subsystems (e.g. the
+    /// autopilot cve-lead → LLM-author bridge) that need raw chat access with
+    /// a custom tool surface, distinct from the recon agent's full toolbox.
+    /// Returns <c>null</c> if the provider's required environment is not
+    /// configured (no API key / no token / unsupported provider).
+    /// Mirrors the provider switch in <see cref="TryCreateFromProvider"/>.
+    /// </summary>
+    public static (IChatClient Client, string ModelId)? TryCreateChatClient(
+        LlmProvider provider,
+        IReadOnlyDictionary<string, string>? azureDeploymentMap,
+        AuditLog audit,
+        bool allowGitHubCliAuth = true)
+    {
+        var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
+        switch (provider)
+        {
+            case LlmProvider.Copilot:
+            {
+                var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
+                if (string.IsNullOrWhiteSpace(token)) return null;
+                audit.Record("copilot.direct.auth.ready", new Dictionary<string, object?>
+                {
+                    ["source"] = source.ToString(),
+                });
+                model ??= CopilotSdkAgentRunner.DefaultModelId;
+                var copilotChat = new AzureOpenAiChatClient(
+                    "https://api.githubcopilot.com",
+                    new AzureOpenAiAuth.Bearer(token),
+                    audit,
+                    model,
+                    copilotMode: true);
+                return (copilotChat, model);
+            }
+
+            case LlmProvider.Azure:
+            {
+                var azure = AzureOpenAiChatClient.TryCreateFromEnvironment(audit, azureDeploymentMap, model);
+                if (azure is null) return null;
+                return (azure, azure.ModelId);
+            }
+
+            case LlmProvider.LlamaCpp:
+                return null;
+
+            default:
+            {
+                var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                if (string.IsNullOrWhiteSpace(apiKey)) return null;
+                model ??= "gpt-4o-mini";
+                var openAi = new OpenAIClient(apiKey);
+                var chat = openAi.GetChatClient(model);
+                return (chat.AsIChatClient(), model);
+            }
+        }
+    }
+
     /// <summary>Legacy factory: build an OpenAI-backed runner from environment configuration.</summary>
     [Obsolete("Use TryCreateFromProvider for multi-provider support.")]
     public static MicrosoftAgentRunner? TryCreateFromEnvironment(AuditLog audit)
