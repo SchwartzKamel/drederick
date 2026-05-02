@@ -878,6 +878,17 @@ var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary)
 var asRepRoast = new Drederick.Exploit.Ad.AsRepRoastTool(
     scope, audit, permissions, credentialStore: null);
 
+// GAP-044: Kerberoasting (authenticated AD service-ticket roast).
+// Sibling to gap-043 AsRepRoastTool. Master gate:
+// ExploitCategory.AsRepRoast → RunPermissions.AllowAdAttacks. The
+// production IKerberoastEngine + ILdapDirectory wire-up lands in a
+// follow-up; here we register the tool with no directory so the
+// LLM/AdaptiveRunner surface still advertises the capability while
+// returning a structured "no_ldap_directory" short-circuit until the
+// engine is wired.
+var kerberoast = new Drederick.Exploit.Ad.KerberoastTool(
+    scope, audit, permissions, credentialStore: null);
+
 var exploitBudgetBase = opts.UseAgent
     ? Drederick.Exploit.ToolBudget.LlmDefault
     : Drederick.Exploit.ToolBudget.Default;
@@ -890,7 +901,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, sshKeyBrute, sudoGtfoBins },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sudoGtfoBins },
     audit,
     exploitBudget);
 
