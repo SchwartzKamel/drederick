@@ -4,7 +4,7 @@ title: UI — Drederick operator console (Avalonia)
 audience: [humans, agents]
 primary: humans
 stability: experimental
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ../AGENTS.md
   - ../README.md

@@ -3,7 +3,7 @@ title: Datasette dashboard
 audience: [humans]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - DB_SCHEMA.md
   - UI_GUIDE.md

@@ -164,12 +164,36 @@ It produces:
 <a id="fingerprint-growth"></a>
 ## Growing the fingerprint corpus
 
-When the same banner+port consistently maps to the same product+version in winning fights, that mapping is added to `memory/learned-fingerprints.json` with a confidence score. The next fight's `fingerprint-stack` uses the grown corpus automatically.
+When the same banner+port consistently maps to the same product+version in winning fights, that mapping is added to `out/memory/learned-fingerprints.json` with a confidence score. The next fight's `fingerprint-stack` uses the grown corpus automatically.
+
+> **Status: live as of commit `8251ab3`.** The store is implemented in
+> [`src/Drederick/Enrichment/FingerprintStack/LearnedFingerprintStore.cs`](../src/Drederick/Enrichment/FingerprintStack/LearnedFingerprintStore.cs)
+> and harvested by
+> [`FingerprintLearner`](../src/Drederick/Enrichment/FingerprintStack/FingerprintLearner.cs).
+> The memory layer therefore now has **two** persisted artefacts under `out/memory/`:
+>
+> - `findings.json` — the per-host
+>   [`KnowledgeBase`](../src/Drederick/Memory/KnowledgeBase.cs) (services,
+>   CVEs, captured creds, opened sessions). Cross-run state for a single
+>   target.
+> - `learned-fingerprints.json` — Server / TLS / SSH / SMB signal →
+>   product + version mappings harvested across **every** fight and
+>   reused as a confidence-weighted prior for `FingerprintAggregator`.
+>   Cross-run, cross-target state.
 
 Operator review: `drederick review` flags new fingerprint candidates with their confidence; operator can accept individually or `--apply --fingerprints`.
 
 <a id="archetype-playbooks"></a>
 ## Archetype playbooks
+
+> **Status: classifier live as of commit `fd8e8a2`.** The
+> [`TargetArchetype`](../src/Drederick/Learning/TargetArchetype.cs)
+> enum and
+> [`ArchetypeClassifier`](../src/Drederick/Learning/ArchetypeClassifier.cs)
+> tag every fight target so the planner can load the right playbook
+> overlay before action selection. Hand-curated YAML lives under
+> `playbooks/`; learned overlays from `planner-self-tune` are layered
+> on top.
 
 ```bash
 drederick warmup --archetype htb-linux-easy

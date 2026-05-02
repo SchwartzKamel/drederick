@@ -3,7 +3,7 @@ title: Comparison — drederick vs the field
 audience: [humans]
 primary: humans
 stability: evolving
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ../README.md
   - SCOPE_AND_LEGAL.md
@@ -44,6 +44,10 @@ Peers: [AutoRecon](https://github.com/Tib3rius/AutoRecon),
 | Runtime                                     | .NET 10 / C# | Python (asyncio) | Bash | Python |
 | Scope allow-list enforced **in every tool** | **yes**   | configurable | no | no |
 | Per-service scanner fan-out                 | **14+ scanners** | ~20+ scanners | nmap tiers | ~10 scanners |
+| Fast `/N` host-discovery sweep (no nmap)    | **yes (`HostDiscoveryTool` — TCP-knock 80/443/22/445/3389/5985)** | partial | nmap-only | nmap-only |
+| Native port scanner (nmap-free)             | **yes (`NativeScannerTool` — top-ports + banner grab)** | no | no | no |
+| Native SNMP / DNS probes (no external bin)  | **yes (`SnmpTool` via SharpSNMP, `NativeDnsTool`)** | no | no | no |
+| Recovers when nmap reports zero ports       | **yes — planner harvests ports from native HTTP/TLS/banner signals (post-JobTwo r4 / GAP-026/027/028)** | no | no | no |
 | Bounded worker pool                         | **yes (`Channel<T>`)** | yes (asyncio) | no | limited |
 | Cross-run knowledge base                    | **yes (`memory/findings.json`)** | no | no | no |
 | Per-host working dir + notes                | yes | yes | yes | yes |
@@ -60,7 +64,10 @@ per-service scanner catalogue is still deeper than ours on niche
 services (Oracle TNS, Redis info).
 
 **Pick nmapAutomator** for a lightweight bash wrapper over nmap tiers
-— no toolchain, no ceremony.
+— no toolchain, no ceremony. Reach for Drederick's `HostDiscoveryTool`
+when you need a `/N` corp-style sweep without standing up nmap on the
+operator box; alive hosts (and their responding ports) feed the deeper
+scanners automatically.
 
 **Pick Reconnoitre** for OSCP-style enumeration with a focused
 directory layout and reporting template.
