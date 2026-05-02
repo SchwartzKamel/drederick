@@ -408,6 +408,8 @@ gate. Summary:
 | `MultiStageExploitRunner` | `--allow-exec-pocs` + `--allow-payloads` |
 | `EmpireAgentStager` (agent payload generation) | `--allow-payloads` |
 | `EmpireModuleExecutor` (privesc/lateral movement) | `--allow-payloads` (+ `--allow-cred-attacks` for credential reuse) |
+| `MacroPayloadGenerator` (VBA / HTA / LNK / ISO macro lures) | `--allow-phishing` |
+| `PhishingDelivery` (SMB drop / WebDAV PUT / one-shot HTTP stager) | `--allow-phishing` (SMTP relay additionally requires `--allow-smtp-relay`; Phase 2) |
 | `PostExLinux` / `PostExWindows` | (via session opened by exploit tools) |
 | `SessionPivotProber` | (post-ex; pivot CIDRs re-checked per-IP) |
 
