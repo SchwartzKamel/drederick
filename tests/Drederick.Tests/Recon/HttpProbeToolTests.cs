@@ -283,4 +283,126 @@ public class HttpProbeToolTests
         Assert.Contains("\"resolved_ip\":\"10.0.0.7\"", jsonl);
         Assert.Contains("8.8.8.8", jsonl);
     }
+
+    // ------------------------------------------------------------------
+    // GAP-034: http.error events carry a structured `reason` field
+    // mapped from the thrown exception. The catch block also records
+    // exception_type + elapsed_ms; the result mirrors reason +
+    // exception_type so callers can act without parsing the audit log.
+    // ------------------------------------------------------------------
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, Exception> _factory;
+        public ThrowingHandler(Func<HttpRequestMessage, Exception> factory) { _factory = factory; }
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw _factory(request);
+    }
+
+    private static async Task<(HttpResult result, string auditJsonl)> ProbeWithThrow(
+        Func<HttpRequestMessage, Exception> factory)
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        var audit = NewAudit(out var path);
+        var handler = new ThrowingHandler(factory);
+        var tool = new HttpProbeTool(scope, audit, null, _ => handler);
+        var result = await tool.ProbeAsync("10.0.0.5", 80, useTls: false);
+        audit.Dispose();
+        return (result, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_ConnectionRefused()
+    {
+        var (result, jsonl) = await ProbeWithThrow(_ =>
+            new HttpRequestException("conn refused",
+                new System.Net.Sockets.SocketException(
+                    (int)System.Net.Sockets.SocketError.ConnectionRefused)));
+        Assert.Equal("connection_refused", result.Reason);
+        Assert.Contains("\"reason\":\"connection_refused\"", jsonl);
+        Assert.Contains("\"exception_type\":", jsonl);
+        Assert.Contains("\"elapsed_ms\":", jsonl);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_ConnectionTimeout()
+    {
+        var (result, jsonl) = await ProbeWithThrow(_ =>
+            new TaskCanceledException("timeout"));
+        Assert.Equal("connection_timeout", result.Reason);
+        Assert.Contains("\"reason\":\"connection_timeout\"", jsonl);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_DnsFailure_FromSocketHostNotFound()
+    {
+        var (result, jsonl) = await ProbeWithThrow(_ =>
+            new HttpRequestException(
+                "no such host",
+                new System.Net.Sockets.SocketException(
+                    (int)System.Net.Sockets.SocketError.HostNotFound)));
+        Assert.Equal("dns_failure", result.Reason);
+        Assert.Contains("\"reason\":\"dns_failure\"", jsonl);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_DnsFailure_FromMessageKeyword()
+    {
+        var (result, _) = await ProbeWithThrow(_ =>
+            new HttpRequestException("name resolution failed"));
+        Assert.Equal("dns_failure", result.Reason);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_TlsHandshake()
+    {
+        var (result, jsonl) = await ProbeWithThrow(_ =>
+            new HttpRequestException("tls failed",
+                new System.Security.Authentication.AuthenticationException("cert invalid")));
+        Assert.Equal("tls_handshake", result.Reason);
+        Assert.Contains("\"reason\":\"tls_handshake\"", jsonl);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_RedirectLoop()
+    {
+        var (result, _) = await ProbeWithThrow(_ =>
+            new InvalidOperationException("Too many redirects"));
+        Assert.Equal("redirect_loop", result.Reason);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_Http5xx_From_Successful_500()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var resp = new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        var capturing = new CapturingHandler { Response = resp };
+        var tool = new HttpProbeTool(scope, audit, null, _ => capturing);
+
+        var result = await tool.ProbeAsync("10.0.0.5", 80, useTls: false);
+
+        Assert.Equal(500, result.Status);
+        Assert.Equal("http_5xx", result.Reason);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_ScopeReject()
+    {
+        var (result, jsonl) = await ProbeWithThrow(_ =>
+            new ScopeException("forbidden pivot target"));
+        Assert.Equal("scope_reject", result.Reason);
+        Assert.Contains("\"reason\":\"scope_reject\"", jsonl);
+    }
+
+    [Fact]
+    public async Task HttpError_Reason_Transport_Fallback()
+    {
+        var (result, jsonl) = await ProbeWithThrow(_ =>
+            new IOException("unexpected EOF"));
+        Assert.Equal("transport", result.Reason);
+        Assert.Contains("\"reason\":\"transport\"", jsonl);
+        Assert.Contains("IOException", jsonl);
+    }
 }

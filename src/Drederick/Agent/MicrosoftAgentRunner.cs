@@ -270,6 +270,14 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         hostname is in scope (resolves to a scope IP), prefer the
         hostname over the bare IP for HTTP requests — it gives you
         the actual application surface.
+
+        Flag extraction paths (GAP-034 nudge): when calling
+        extract_flags_from_dir, pass the configured `out_root` value
+        as the `dir` parameter (or a sub-path under it). The tool
+        refuses any path that resolves outside `out_root` (audit:
+        extract_flags_from_dir.refused, code=path_outside_out). When in
+        doubt, use the absolute `out_root` value to avoid path_outside_out
+        rejections that waste planner turns.
         """;
 
     internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)

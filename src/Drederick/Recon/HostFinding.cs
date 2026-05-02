@@ -86,6 +86,14 @@ public sealed class HttpResult
     [JsonPropertyName("missing_security_headers")] public List<string> MissingSecurityHeaders { get; set; } = new();
     [JsonPropertyName("error")] public string? Error { get; set; }
 
+    // GAP-034: structured taxonomy for http.error events. One of
+    // {connection_refused, connection_timeout, dns_failure,
+    //  tls_handshake, redirect_loop, http_5xx, scope_reject, transport}.
+    // Null on success. `ExceptionType` is the .NET exception type name
+    // for forensics (audit trail also carries it).
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+    [JsonPropertyName("exception_type")] public string? ExceptionType { get; set; }
+
     // GAP-032: vhost-aware http_probe. When a probe to an IP returns
     // 3xx → Location with a hostname authority, mark the finding so the
     // planner / LLM retries with the hostname as the target. The hostname

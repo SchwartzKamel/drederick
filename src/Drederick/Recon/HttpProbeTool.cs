@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Security;
@@ -177,6 +178,7 @@ public sealed partial class HttpProbeTool : IReconTool
             Hostname = resolved.Hostname,
             ResolvedIp = resolved.ResolvedIp.ToString(),
         };
+        var sw = Stopwatch.StartNew();
         try
         {
             using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
@@ -184,6 +186,13 @@ public sealed partial class HttpProbeTool : IReconTool
             result.Status = (int)resp.StatusCode;
             result.Server = resp.Headers.Server?.ToString();
             result.ContentType = resp.Content.Headers.ContentType?.ToString();
+            // GAP-034: surface 5xx to the planner via reason without
+            // forcing it to parse status. The response is not an error
+            // from HttpClient's perspective; we just tag it.
+            if ((int)resp.StatusCode >= 500 && (int)resp.StatusCode <= 599)
+            {
+                result.Reason = "http_5xx";
+            }
 
             var allHeaders = resp.Headers
                 .Concat(resp.Content.Headers)
@@ -220,13 +229,20 @@ public sealed partial class HttpProbeTool : IReconTool
         }
         catch (Exception ex)
         {
+            sw.Stop();
+            var reason = ClassifyException(ex, ct);
             _audit.Record("http.error", new Dictionary<string, object?>
             {
                 ["target"] = target,
                 ["url"] = url,
                 ["error"] = ex.Message,
+                ["reason"] = reason,
+                ["exception_type"] = ex.GetType().Name,
+                ["elapsed_ms"] = sw.ElapsedMilliseconds,
             });
             result.Error = ex.Message;
+            result.Reason = reason;
+            result.ExceptionType = ex.GetType().Name;
         }
         _audit.Record("http.finish", new Dictionary<string, object?>
         {
@@ -336,5 +352,71 @@ public sealed partial class HttpProbeTool : IReconTool
                 }
             },
         };
+    }
+
+    /// <summary>
+    /// GAP-034: map a thrown exception from the HTTP send pipeline to a
+    /// structured <c>reason</c> string. Triage on R3+R4 tape was
+    /// dominated by <c>connection_refused</c> on closed ports the
+    /// planner explored; distinguishing it from <c>dns_failure</c>,
+    /// <c>tls_handshake</c>, <c>redirect_loop</c>, and <c>scope_reject</c>
+    /// is load-bearing once exploitation gets serious.
+    /// </summary>
+    internal static string ClassifyException(Exception ex, CancellationToken ct)
+    {
+        for (var cur = ex; cur is not null; cur = cur.InnerException!)
+        {
+            switch (cur)
+            {
+                case ScopeException:
+                    return "scope_reject";
+                case AuthenticationException:
+                    return "tls_handshake";
+                case SocketException sock:
+                    return ClassifySocketError(sock);
+                case OperationCanceledException:
+                    // TaskCanceledException (HttpClient timeout) and
+                    // OperationCanceledException both land here.
+                    return ct.IsCancellationRequested ? "transport" : "connection_timeout";
+                case HttpRequestException httpEx:
+                    var msg = httpEx.Message ?? "";
+                    if (msg.Contains("name resolution", StringComparison.OrdinalIgnoreCase)
+                        || msg.Contains("host not found", StringComparison.OrdinalIgnoreCase)
+                        || msg.Contains("no such host", StringComparison.OrdinalIgnoreCase))
+                        return "dns_failure";
+                    if (msg.Contains("redirect", StringComparison.OrdinalIgnoreCase))
+                        return "redirect_loop";
+                    if (httpEx.StatusCode is { } sc && (int)sc >= 500 && (int)sc <= 599)
+                        return "http_5xx";
+                    break;
+                case InvalidOperationException invOp:
+                    if ((invOp.Message ?? "").Contains("redirect", StringComparison.OrdinalIgnoreCase))
+                        return "redirect_loop";
+                    break;
+            }
+            if (cur.InnerException is null) break;
+        }
+        return "transport";
+    }
+
+    private static string ClassifySocketError(SocketException sock)
+    {
+        switch (sock.SocketErrorCode)
+        {
+            case SocketError.ConnectionRefused:
+                return "connection_refused";
+            case SocketError.TimedOut:
+            case SocketError.HostUnreachable:
+            case SocketError.NetworkUnreachable:
+                return "connection_timeout";
+            case SocketError.HostNotFound:
+            case SocketError.NoData:
+            case SocketError.TryAgain:
+                return "dns_failure";
+        }
+        // Linux ECONNREFUSED=111, Windows WSAECONNREFUSED=10061.
+        if (sock.ErrorCode is 111 or 10061) return "connection_refused";
+        if (sock.ErrorCode is 11001 or 11002 or 11003 or 11004) return "dns_failure";
+        return "transport";
     }
 }
