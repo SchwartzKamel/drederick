@@ -61,8 +61,8 @@ Read tapes for context; mine gaps for tasks.
 | 7 | JobTwo | Hard | 2026-05-02 | ❌ Loss (R5) — 30 sprays / 0 connects | [tape](../.github/fight-history/jobtwo-2026-05-02-r5.md) | GAP-029..031 |
 | 8 | Facts | Easy | 2026-05-02 | ❌ Loss (R1+R2) | [tape](../.github/fight-history/facts-2026-05-02.md) | GAP-032, 033 |
 | 9 | Facts | Easy | 2026-05-02 | ❌ Loss (R3+R4) — vhost fix firing, 640/640 cve-leads unfetchable | [tape](../.github/fight-history/facts-2026-05-02-r3-r4.md) | GAP-034, 035 |
-| 10 | Facts | Easy | 2026-05-02 | ✅ **Win (R5, Copilot-driver)** — both flags | _pending tape_ | GAP-036..041 |
-| 11 | Pingpong | — | 2026-05-02 | ⏳ In-flight | _pending tape_ | _pending_ |
+| 10 | Facts | Easy | 2026-05-02 | ✅ **Win (R5, Copilot-driver)** — both flags | [tape](../.github/fight-history/facts-2026-05-02-r5-copilot.md) | GAP-036..041 |
+| 11 | Pingpong | — | 2026-05-02 | ⏳ In-flight | [tape](../.github/fight-history/pingpong-2026-05-02-r1.md) | _pending_ |
 
 > **R5 on Facts is the breakthrough fight.** Copilot CLI drove drederick as a
 > tool and finished the chain in 11 steps: register → CVE-2025-2304
@@ -104,8 +104,11 @@ R3+R4 ran with the `gap-032` fix in production — http_probe usage went
 lost: 640/640 cve-leads were unfetchable because the on-demand PoC source
 fleet (gap-031b-2) wasn't shipped yet.
 
-**R5 won via Copilot-driver.** The win exposed six new gaps that, when
-shipped together, are the path to autopilot taking facts-class boxes solo:
+**R5 won via Copilot-driver** (operator drove drederick as a recon tool, then
+ran the 11-step kill chain in bash with operator-enforced scope; the
+authorization boundary held because the operator held it). The win exposed
+six new gaps that, when shipped together, are the path to autopilot taking
+facts-class boxes solo:
 
 | Gap | What | Status |
 |-----|------|--------|
@@ -118,7 +121,11 @@ shipped together, are the path to autopilot taking facts-class boxes solo:
 
 ### Pingpong — the next box
 
-In-flight as of 2026-05-02. Tape pending.
+In-flight as of 2026-05-02 ([tape](../.github/fight-history/pingpong-2026-05-02-r1.md)).
+First production signal that `gap-031b-2` may be firing on a fresh box —
+audit shows `msf-rc.start` ×2 and `multistage.poc.start` ×3, meaning the
+cve-lead router found things to fetch. Run was killed mid-stride; tape
+documents R1 in-flight, fight not closed.
 
 ---
 
