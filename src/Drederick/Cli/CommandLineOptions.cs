@@ -172,6 +172,18 @@ public sealed class CommandLineOptions
     /// </summary>
     public int? CredSprayTimeoutSeconds { get; set; }
 
+    /// <summary>Override for every netexec-driven replay-adapter
+    /// subprocess timeout (SMB/WinRM/MSSQL/LDAP/SSH/RDP), in seconds. CLI:
+    /// <c>--replay-timeout=N</c>. When unset, the runner picks a
+    /// mode-appropriate default via
+    /// <see cref="Drederick.Exploit.Replay.CrossProtocolReplay.ResolveDefaultTimeoutSeconds"/>:
+    /// 60s for strict + adaptive, 120s for lab / hybrid / llm. Capped at
+    /// <see cref="Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds"/>.
+    /// Mirrors the <c>--cred-spray-timeout</c> plumbing from 95a328d so
+    /// the same R5 slow-target pain doesn't regress in cross-protocol
+    /// replay.</summary>
+    public int? ReplayTimeoutSeconds { get; set; }
+
     /// <summary>Master gate for the phishing/macro subsystem
     /// (<see cref="Drederick.Exploit.ExploitCategory.Phishing"/>). Without
     /// this flag, every <see cref="Drederick.Exploit.Phishing.IPhishingTool"/>
@@ -504,6 +516,17 @@ public sealed class CommandLineOptions
                 continue;
             }
             // --- end cred-spray-timeout shorthand ---
+            // --- replay-timeout shorthand: --replay-timeout=N ---
+            if (a.StartsWith("--replay-timeout=", StringComparison.Ordinal))
+            {
+                var v = a.Substring("--replay-timeout=".Length);
+                if (!int.TryParse(v, out var n) || n < 1 || n > Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds)
+                    throw new ArgumentException(
+                        $"--replay-timeout must be in [1,{Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds}], got '{v}'.");
+                o.ReplayTimeoutSeconds = n;
+                continue;
+            }
+            // --- end replay-timeout shorthand ---
             // --- jeopardy-llm-provider: accept --flag=value shorthand ---
             // The provider flags are documented with --flag=value syntax
             // (e.g. --llm-provider=azure). Split those inline; everything else
@@ -682,6 +705,15 @@ public sealed class CommandLineOptions
                             throw new ArgumentException(
                                 $"--cred-spray-timeout must be in [1,{Drederick.Exploit.PasswordSprayTool.MaxAdaptiveTimeoutSeconds}], got '{v}'.");
                         o.CredSprayTimeoutSeconds = n;
+                        break;
+                    }
+                case "--replay-timeout":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds)
+                            throw new ArgumentException(
+                                $"--replay-timeout must be in [1,{Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds}], got '{v}'.");
+                        o.ReplayTimeoutSeconds = n;
                         break;
                     }
                 case "--allow-phishing":
@@ -1360,6 +1392,14 @@ public sealed class CommandLineOptions
                                mode. The runner adaptively doubles the timeout (up to
                                240s) for any target that has previously timed out, so
                                sluggish endpoints stop eating good punches.
+          --replay-timeout=N
+                               Override the per-attempt subprocess timeout for every
+                               netexec-driven cross-protocol replay adapter
+                               (SMB/WinRM/MSSQL/LDAP/SSH/RDP), in seconds. Range
+                               [1,240]. Default: 60s in strict adaptive mode (--no-lab
+                               without --agent), 120s in lab/hybrid/llm mode. Mirrors
+                               --cred-spray-timeout for cross-protocol replay so slow
+                               targets don't poison a working credential.
           --allow-payloads     Permit payload generation, staging, delivery, and
                                driving post/* Metasploit modules. Unlocks PAYLOAD /
                                CMD / LHOST / SRVHOST options in msfconsole RC files;
