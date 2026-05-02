@@ -45,6 +45,10 @@
       <Link>Fuzz\fixtures\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="Scaffolding\Fixtures\**\*">
+      <Link>Scaffolding\Fixtures\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- gap-039-passphrase: SSH key fixtures (encrypted ed25519 + RSA)

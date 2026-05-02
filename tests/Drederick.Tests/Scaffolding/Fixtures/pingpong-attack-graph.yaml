@@ -1,0 +1,60 @@
+schema_version: 1
+box: pingpong
+generated_by: cornerman
+last_updated: 2026-04-01
+
+nodes:
+  - id: dc01
+    kind: host
+    state: known
+    note: domain controller, in scope
+  - id: cred-c-roberts-pfx
+    kind: credential
+    state: known
+    artifact: loot/c.roberts.pfx
+    note: PKINIT-able domain user pfx
+  - id: tgt-c-roberts
+    kind: identity
+    state: suspected
+    requires: [cred-c-roberts-pfx]
+    yields: [tgt]
+  - id: dc-sync
+    kind: session
+    state: unknown
+    requires: [tgt-c-roberts]
+  - id: web-spray
+    kind: service
+    state: suspected
+    note: should be blocked by anti-goal
+
+edges:
+  - from: cred-c-roberts-pfx
+    to: tgt-c-roberts
+    method: pkinit
+  - from: tgt-c-roberts
+    to: dc-sync
+    method: dcsync
+
+priority_hints:
+  - prefer: pkinit
+    over: password_spray
+    reason: assumed-breach pfx available
+    applies_to_action: pkinit
+  - prefer: kerberoast
+    over: bruteforce
+    reason: AD attack hygiene
+
+anti_goals:
+  - id: no-helpdesk-brute
+    reason: out-of-scope service per briefing
+    patterns:
+      - smb_brute
+      - helpdesk
+  - id: no-password-spray
+    reason: cornerman directive
+    patterns:
+      - password_spray
+
+budget:
+  max_minutes: 60
+  max_actions: 50

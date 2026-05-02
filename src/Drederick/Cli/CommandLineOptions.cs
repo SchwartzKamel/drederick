@@ -9,6 +9,18 @@ public sealed class CommandLineOptions
     public string OutputDir { get; set; } = "out";
     public string MemoryPath { get; set; } = "memory/findings.json";
 
+    // --- in-fight scaffolding (LOADER_SPEC) ---------------------------------
+    /// <summary>Override path to <c>briefing.md</c>. Defaults to
+    /// <c>&lt;dir(scope.yaml)&gt;/briefing.md</c>. See
+    /// <c>machines/SCAFFOLDING/LOADER_SPEC.md</c> §2.</summary>
+    public string? BriefingPath { get; set; }
+    /// <summary>Override path to <c>attack-graph.yaml</c>. Defaults to
+    /// <c>&lt;dir(scope.yaml)&gt;/attack-graph.yaml</c>.</summary>
+    public string? AttackGraphPath { get; set; }
+    /// <summary>Disable scaffolding discovery entirely (CI fuzzing).</summary>
+    public bool NoScaffolding { get; set; }
+    // --- end scaffolding ----------------------------------------------------
+
     // --- learning -----------------------------------------------------------
     /// <summary>Override path to the operator-curated fight corpus
     /// (<c>~/HTB/fight-log.yaml</c>). When null, discovery falls through to
@@ -934,6 +946,12 @@ public sealed class CommandLineOptions
                     o.Quiet = true; break;
                 case "--htb-host":
                     o.HtbHosts.Add(RequireNext(args, ref i, a)); break;
+                case "--briefing":
+                    o.BriefingPath = RequireNext(args, ref i, a); break;
+                case "--attack-graph":
+                    o.AttackGraphPath = RequireNext(args, ref i, a); break;
+                case "--no-scaffolding":
+                    o.NoScaffolding = true; break;
                 // END ANCHOR: vpn-preflight-flag-parse
                 case "-j":
                 case "--parallel":
@@ -1557,6 +1575,10 @@ public sealed class CommandLineOptions
           --htb-host <host>    Explicit .htb hostname to resolve via /etc/hosts and add to the
                                target set (repeatable). Useful when the scope file lists an IP
                                but the operator only knows the HTB hostname.
+          --briefing <path>    Override briefing.md path (default: dir(scope.yaml)/briefing.md).
+                               See machines/SCAFFOLDING/LOADER_SPEC.md.
+          --attack-graph <p>   Override attack-graph.yaml path (default: dir(scope.yaml)/attack-graph.yaml).
+          --no-scaffolding     Disable scaffolding discovery entirely (CI fuzzing).
           --lab                Lab/CTF mode (DEFAULT). Relaxes scope-breadth cap to /8 (v4)
                                and /32 (v6), enables extra ENUMERATION NSE categories
                                (safe,default,discovery,version), and emits a per-host

@@ -2,6 +2,7 @@ using Drederick.Audit;
 using Drederick.Memory;
 using Drederick.Recon;
 using Drederick.Recon.Fuzz;
+using Drederick.Scaffolding;
 
 namespace Drederick.Agent;
 
@@ -43,6 +44,13 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         _enableContentDiscovery = enableContentDiscovery;
     }
 
+    /// <summary>
+    /// Optional in-fight scaffolding (briefing.md + attack-graph.yaml).
+    /// When set, activation events are emitted at <see cref="RunAsync"/>
+    /// start. See <c>machines/SCAFFOLDING/LOADER_SPEC.md</c> §4.
+    /// </summary>
+    public ScaffoldingContext? Scaffolding { get; set; }
+
     public async Task RunAsync(
         IReadOnlyList<string> targets,
         ReconToolbox tools,
@@ -56,6 +64,8 @@ public sealed class AdaptiveRunner : IReconAgentRunner
             ["host_concurrency"] = _hostConcurrency,
             ["service_concurrency"] = _serviceConcurrency,
         });
+
+        Scaffolding?.ActivateKnownNodes();
 
         var pool = new HostWorkerPool(_hostConcurrency, _serviceConcurrency);
         await pool.RunAsync(

@@ -12,6 +12,7 @@ using Drederick.Ops;
 using Drederick.Recon;
 using Drederick.Recon.Binary;
 using Drederick.Reporting;
+using Drederick.Scaffolding;
 using Drederick.Scope;
 
 CommandLineOptions opts;
@@ -608,6 +609,18 @@ audit.Record("session.start", new Dictionary<string, object?>
 }
 // --- end learning -------------------------------------------------------
 
+// --- in-fight scaffolding (LOADER_SPEC) --------------------------------
+// Discover briefing.md / attack-graph.yaml relative to dir(scope.yaml),
+// honoring --briefing / --attack-graph overrides. Emits the audit-event
+// vocabulary defined in machines/SCAFFOLDING/LOADER_SPEC.md §3.
+var scaffolding = ScaffoldingDiscovery.Load(
+    opts.ScopePath!,
+    opts.BriefingPath,
+    opts.AttackGraphPath,
+    opts.NoScaffolding,
+    audit);
+// --- end scaffolding ---------------------------------------------------
+
 Console.WriteLine(opts.LabMode
     ? "drederick: lab/CTF mode ENABLED (default). Authorized lab/CTF targets only."
     : "drederick: strict mode. Lab-mode affordances disabled.");
@@ -674,6 +687,25 @@ foreach (var htbHost in opts.HtbHosts)
         continue;
     }
     var resolvedStr = resolved.ToString();
+    // GAP-044: source attribution — /etc/hosts wins over DNS so the
+    // post-fight reviewer can tell which path produced the address.
+    var source = HtbRanges.LookupHostsFile(htbHost, "/etc/hosts") is not null
+        ? "/etc/hosts"
+        : "dns";
+    // GAP-044: scope is authoritative. If the resolved IP is outside the
+    // scope.yaml allowlist, emit out_of_scope and DROP — never fall back
+    // to 127.0.0.1 (LOADER_SPEC §3.4 forbidden event).
+    if (!scope.Contains(resolvedStr))
+    {
+        Console.Error.WriteLine($"--htb-host {htbHost}: resolved {resolvedStr} is outside scope; dropping.");
+        audit.Record("vpn.htb_host.out_of_scope", new Dictionary<string, object?>
+        {
+            ["name"] = htbHost,
+            ["resolved_ip"] = resolvedStr,
+            ["reason"] = "not_in_scope",
+        });
+        continue;
+    }
     if (!targets.Contains(resolvedStr, StringComparer.OrdinalIgnoreCase))
     {
         targets.Add(resolvedStr);
@@ -681,7 +713,9 @@ foreach (var htbHost in opts.HtbHosts)
     audit.Record("vpn.htb_host.resolved", new Dictionary<string, object?>
     {
         ["host"] = htbHost,
+        ["name"] = htbHost,
         ["ip"] = resolvedStr,
+        ["source"] = source,
     });
 }
 {
@@ -1221,6 +1255,23 @@ if (opts.UseHybridAgent)
     runner = new HybridAgentRunner(llmInner, deterministicInner, audit);
 }
 // --- end hybrid-runner-wiring ---
+
+// --- attach scaffolding to runners (LOADER_SPEC §4) ---
+// Best-effort: set Scaffolding on whatever concrete runner we have so
+// activation events fire and the user-message gets the prior context.
+// Wrappers (AdaptiveExploitRunner / HybridAgentRunner) do not currently
+// expose their inner runner; the pre-wrap construction sites where
+// AdaptiveRunner / MicrosoftAgentRunner are first created are the
+// authoritative attachment points and have already run by here.
+static void AttachScaffolding(IReconAgentRunner r, ScaffoldingContext ctx)
+{
+    switch (r)
+    {
+        case AdaptiveRunner a: a.Scaffolding = ctx; break;
+        case MicrosoftAgentRunner m: m.Scaffolding = ctx; break;
+    }
+}
+AttachScaffolding(runner, scaffolding);
 
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };

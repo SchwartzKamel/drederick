@@ -41,8 +41,8 @@ public sealed class AutopilotRunner
     private readonly int _maxActionsPerIteration;
 
     // --- AD-specific tools (optional; wired when in-scope DC detected) ---
-    private readonly AsRepRoastTool? _asrep;
-    private readonly KerberoastTool? _kerberoast;
+    private readonly Drederick.Exploit.AsRepRoastTool? _asrep;
+    private readonly Drederick.Exploit.KerberoastTool? _kerberoast;
     private readonly DelegationEnumTool? _delegationEnum;
     private readonly DcSyncDetectionTool? _dcSyncDetect;
     private readonly CertVulnerabilityEnumTool? _certVulnEnum;
@@ -69,8 +69,8 @@ public sealed class AutopilotRunner
         bool fetchPoc = true,
         int maxIterations = 3,
         int maxActionsPerIteration = 64,
-        AsRepRoastTool? asrep = null,
-        KerberoastTool? kerberoast = null,
+        Drederick.Exploit.AsRepRoastTool? asrep = null,
+        Drederick.Exploit.KerberoastTool? kerberoast = null,
         DelegationEnumTool? delegationEnum = null,
         DcSyncDetectionTool? dcSyncDetect = null,
         CertVulnerabilityEnumTool? certVulnEnum = null)
