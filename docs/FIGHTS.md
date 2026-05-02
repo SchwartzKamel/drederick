@@ -62,7 +62,7 @@ Read tapes for context; mine gaps for tasks.
 | 8 | Facts | Easy | 2026-05-02 | ❌ Loss (R1+R2) | [tape](../.github/fight-history/facts-2026-05-02.md) | GAP-032, 033 |
 | 9 | Facts | Easy | 2026-05-02 | ❌ Loss (R3+R4) — vhost fix firing, 640/640 cve-leads unfetchable | [tape](../.github/fight-history/facts-2026-05-02-r3-r4.md) | GAP-034, 035 |
 | 10 | Facts | Easy | 2026-05-02 | ✅ **Win (R5, Copilot-driver)** — both flags | [tape](../.github/fight-history/facts-2026-05-02-r5-copilot.md) | GAP-036..041 |
-| 11 | Pingpong | — | 2026-05-02 | ⏳ In-flight | [tape](../.github/fight-history/pingpong-2026-05-02-r1.md) | _pending_ |
+| 11 | Pingpong | — (AD) | 2026-05-02 | ⏳ No-decision (R1, corner stoppage) — first AD bout on file | [tape](../.github/fight-history/pingpong-2026-05-02-r1.md) | GAP-042..048 |
 
 > **R5 on Facts is the breakthrough fight.** Copilot CLI drove drederick as a
 > tool and finished the chain in 11 steps: register → CVE-2025-2304
@@ -119,13 +119,38 @@ facts-class boxes solo:
 | GAP-040 | `sudo -l` + GTFOBins privesc lookup | pending |
 | GAP-041 | CMS chain templates (depends on GAP-036) | pending |
 
-### Pingpong — the next box
+### Pingpong — the first AD opponent
 
-In-flight as of 2026-05-02 ([tape](../.github/fight-history/pingpong-2026-05-02-r1.md)).
-First production signal that `gap-031b-2` may be firing on a fresh box —
-audit shows `msf-rc.start` ×2 and `multistage.poc.start` ×3, meaning the
-cve-lead router found things to fetch. Run was killed mid-stride; tape
-documents R1 in-flight, fight not closed.
+R1 was a **no-decision** ([tape](../.github/fight-history/pingpong-2026-05-02-r1.md)).
+First AD-shaped opponent in the record book — the planner recognised
+the domain-controller port set
+(`53/88/135/389/445/464/593/636/3268/3269/3389/5985/9389`) and queued
+one final nmap with `safe,default,discovery,version,auth,intrusive,vuln`
+strapped on. The operator stopped the bout before that scan returned a
+single line; the governing body records a corner stoppage, not a TKO.
+
+Inside the 21-minute window, the audit captured: 11 LLM round-trips
+through `azure_openai` (first cross-provider engagement tape; prior
+fights ran Copilot), an `exploit_plan` commit, two `run_multi_stage`
+chains (one against WinRM 5985 — `skipped: no_poc_specified`, one
+against SMB 445 — `msf-rc` failed because `msfconsole` was not on
+`PATH`), four `password-spray` cycles via `netexec` halted on the fifth
+attempt by the lockout-aware throttle (`Administrator`,
+`throttle_user_refused`, three-in-1800s rail held), and an
+`http-content-discovery` against WinRM that recorded zero entries.
+
+`gap-031b-2` did **not** fire on this box — zero `poc.fetch` events
+in the audit; the cve-lead router never reached out to the git-clone
+sources because the planner had no PoC artifact for the WinRM CVEs and
+went straight to the cached `msf-rc` path on SMB. Open finding,
+consistent with Facts R3+R4.
+
+Seven AD-specific gaps got predicted from the port set alone — none
+had to be confirmed against pingpong:
+GAP-042 (SMB null-session enum), GAP-043 (AS-REP roasting), GAP-044
+(kerberoasting), GAP-045 (BloodHound-style attack-path discovery),
+GAP-046 (WinRM auth), GAP-047 (NTDS/SAM dump), GAP-048 (Windows
+post-ex chains — `whoami /priv`, SeImpersonate → Potato, etc.).
 
 ---
 

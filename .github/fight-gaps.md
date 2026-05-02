@@ -537,17 +537,92 @@
 - **Code path:** `src/Drederick/Autopilot/ExploitationPlanner.cs` (CVE → `poc_refs` join, product-token match, action priority constants); `src/Drederick/Enrichment/PocAggregator.cs` (cache breadth, match confidence).
 - **Resolution:**
 
+### GAP-042: SMB Null-Session Enumeration (RID Cycling, Anonymous LDAP Bind, Share Enum)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** critical
+- **Impact:** First-bell move on every Active Directory box; pingpong R1 (first AD bout on Drederick's card) reached SMB 445 via `msf-rc` and the cred-spray cycle without ever performing anonymous-bind enumeration. No null-session `srvinfo`/`enumdomusers`/`samrdump` shape, no RID cycling, no anonymous LDAP bind to surface naming contexts. AD recon depth is the depth half of every Windows engagement and Drederick currently has none of it.
+- **Status:** open
+- **Description:** New recon family for AD-shaped targets. Anonymous SMB enum: connect with empty creds, list shares, list sessions, walk RIDs (500..) to enumerate domain users. Anonymous LDAP enum: bind anonymously, request `defaultNamingContext` / `rootDomainNamingContext`, walk `CN=Users` / `OU=Domain Controllers`, enumerate `objectClass=user` / `objectClass=group`. Both feed `KnowledgeBase` with domain name, DC FQDN, user/group rosters, kerberoastable SPNs. Lockout-aware (read-only enum doesn't lock accounts but `samr` calls do count as failed binds against some configurations).
+- **Suggested fix:** New `src/Drederick/Recon/SmbNullSessionTool.cs` (impacket `samrdump`/`rpcdump` shape, native where possible) and `src/Drederick/Recon/LdapAnonBindTool.cs` (extends current `ldap_probe` with anonymous-search calls). Each calls `_scope.Require(target)` first; emits `smb-null.{start,share,user,rid,finish}` and `ldap-anon.{bind,search,finish}` audit events with target + result counts. Wire into `ReconToolbox`; `[Description(...)]` so the LLM picks them. Owner zone: `recon-*`.
+- **Code path:** new files under `src/Drederick/Recon/`; wire into `ReconToolbox`; populate `KnowledgeBase` ad-shaped fields.
+- **Resolution:**
+
+### GAP-043: AS-REP Roasting (UF_DONT_REQUIRE_PREAUTH Discovery + Hash Extract)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** critical
+- **Depends on:** GAP-042 (need anonymous LDAP bind to enumerate the user list before roasting)
+- **Impact:** AS-REP roasting is one of the two canonical "credential-from-thin-air" primitives on AD. With a user list (anonymous or otherwise), accounts carrying `UF_DONT_REQUIRE_PREAUTH` will return AS-REP material from the KDC without any authentication; the hash cracks offline. Pingpong R1 reached LDAP and SMB 445 but never queried for the flag and never sent an AS-REQ. On AD boxes this is a first-three-rounds move.
+- **Status:** open
+- **Description:** New cred-attack tool that consumes the user roster from GAP-042 (or from operator input), filters for `userAccountControl & 0x400000`, sends AS-REQ for each candidate, parses the AS-REP, formats the hash for Hashcat (`-m 18200`) / John the Ripper, records the hash digest in `loot` and the cleartext password (once cracked) in `CredentialStore`. Impacket's `GetNPUsers.py` is the canonical reference; we want a native C# implementation that re-checks scope before the KDC handshake on each candidate.
+- **Suggested fix:** New `src/Drederick/Exploit/AsRepRoastTool.cs` implementing `ICredTool`. First statement `_scope.Require(kdc)`. Audit shape: `asrep-roast.{start,asreq,asrep,hash,finish}` with target, user (digest), hash SHA-256. Plaintext credentials never logged; SHA-256 only per `@invariant-id:audit-everything`. Gate behind `--allow-cred-attacks` like the rest of the credential-attack family. Owner zone: `exploit-*`.
+- **Code path:** new `src/Drederick/Exploit/AsRepRoastTool.cs` + a minimal Kerberos client (or thin wrapper around an existing C# Kerberos library); wire into `ExploitToolbox` and `CredentialStore`.
+- **Resolution:**
+
+### GAP-044: Kerberoasting (SPN Enumeration + TGS-REQ Hash Extract)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** critical
+- **Depends on:** GAP-042 (anonymous LDAP for SPN enumeration), GAP-043 (Kerberos client surface reused)
+- **Impact:** Kerberoasting is the second canonical "credential-from-thin-air" primitive on AD; any authenticated user (and on misconfigured domains, anonymous) can request a TGS for any service principal and crack the encrypted ticket offline. Service accounts notoriously carry weak passwords and broad privilege. Pingpong R1 enumerated nothing on the SPN axis; an AD rematch needs SPN walk + TGS-REQ + hash format wired before bell three.
+- **Status:** open
+- **Description:** SPN enumeration via LDAP query (`(&(objectClass=user)(servicePrincipalName=*))`) returning the service account roster. For each SPN, send TGS-REQ to the KDC; parse the encrypted ticket; format for Hashcat (`-m 13100`) / John. Reuse the Kerberos client surface from GAP-043. Pre-auth credentials required (low-priv user account from GAP-043's AS-REP crack, from spray, or from null-session enum giving guest-equivalent). Record hash digests in `loot`; cleartext passwords (once cracked) feed `CredentialStore`.
+- **Suggested fix:** New `src/Drederick/Exploit/KerberoastTool.cs` implementing `ICredTool`; first statement `_scope.Require(kdc)`. Audit shape: `kerberoast.{start,spn-enum,tgsreq,hash,finish}` with target, SPN (digest), hash SHA-256. Gate behind `--allow-cred-attacks`. Owner zone: `exploit-*`.
+- **Code path:** new `src/Drederick/Exploit/KerberoastTool.cs`; share Kerberos client primitives with GAP-043.
+- **Resolution:**
+
+### GAP-045: BloodHound-Style Attack-Path Discovery (Collector + Analyzer)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** high
+- **Depends on:** GAP-042 (LDAP enumeration is the collector backbone)
+- **Impact:** On any non-trivial AD environment, the next step after "I have a domain user" is "where can this user pivot?". BloodHound's collector + analyzer is the canonical answer: walk LDAP + SMB + RPC, build a graph of `MemberOf` / `Owns` / `GenericAll` / `WriteOwner` / `AddSelf` / `DCSync` edges, query for shortest-path-to-DA. Drederick currently has no graph layer for AD; the planner cannot see the attack path even when the data is in front of it.
+- **Status:** open
+- **Description:** Two-stage subsystem. **Collector** (`SharpHound`-equivalent in C#): walks LDAP for objects, ACLs, group memberships; SMB for sessions and local-admin enumeration via SAMR; RPC for service principals. Emits a JSON corpus (BloodHound-compatible would be a bonus for operator-facing triage). **Analyzer**: in-process graph that consumes the JSON, computes shortest paths to high-value targets (Domain Admins, Enterprise Admins, schema-modify-able accounts), and surfaces the next exploit step to the planner. The `AdaptiveRunner` and `MicrosoftAgentRunner` consume the analyzer output as a planning input.
+- **Suggested fix:** New `src/Drederick/Recon/AdAttackPathTool.cs` (collector) + `src/Drederick/Autopilot/AttackPathAnalyzer.cs` (graph + shortest-path). Collector calls `_scope.Require(target)` per host touched; analyzer is an in-process consumer with no network footprint. Audit shape: `attack-path.{collect.{start,object,acl,session,finish},analyze.{start,path,finish}}`. Owner zones: `recon-*` for collector, `autopilot` for analyzer.
+- **Code path:** new files under `src/Drederick/Recon/` and `src/Drederick/Autopilot/`; consume from both runners.
+- **Resolution:**
+
+### GAP-046: WinRM Authentication Attempts (`evil-winrm`-Shaped, Port 5985/5986)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** high
+- **Impact:** Pingpong R1 ran `http-content-discovery` against `http://10.129.30.247:5985` (recorded zero entries — WinRM does not serve a directory tree) and the planner stopped there. With domain credentials in hand from GAP-043 / GAP-044 / spray, the canonical first session on a Windows DC opens through WinRM (`evil-winrm` is the operator-side reference). Drederick has cred-spray against SMB but no `winrm-auth` tool that converts a credential pair into an interactive PowerShell session.
+- **Status:** open
+- **Description:** New tool that takes `(host, port, username, password|hash, [domain])`, authenticates against the WinRM SOAP endpoint, and returns either a session handle (for post-ex dispatch) or a clean failure. Lockout-aware throttling lifted from `password-spray` so the cornerman's safety rail extends to WinRM auth attempts. Successful sessions register in `out/sessions/` and feed the post-ex pipeline.
+- **Suggested fix:** New `src/Drederick/Exploit/WinRmAuthTool.cs` implementing `IExploitTool` (or `ICredTool` for the brute-force shape; both for the dual-mode tool). First statement `_scope.Require(target)`. Audit shape: `winrm-auth.{start,attempt,success,session-open,finish}` with target, user (digest), password SHA-256, session_id. Gate behind `--allow-cred-attacks`; in lab mode, single-credential auth is allowed; brute mode requires `--acknowledge-lockout-risk`. Owner zone: `exploit-*`.
+- **Code path:** new `src/Drederick/Exploit/WinRmAuthTool.cs`; wire into `ExploitToolbox` and the session manager.
+- **Resolution:**
+
+### GAP-047: NTDS / SAM Dump on Shell (Post-Ex Hash Harvest)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** critical
+- **Depends on:** GAP-046 (or any other Windows session primitive)
+- **Impact:** On a Windows session — DC or workstation — the largest credential-vending act available is dumping the local SAM (workstation) or `NTDS.dit` (DC). `secretsdump.py` shape on Linux; `reg save HKLM\SAM` + `reg save HKLM\SYSTEM` shape via Windows session. Pingpong R1 never reached a session, but the rematch will, and Drederick has no automated post-ex action that runs the dump and parses hashes into `CredentialStore`.
+- **Status:** open
+- **Description:** New post-ex action that on Windows session-open detects DC vs workstation (presence of `NTDS.dit`, `LSA Server` service, `dcdiag` shape), runs the appropriate dump path, parses the result into `(rid, account, lm_hash, nt_hash, domain)` tuples, records hashes to `loot` and `CredentialStore` for pass-the-hash pivot. SHA-256 of each hash recorded in audit; cleartext-equivalent (hash) treated as a secret per `@invariant-id:audit-everything`.
+- **Suggested fix:** New `src/Drederick/PostEx/Windows/NtdsDumpTool.cs` (DC path) + `src/Drederick/PostEx/Windows/SamDumpTool.cs` (workstation path) + `src/Drederick/PostEx/Windows/NtdsParser.cs` (offline parser for the dumped hive). First statement `_scope.Require(target)`. Audit shape: `ntds-dump.{start,detect,extract,parse,finish}` and `sam-dump.{start,save,parse,finish}` with target, hash count, hash SHA-256s (never plaintext NT hashes in audit; SHA-256 of NT hash). Owner zone: post-ex.
+- **Code path:** new files under `src/Drederick/PostEx/Windows/`; wire into the session-dispatch pipeline.
+- **Resolution:**
+
+### GAP-048: Windows Post-Ex Chains (`whoami /priv` → SeImpersonate → Potato, UAC Bypass)
+- **Exposed by:** pingpong-2026-05-02-R1
+- **Severity:** high
+- **Depends on:** GAP-046 (Windows session primitive)
+- **Impact:** Linux post-ex landed under GAP-040 (`sudo -l` + GTFOBins-aware privesc); the Windows side has no equivalent. On a Windows session the canonical first move is `whoami /priv` and `whoami /groups`; if `SeImpersonatePrivilege` is enabled, the Potato family (Juicy / Rotten / Sweet / Print) is the privesc primitive. UAC-bypass pickers, AlwaysInstallElevated, weak-service-permissions, unquoted service paths — every one of these is a templated chain that the LLM should not have to re-derive per fight.
+- **Status:** open
+- **Description:** Windows post-ex playbook that runs on session-open: `whoami /priv` + `whoami /groups` parse, `systeminfo` parse for OS version + KB list, service enumeration with `sc qc` and ACL inspection, scheduled-task enumeration, AlwaysInstallElevated registry check. Each finding maps to a privesc template (SeImpersonate → Potato variant by OS version, weak service ACL → service-modify, etc.). `EmpireModuleLibrary` already has the SeImpersonate → Potato fingerprinting for the Empire path; this gap is the **non-Empire** templated-chain version that runs in Drederick's own session shape.
+- **Suggested fix:** New `src/Drederick/PostEx/Windows/PrivCheckTool.cs` (parsing layer) + `src/Drederick/PostEx/Windows/WindowsPrivescChain.cs` (template dispatch). First statement `_scope.Require(target)`. Audit shape: `winprivesc.{enum,template-match,exploit.{start,finish}}` with target, template ID, exit. Gate exploitation behind `--allow-exec-pocs`. Owner zone: post-ex.
+- **Code path:** new files under `src/Drederick/PostEx/Windows/`; consult `EmpireModuleLibrary` for shared fingerprinting.
+- **Resolution:**
+
 ---
 
 ## Statistics
 
 | Severity | Total | Open | In Progress | Resolved | Workaround | Planned | Partial |
 |----------|-------|------|-------------|----------|------------|---------|---------|
-| Critical | 12    | 3    | 0           | 6        | 2 workaround | 1     | 0       |
-| High     | 18    | 12   | 0           | 7        |            | 1       | 0       |
+| Critical | 16    | 7    | 0           | 6        | 2 workaround | 1     | 0       |
+| High     | 21    | 15   | 0           | 7        |            | 1       | 0       |
 | Medium   | 9     | 6    | 1 blocked   | 1        |            | 1       | 0       |
 | Low      | 2     | 2    | 0           | 0        |            | 0       | 0       |
-| **Total**| **41**| **23**| **1**      | **14**   | **2 workaround** | **3** | **0**   |
+| **Total**| **48**| **30**| **1**      | **14**   | **2 workaround** | **3** | **0**   |
 
 ---
 
@@ -565,3 +640,4 @@
 - **2026-05-02:** GAP-032 (critical — native HTTP probes can't use Host header / hostname targets) and GAP-033 (high — `cve-lead` autopilot actions all skipped, no router from lead → PoC fetch → LLM handoff) added from facts-2026-05-02-R1/R2 (two losses, 6 min each, 0 errors / 0 budget denials, 1,611 audit events on R2 — densest fight on file; 1,271 cve-leads slipped on R2 with 31 CVEs matched). GAP-025 status moves `partially resolved` → `resolved` — facts-R2 had `claude-sonnet-4.6` calling `exploit_plan` (`ok=true`), `run_multi_stage`, `execute_cred_spray`, **and `extract_flags_from_dir` proactively**; remaining "non-spray exploit selection" reattributed to GAP-031 (cache breadth) + GAP-033 (cve-lead routing). Production-tape credit landings: `26f72e4` (GAP-029 tunable per-tool budget — 0 denials), `b9bbdb5` (no-nmap-from-LLM — 0 LLM-issued nmap calls), `1808cea` (tunable native HTTP timeout), `d773904` (GAP-031b PoC cache priming — 31 CVEs into the planner).
 - **2026-05-02 (later):** facts-2026-05-02-R3 + facts-2026-05-02-R4 tape study. GAP-032 + GAP-033 production-tape confirmed: `a9e305a` vhost fix landed clean (`http_probe` usage `0 → 35 → 48` across `R2 → R3 → R4`); `8751e4a` cve-lead router invokes `FetchOnDemandAsync` per CVE as designed. **GAP-033 effective only when PoC sources have artifacts** — R3+R4 returned 640/640 unfetchable per fight because `PocAggregator` only ships on-disk probe sources. New: GAP-034 (medium — `http.error` events lack reason taxonomy; manual tail-grep needed to distinguish closed-port exploration from vhost regression), GAP-035 (high, meta — escalates `gap-031b-2` git-clone PoC sources to top priority because the cve-lead router is now starved for artifacts). R3: 28 LLM calls / 1,624 events / 6 min. R4: 42 LLM calls / 1,785 events / 6 min — densest planner ever recorded. Operator caught a flag manually after R4 off-harness; Drederick's recon scaffold credited (31 CVEs, vhost reachable, 5 creds, full 25-tool LLM bag). Autopilot record on Facts now 0-4.
 - **2026-05-02 (later):** **First W of the harness arc.** facts-2026-05-02-R5-copilot tape study — Copilot cornerman ran an 11-step exploitation chain on Facts after 4 autonomous losses; both flags captured (user `e205d77c…d077d`, root `df6ad544…41c36`). Tag-team: Drederick laid the recon scaffold (R4's 31 CVEs, vhost reachable via GAP-032 fix, scope policy on the operator workstation), Copilot threw the chain (CameleonCMS register → CVE-2025-2304 mass-assign → CVE-2026-1776 traversal → SQLite `cama_metas` exfil → MinIO bucket raid via 54321/tcp → ed25519 SSH key passphrase brute → user shell → sudo `facter --custom-dir` → root). Steps 2-11 ran off-harness in operator bash; no `out-r5/` directory or `audit.jsonl` for this fight. Six new gaps land: **GAP-036** (high — CMS fingerprint), **GAP-037** (high — MinIO/S3 prober), **GAP-038** (high — SQLite credential pillage post-ex), **GAP-039** (high — SSH key passphrase brute), **GAP-040** (critical — `sudo -l` + GTFOBins lookup + exploit), **GAP-041** (high — CMS chain templates, depends on GAP-036). **Numbering note:** the operator's R5-copilot yaml entry uses `GAP-034` for the CMS-fingerprint gap; that number was already taken by `http.error` taxonomy from R3+R4. The operator's yaml is canonical for the operator's numbering; the registry uses GAP-036+ to avoid collision. **GAP-035 status update:** ✅ resolved as escalation — `gap-031b-2-git-poc-sources` is in flight (concurrent agent zone with `MetasploitGitSource`, `NucleiTemplatesGitSource`, `PocInGitHubSource`, `GitPocSourceShared` staged in working tree). Records: chain length 11 (prev. record: 1); Drederick autonomous on Facts 0-4; with cornerman 1-0; overall card per writeup `1-8-1` auto / **`2-8-1` with assist**. Pingpong-2026-05-02-R1 logged in parallel as in-flight (no `autopilot.finish` yet, 176 events, provider `azure_openai`, 14 LLM / 11 `http_probe` / 5 `execute_cred_spray` / 2 `msf-rc` / 3 `budget.deny`); next entry will tell the story. Pingpong is the test bed for whether `llm-exec-shell-tool`, `gap-031b-2`, `gap-032b`, and `gap-034-http-error-taxonomy` carry over to a fresh box.
+- **2026-05-02 (later):** **First AD bout on file — pingpong-2026-05-02-R1 logged as a no-decision (corner stoppage).** 152 events, 11 LLM `azure_openai.agent.chat.start` (first cross-provider engagement tape; prior fights were Copilot-flavoured), 4 nmap.start / 3 nmap.finish (the AD port-set scan `53,88,135,389,445,464,593,636,3268,3269,3389,5985,9389` never returned — operator pulled the towel), 2 `run_multi_stage` chains (PoC #1 against 5985 `skipped: no_poc_specified`; PoC #2 against 445 went straight to `msf-rc` which exited `-1` because `msfconsole` was not on `PATH`), 5 `execute_cred_spray` cycles via `netexec` halted on the fifth attempt by the lockout-aware throttle (`Administrator`, three-in-1800s). **`gap-031b-2` did NOT fire** — zero `poc.fetch` events recorded; the cve-lead router never reached out to git-clone sources because the planner had no PoC artifact for the WinRM CVEs. Seven new gaps queued from the AD port set alone — none had to be confirmed against pingpong: **GAP-042** (critical — SMB null-session enum / RID cycling / anonymous LDAP bind), **GAP-043** (critical — AS-REP roasting; depends on GAP-042), **GAP-044** (critical — kerberoasting; depends on GAP-042 + GAP-043), **GAP-045** (high — BloodHound-style attack-path discovery; depends on GAP-042), **GAP-046** (high — WinRM auth, `evil-winrm`-shaped, port 5985/5986), **GAP-047** (critical — NTDS / SAM dump on shell; depends on GAP-046), **GAP-048** (high — Windows post-ex chains: `whoami /priv` / SeImpersonate → Potato / UAC bypass; depends on GAP-046; Linux equivalent is GAP-040). Doctor's `metasploit-framework` row missing — preflight should refuse `--allow-exec-pocs` if `msfconsole` absent rather than letting the chain spawn and die. Autopilot record on Pingpong: no-decision; the box is unmarked, the corner is taking notes.

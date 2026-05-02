@@ -20,7 +20,7 @@
 | [facts-2026-05-02 (R3)](facts-2026-05-02-r3-r4.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R3) — vhost fix firing, `http_probe` 35 calls, 640/640 cve-lead unfetchable | GAP-034, GAP-035 (GAP-032 ✅, GAP-033 ⚠️) | ⏳ Pending |
 | [facts-2026-05-02 (R4)](facts-2026-05-02-r3-r4.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R4) — 42 LLM calls / 1785 events (densest ever); operator caught flag manually off-harness | GAP-034, GAP-035 | ⏳ Pending |
 | [facts-2026-05-02 (R5-copilot)](facts-2026-05-02-r5-copilot.md) | Facts | 2026-05-02 | Easy | 🏆 **WIN (R5-copilot, tag-team)** — both flags, 11-step Copilot cornerman chain off-harness; Drederick laid the recon scaffold (R4 data) | GAP-036→041 (six new bruises) | — |
-| [pingpong-2026-05-02-R1](pingpong-2026-05-02-r1.md) | Pingpong | 2026-05-02 | — | ⏳ Incomplete (R1) — 176 events, 14 LLM, 11 http_probe, 5 sprays, no `autopilot.finish` | (test bed for llm-exec-shell, gap-031b-2, gap-032b, gap-034) | ⏳ In flight |
+| [pingpong-2026-05-02-R1](pingpong-2026-05-02-r1.md) | Pingpong | 2026-05-02 | — (AD) | ⏳ No-decision (R1, corner stoppage) — 152 events, 11 LLM, 5 sprays, killed mid-nmap on AD port set; first AD bout on file; provider `azure_openai` | GAP-042..048 (7 predicted AD bruises); `gap-031b-2` did not fire | ⏳ Rematch queued |
 
 ---
 
