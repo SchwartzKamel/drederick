@@ -252,8 +252,9 @@
 - **Exposed by:** jobtwo-2026-05-01-R4
 - **Severity:** high
 - **Impact:** After completing enumeration (4 LLM calls, 21 tools), the LLM chose finish_reason=stop and generated a report instead of requesting exploitation tools (nuclei, msf-rc, cred attacks). The system prompt may need stronger guidance to attempt exploitation in lab/CTF mode.
-- **Status:** open
+- **Status:** ⚠️ partially resolved (R5)
 - **Resolution plan:** Review system prompt to emphasize exploitation phase. Ensure exploit tools are clearly described and available. Consider adding "exploitation required" directive in lab mode.
+- **Resolution (R5):** `claude-sonnet-4.6` via Copilot (hybrid agent) on jobtwo-2026-05-02-R5 called `exploit_plan`, `run_multi_stage`, and `execute_cred_spray` ×5 without prompting — the willingness half of GAP-025 is closed. **Remaining:** the LLM stayed inside the spray subset and did not select `nuclei` or `msf-rc` against matched Veeam CVE candidates. Tracking the depth half via GAP-031 (CVE-driven action emission). Gap stays alive until an LLM-driven fight produces a non-spray exploit selection.
 
 ### GAP-026: Nmap-vs-Native Port-Truth Divergence
 - **Exposed by:** jobtwo-2026-05-01-R4
@@ -276,17 +277,47 @@
 - **Status:** ✅ resolved
 - **Resolution:** Same patch as GAP-026 — planner now consumes the unified port set, not just nmap. Regression test added.
 
+### GAP-029: Tool Budget Caps Too Restrictive for Hard Boxes
+- **Exposed by:** jobtwo-2026-05-02-R5
+- **Severity:** high
+- **Impact:** R5 audit shows `runner.agent_error  Budget exceeded: http called 17 times on 10.129.238.35 (cap 3).` and `runner.host_error  Budget exceeded: nmap called 4 times on 10.129.238.35 (cap 3).` The LLM legitimately wanted more `http` calls to enumerate IIS / WinRM virtual hosts, and the 3-per-tool cap starved enumeration mid-round on a Hard Windows host with a deep content-discovery surface.
+- **Status:** open
+- **Description:** Default `(3 per tool per target, 200 global)` was tuned for Easy boxes. There is no per-tool override flag and no archetype-aware scaling, so the same caps apply whether the target is Lame or JobTwo.
+- **Suggested fix:** Raise per-tool defaults; expose `--tool-budget=<tool>:<cap>` overrides on `CommandLineOptions`; scale caps with `--difficulty=hard` or with archetype classification (`ArchetypeClassifier` already biases enumeration depth — budgets should follow). Audit every cap-hit as `tool_budget.exceeded` with tool name + count + target so future tape studies can see starvation immediately.
+- **Code path:** `src/Drederick/Audit/ToolBudget.cs`, `src/Drederick/Cli/CommandLineOptions.cs`.
+- **Resolution:**
+
+### GAP-030: No Phishing / Macro / Payload-Bait Subsystem
+- **Exposed by:** jobtwo-2026-05-02-R5
+- **Severity:** critical
+- **Impact:** JobTwo's documented attack chain is **macro phishing → user shell → Veeam privesc**. Drederick can stage an Empire agent post-foothold but cannot **craft** or **deliver** a phishing payload — no .docx/.xlsm/.lnk/HTA generator, no SMTP client for spearphish delivery, no callback-listener provisioning tied to the bait. Hard boxes that gate user shells behind a click are unreachable end-to-end; the harness can only join the fight after the operator manually delivers a foothold.
+- **Status:** open
+- **Description:** Empire's `EmpireAgentStager` produces post-foothold agents (`IPayloadTool`); there is no parallel `IPhishingTool` / `Exploit/Phishing/` subsystem for pre-foothold bait. Affected fights: jobtwo-2026-05-02-R5; will affect any Devel-class IIS-with-uploads box, ClickOnce/HTA-gated targets, and CTFs that ship a malicious-doc as the entry point.
+- **Suggested fix:** New subsystem under `src/Drederick/Exploit/Phishing/` with `IPhishingTool` parallel to `IPayloadTool`. Start with macro-doc generation (msfvenom-backed + custom DDE templates), then SMTP delivery, then HTA/LNK/ClickOnce. Scope check on every recipient address (`_scope.Require` on the SMTP target *and* on any callback host). Audit shape: `phishing.payload.start/finish`, `phishing.deliver.start/finish`, payload SHA-256 in event, no plaintext recipient address bodies. Wire callback through the existing session manager so a clicked link lands in `out/sessions/` like any other shell. Gate the whole subsystem behind `--allow-payloads` (already exists).
+- **Code path:** none — new subsystem. Owner zone: `exploit-*` (extend, do not touch `empire-c2` subdirectory). `src/Drederick/Exploit/IPayloadTool.cs` is the existing interface to mirror.
+- **Resolution:**
+
+### GAP-031: Autopilot Plan 100% Spray-Based Despite CVE Evidence
+- **Exposed by:** jobtwo-2026-05-02-R5
+- **Severity:** high
+- **Impact:** Two of three R5 plan iterations recorded `autopilot.plan.built total=30 nuclei=0 spray=30 msfrc=0 cve_driven=0` and `total=14 nuclei=0 spray=14 msfrc=0 cve_driven=0`. Recon populated `findings.db` with CVE candidates (Veeam-shaped, IIS-shaped). GAP-015's resolution landed CVE-driven action emission, but on R5 it produced **zero** CVE-driven actions across two iterations. Either the join from `findings` to `poc_refs` returned empty (no nuclei templates / msf modules cached for the matched CVEs), or the matcher is too strict and the product token did not match.
+- **Status:** open
+- **Description:** GAP-015's resolution wired `nuclei` (priority 500) and `msfrc` (priority 490) action emission strictly above credential sprays (300/200). On R5 the planner emitted neither. This is the depth half of GAP-025 — the LLM and the deterministic planner now both commit to exploitation, but neither selects CVE-driven artifacts when they're the right answer. Reproduce by inspecting `out-r5/findings.db`: `SELECT * FROM findings WHERE kind='cve';` then `SELECT * FROM poc_refs WHERE cve_id IN (…);` and check whether the planner's `nuclei` / `metasploit` source filters returned anything.
+- **Suggested fix:** Loosen match policy per the maximalist matching contract (CPE-exact → product + version range → product-only → banner keyword → one-hop related-CVE) so a `findings.kind='cve'` row produces *something* even when the cache is thin. Guarantee at least one CVE-driven action when any CVE row exists for a service; audit every join miss as `autopilot.cve.no_poc_refs` so future tape studies can distinguish "no CVE matched" from "CVE matched but no PoC cached" from "PoC cached but planner ignored". Consider warming `PocAggregator` more aggressively for matched CVEs before plan time.
+- **Code path:** `src/Drederick/Autopilot/ExploitationPlanner.cs` (CVE → `poc_refs` join, product-token match, action priority constants); `src/Drederick/Enrichment/PocAggregator.cs` (cache breadth, match confidence).
+- **Resolution:**
+
 ---
 
 ## Statistics
 
-| Severity | Total | Open | In Progress | Resolved | Workaround | Planned |
-|----------|-------|------|-------------|----------|------------|---------|
-| Critical | 9     | 1    | 0           | 5        | 2 workaround | 1     |
-| High     | 9     | 4    | 0           | 4        |            | 1       |
-| Medium   | 8     | 5    | 1 blocked   | 1        |            | 1       |
-| Low      | 2     | 2    | 0           | 0        |            | 0       |
-| **Total**| **28**| **12**| **1**      | **10**   | **2 workaround** | **3** |
+| Severity | Total | Open | In Progress | Resolved | Workaround | Planned | Partial |
+|----------|-------|------|-------------|----------|------------|---------|---------|
+| Critical | 10    | 2    | 0           | 5        | 2 workaround | 1     | 0       |
+| High     | 11    | 6    | 0           | 4        |            | 1       | 1       |
+| Medium   | 8     | 5    | 1 blocked   | 1        |            | 1       | 0       |
+| Low      | 2     | 2    | 0           | 0        |            | 0       | 0       |
+| **Total**| **31**| **15**| **1**      | **10**   | **2 workaround** | **3** | **1**   |
 
 ---
 
@@ -300,3 +331,4 @@
 - **2026-05-01:** Added GAP-017 (plugin ecosystem hybridization), GAP-018 (Drederick-original signature capabilities), GAP-019 (self-improving feedback loop / training arc) — all planned.
 - **2026-05-01:** GAP-020→024 resolved — multi-choice parsing, SDK bypass, nmap timeout, multi-result serialization. GAP-023 blocked (Claude ordering). GAP-025 added (LLM won't exploit).
 - **2026-05-01:** GAP-026, GAP-027, GAP-028 added and resolved — JobTwo r4 tape revealed nmap-vs-native port-truth divergence, SslStream double-set ctor callback, and autopilot planner ignoring non-nmap port signals. Unified port harvest + single-source TLS callback. The champ studied the tape.
+- **2026-05-02:** GAP-029 (high — tool budget caps starve Hard boxes), GAP-030 (critical — no phishing/macro subsystem), GAP-031 (high — autopilot plan 100% spray-based despite CVE evidence) added from JobTwo r5 tape (30 sprays / 0 connects / 34 min). GAP-025 status moves `open` → `partially resolved` — `claude-sonnet-4.6` via Copilot called `exploit_plan` / `run_multi_stage` / `execute_cred_spray` ×5 unprompted; depth half tracked under GAP-031.

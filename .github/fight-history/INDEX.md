@@ -14,6 +14,7 @@
 | [jobtwo-2026-05-01](jobtwo-2026-05-01.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss | GAP-001,002,010,011,012 | ⏳ Pending |
 | [jobtwo-2026-05-01-rematch](jobtwo-2026-05-01-rematch.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss (rematch) | GAP-022,024,025 | ⏳ Pending |
 | [jobtwo-2026-05-01-r4](jobtwo-2026-05-01-r4.md) | JobTwo | 2026-05-01 | Hard | ❌ Loss-by-no-punch (r4) | GAP-026,027,028 | ⏳ Pending |
+| [jobtwo-2026-05-02-r5](jobtwo-2026-05-02-r5.md) | JobTwo | 2026-05-02 | Hard | ❌ Loss (r5) — 30 sprays, 0 connects | GAP-029,030,031 (GAP-025 partial) | ⏳ Pending |
 
 ---
 
