@@ -3,7 +3,7 @@ title: Developing
 audience: [humans]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ARCHITECTURE.md
   - MODULES.md
@@ -63,6 +63,19 @@ signatures stay typed per-scanner because recon surfaces are intentionally
 heterogeneous — forcing a uniform `ScanAsync(target, ct)` would throw away
 useful per-tool parameters. `ReconToolbox` dispatches by concrete type
 (`OfType<T>().SingleOrDefault()`).
+
+> **Native-first preference.** Before reaching for a subprocess, ask: can
+> the tool's core function be implemented in pure .NET with reasonable effort?
+> If yes, prefer native over subprocess — it eliminates the external
+> dependency, simplifies tests (no fake binary needed), and keeps the
+> distributed binary self-contained. Use `PathResolver.Which("tool-name")`
+> (`src/Drederick/Ops/PathResolver.cs`) for tool-presence checks rather than
+> spawning `which`. External tools remain the right choice when they are truly
+> irreplaceable (NSE scripts, msfconsole, hashcat). See `NativeScannerTool`
+> (TCP scanner, pure `System.Net.Sockets`) and `NativeDnsTool`
+> (`DnsClient.NET`) for worked examples. See
+> [`SELF_SUFFICIENCY.md`](SELF_SUFFICIENCY.md) for the full native-vs-external
+> decision table.
 
 1. **Create** `src/Drederick/Recon/<Name>Tool.cs`.
 2. **Implement** `IReconTool`:
@@ -135,6 +148,26 @@ useful per-tool parameters. `ReconToolbox` dispatches by concrete type
       `tests/fixtures/`.
     - A negative test asserting no forbidden NSE category or CLI flag is
       enabled on the built argv (pattern: `SmbToolTests.AssertNoForbiddenScripts_*`).
+12. **Wire port-presence evidence into the planner.** If your tool's
+    result type carries a `Port` field or a URL with a port, confirm
+    that
+    [`ExploitationPlanner.HarvestPortsFromAllSignals`](../src/Drederick/Autopilot/ExploitationPlanner.cs)
+    reads from your result list. If you added a new array on
+    `HostFinding`, extend the harvest method to seed a synthetic
+    `NmapPort` from each entry — otherwise the exploit planner cannot
+    see ports that only your scanner observed (the JobTwo r4 / GAP-026
+    failure mode: nmap returned `[]`, native probes succeeded, and the
+    planner stopped because the harvest never looked at the native
+    results). Real `NmapPort` entries always win on collision; your
+    seeds only fill in gaps.
+13. **`SslStream` callback trap (GAP-027).** If your tool establishes
+    TLS, set the `RemoteCertificateValidationCallback` via
+    `SslClientAuthenticationOptions.RemoteCertificateValidationCallback`
+    **only** — never pass it as the
+    `userCertificateValidationCallback` parameter on the `SslStream`
+    constructor. .NET 10 throws when both are set. Pick one path —
+    `SslClientAuthenticationOptions` is the modern surface and is the
+    convention in this codebase.
 
 <a id="adding-exploit"></a>
 ## Adding an exploit / credential / payload tool
@@ -161,6 +194,15 @@ Spawning subprocesses, hashing captured output, and persisting
 shell out from the tool directly, because `ExploitRunner` owns the
 argv-digest, working-dir isolation, stdout/stderr truncation, and
 SHA-256 pipeline that `exploit_runs` depends on.
+
+> **Native-first preference.** Where the tool's core function can be
+> implemented in pure .NET — HTTP sprays, DNS queries, SNMP walks, binary
+> analysis — prefer native over subprocess. External tools remain the right
+> choice when they are truly irreplaceable (msfconsole, nuclei, hashcat). Use
+> `PathResolver.Which("tool-name")` for tool-presence checks rather than
+> spawning `which`. See `NativeHttpSprayTool` (`src/Drederick/Exploit/
+> NativeHttpSprayTool.cs`) for a worked example of a native exploit-layer
+> tool.
 
 1. **Create** `src/Drederick/Exploit/<Name>Tool.cs` (or `<Name>Runner.cs`
    if it drives an external orchestrator like msfconsole/nuclei).
@@ -286,6 +328,23 @@ SHA-256 pipeline that `exploit_runs` depends on.
     - **Argv-digest stability:** identical inputs → identical
       `ArgvDigest` across runs (so `exploit_runs.argv_digest` is a
       stable correlation key).
+11. **Port-presence evidence into the planner (GAP-026).** If the
+    tool's result type carries port data (a discovered listener, a
+    callback port from a successful exploit, a service URL),
+    confirm that
+    [`ExploitationPlanner.HarvestPortsFromAllSignals`](../src/Drederick/Autopilot/ExploitationPlanner.cs)
+    is wired to read from your list — and extend it if you added a
+    new array on `HostFinding`. Recon and exploit tools both feed
+    the unified port view; an exploit that observes port `8443`
+    open during a callback should not be invisible to the next
+    planner pass.
+12. **`SslStream` callback trap (GAP-027).** If the tool talks TLS,
+    set the `RemoteCertificateValidationCallback` via
+    `SslClientAuthenticationOptions.RemoteCertificateValidationCallback`
+    only — never via the `SslStream` ctor's
+    `userCertificateValidationCallback` parameter. .NET 10 throws
+    when both are set. Pick the modern surface
+    (`SslClientAuthenticationOptions`).
 
 ### Credential attack tools
 

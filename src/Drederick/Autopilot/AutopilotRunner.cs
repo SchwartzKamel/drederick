@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Drederick.Audit;
+using Drederick.Enrichment;
 using Drederick.Exploit;
 using Drederick.Recon;
 using Drederick.Scope;
@@ -28,6 +29,9 @@ public sealed class AutopilotRunner
     private readonly RunPermissions _permissions;
     private readonly NucleiRunner? _nuclei;
     private readonly PasswordSprayTool? _spray;
+    private readonly MsfRcRunner? _msf;
+    private readonly PocAggregator? _pocAggregator;
+    private readonly bool _fetchPoc;
     private readonly CredentialStore _creds;
     private readonly ExploitationPlanner _planner;
     private readonly FlagExtractor _flagExtractor;
@@ -42,6 +46,12 @@ public sealed class AutopilotRunner
     private readonly DcSyncDetectionTool? _dcSyncDetect;
     private readonly CertVulnerabilityEnumTool? _certVulnEnum;
 
+    // GAP-033 — per-RunAsync map of CVE id → fetch outcome. Loop guard for
+    // the cve-lead → on-demand-fetch → re-plan loop: one fetch attempt per
+    // CVE per autopilot run. Subsequent encounters of the same CVE within
+    // the same RunAsync skip cleanly without re-querying sources.
+    private enum CveFetchOutcome { Succeeded, Empty }
+
     public AutopilotRunner(
         Scope.Scope scope,
         AuditLog audit,
@@ -52,6 +62,9 @@ public sealed class AutopilotRunner
         string outputRoot,
         NucleiRunner? nuclei = null,
         PasswordSprayTool? spray = null,
+        MsfRcRunner? msf = null,
+        PocAggregator? pocAggregator = null,
+        bool fetchPoc = true,
         int maxIterations = 3,
         int maxActionsPerIteration = 64,
         AsRepRoastTool? asrep = null,
@@ -69,6 +82,9 @@ public sealed class AutopilotRunner
         _outputRoot = outputRoot;
         _nuclei = nuclei;
         _spray = spray;
+        _msf = msf;
+        _pocAggregator = pocAggregator;
+        _fetchPoc = fetchPoc;
         _maxIterations = Math.Max(1, maxIterations);
         _maxActionsPerIteration = Math.Max(1, maxActionsPerIteration);
         _asrep = asrep;
@@ -94,6 +110,8 @@ public sealed class AutopilotRunner
         var allResults = new List<ExploitActionResult>();
         var flagsSeen = new ConcurrentDictionary<string, FlagMatch>();
         var executedIds = new HashSet<string>(StringComparer.Ordinal);
+        // GAP-033 loop guard — one fetch attempt per CVE per RunAsync.
+        var cveFetchTried = new Dictionary<string, CveFetchOutcome>(StringComparer.OrdinalIgnoreCase);
         int iteration = 0;
         int executed = 0;
 
@@ -116,7 +134,7 @@ public sealed class AutopilotRunner
             {
                 ct.ThrowIfCancellationRequested();
                 executedIds.Add(action.Id);
-                var outcome = await ExecuteAsync(action, flagsSeen, ct).ConfigureAwait(false);
+                var outcome = await ExecuteAsync(action, flagsSeen, cveFetchTried, ct).ConfigureAwait(false);
                 allResults.Add(outcome);
                 executed++;
             }
@@ -150,6 +168,7 @@ public sealed class AutopilotRunner
     private async Task<ExploitActionResult> ExecuteAsync(
         ExploitAction action,
         ConcurrentDictionary<string, FlagMatch> flagsSeen,
+        Dictionary<string, CveFetchOutcome> cveFetchTried,
         CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
@@ -176,6 +195,8 @@ public sealed class AutopilotRunner
             {
                 case "nuclei":
                     return await RunNucleiAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
+                case "msfrc":
+                    return await RunMsfRcAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
                 case "password-spray":
                     return await RunSprayAsync(action, flagsSeen, sw, ct).ConfigureAwait(false);
                 case "asrep-roast":
@@ -188,6 +209,21 @@ public sealed class AutopilotRunner
                     return await RunDcSyncDetectAsync(action, sw, ct).ConfigureAwait(false);
                 case "cert-vuln-enum":
                     return await RunCertVulnEnumAsync(action, sw, ct).ConfigureAwait(false);
+                case "cve-lead":
+                    // GAP-033 — route the lead instead of dead-ending it.
+                    // GAP-031 made the planner emit a band-250 cve-lead
+                    // when a CVE matched but no cached PoC artifact was
+                    // present at recon-enrichment time. This arm now asks
+                    // PocAggregator to fetch on demand for the single CVE.
+                    // On success the cache is populated and the next
+                    // autopilot iteration's planner pass naturally emits
+                    // the corresponding band-490 msfrc / band-500 nuclei
+                    // action (different StableId from the lead, so it
+                    // bypasses executedIds dedup). On failure we audit
+                    // cve.lead.unfetchable and mark the CVE as a dead end
+                    // for the rest of this RunAsync so subsequent leads
+                    // for the same id skip without re-querying sources.
+                    return await RunCveLeadAsync(action, cveFetchTried, sw, ct).ConfigureAwait(false);
                 default:
                     return Skip(action, $"unknown tool '{action.Tool}'", sw);
             }
@@ -195,6 +231,104 @@ public sealed class AutopilotRunner
         catch (ScopeException ex) { return Fail(action, $"scope: {ex.Message}", sw); }
         catch (PermissionRefusedException ex) { return Skip(action, $"permission: {ex.Message}", sw); }
         catch (Exception ex) { return Fail(action, ex.Message, sw); }
+    }
+
+    private async Task<ExploitActionResult> RunCveLeadAsync(
+        ExploitAction action,
+        Dictionary<string, CveFetchOutcome> cveFetchTried,
+        Stopwatch sw, CancellationToken ct)
+    {
+        var cveId = action.CveId;
+        if (string.IsNullOrWhiteSpace(cveId))
+            return Skip(action, "cve-lead: missing cve id", sw);
+        var key = cveId.ToUpperInvariant();
+
+        // --no-fetch-poc: keep the lead in the audit trail (band-250 still
+        // emitted) but don't reach for sources.
+        if (!_fetchPoc)
+        {
+            return Skip(action,
+                $"cve-lead: {key} — fetch disabled (--no-fetch-poc)", sw);
+        }
+
+        if (_pocAggregator is null)
+        {
+            return Skip(action,
+                $"cve-lead: {key} — poc aggregator not registered, manual fetch required", sw);
+        }
+
+        // Loop guard: only one fetch per CVE per RunAsync. Subsequent
+        // encounters short-circuit deterministically.
+        if (cveFetchTried.TryGetValue(key, out var prior))
+        {
+            var reason = prior == CveFetchOutcome.Succeeded
+                ? $"cve-lead: {key} — already fetched this run, awaiting next iteration's plan"
+                : $"cve-lead: {key} — prior on-demand fetch returned no artifact (dead lead)";
+            return Skip(action, reason, sw);
+        }
+
+        PocAggregator.FetchOnDemandResult result;
+        try
+        {
+            result = await _pocAggregator.FetchOnDemandAsync(key, _outputRoot, _fetchPoc, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            // Source-level failures are swallowed inside the aggregator;
+            // anything reaching here is a configuration / I/O bug. Mark the
+            // CVE so we don't retry within this run, audit, and move on.
+            cveFetchTried[key] = CveFetchOutcome.Empty;
+            _audit.Record("cve.lead.unfetchable", new Dictionary<string, object?>
+            {
+                ["id"] = action.Id,
+                ["cve"] = key,
+                ["target"] = action.Target,
+                ["port"] = action.Port,
+                ["error"] = ex.Message,
+            });
+            return Skip(action, $"cve-lead: {key} — fetch error: {ex.Message}", sw);
+        }
+
+        if (result.ArtifactCount > 0)
+        {
+            cveFetchTried[key] = CveFetchOutcome.Succeeded;
+            _audit.Record("cve.lead.fetched", new Dictionary<string, object?>
+            {
+                ["id"] = action.Id,
+                ["cve"] = key,
+                ["target"] = action.Target,
+                ["port"] = action.Port,
+                ["refs"] = result.RefCount,
+                ["cached"] = result.ArtifactCount,
+                ["sources"] = string.Join(",", result.SourcesWithArtifact),
+            });
+            sw.Stop();
+            return new ExploitActionResult
+            {
+                Action = action,
+                Succeeded = true,
+                Skipped = true,
+                SkipReason =
+                    $"cve-lead: {key} — fetched {result.ArtifactCount} artifact(s) from " +
+                    $"{string.Join(",", result.SourcesWithArtifact)}; next iteration will re-plan",
+                DurationMs = sw.ElapsedMilliseconds,
+            };
+        }
+
+        cveFetchTried[key] = CveFetchOutcome.Empty;
+        _audit.Record("cve.lead.unfetchable", new Dictionary<string, object?>
+        {
+            ["id"] = action.Id,
+            ["cve"] = key,
+            ["target"] = action.Target,
+            ["port"] = action.Port,
+            ["refs"] = result.RefCount,
+            ["reason"] = "no source returned an artifact",
+        });
+        return Skip(action,
+            $"cve-lead: {key} — no source had artifact (refs={result.RefCount}, cached=0)", sw);
     }
 
     private async Task<ExploitActionResult> RunNucleiAsync(
@@ -216,6 +350,30 @@ public sealed class AutopilotRunner
         {
             Action = action,
             Succeeded = succeeded,
+            ExitCode = result.Run.ExitCode,
+            Error = result.Run.Error,
+            DurationMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    private async Task<ExploitActionResult> RunMsfRcAsync(
+        ExploitAction action,
+        ConcurrentDictionary<string, FlagMatch> flagsSeen,
+        Stopwatch sw, CancellationToken ct)
+    {
+        if (_msf is null) return Skip(action, "msf runner not registered", sw);
+        if (string.IsNullOrWhiteSpace(action.Module)) return Skip(action, "missing metasploit module", sw);
+        if (action.Options.Count == 0) return Skip(action, "missing metasploit options", sw);
+
+        var result = await _msf.RunAsync(action.Target, action.Module!, action.Options, ct)
+            .ConfigureAwait(false);
+        sw.Stop();
+
+        _flagExtractor.ScanText(result.Run.StdoutTruncated, $"msfrc:{action.Target}:{action.Port}", flagsSeen);
+        return new ExploitActionResult
+        {
+            Action = action,
+            Succeeded = result.SessionOpened || result.Run.ExitCode == 0,
             ExitCode = result.Run.ExitCode,
             Error = result.Run.Error,
             DurationMs = sw.ElapsedMilliseconds,
@@ -257,9 +415,23 @@ public sealed class AutopilotRunner
         if (_asrep is null) return Skip(action, "asrep-roast tool not registered", sw);
         if (string.IsNullOrEmpty(action.Realm)) return Skip(action, "missing realm", sw);
 
-        // Unauthenticated mode when no cred — still useful for bulk AS-REQ scan.
-        var result = await _asrep.RunAsync(action.Target, action.Realm!, ct: ct)
-            .ConfigureAwait(false);
+        // Per-review feedback: AsRepRoastTool.RunAsync requires *either* a
+        // usersFile (unauth mode) *or* an authUser/authPassword pair (auth
+        // bulk-enum mode). The planner only emits this action when the
+        // credential store has a realm-matching credential, so we always
+        // route through the authenticated bulk-enum path here. Without
+        // this, the underlying tool throws and the autopilot iteration is
+        // wasted.
+        if (action.Cred is null)
+            return Skip(action, "asrep-roast: missing credential for authenticated bulk enum", sw);
+        var secret = _creds.TryGetSecret(action.Cred);
+        if (secret is null)
+            return Skip(action, "asrep-roast: credential not in store", sw);
+
+        var result = await _asrep.RunAsync(
+            action.Target, action.Realm!,
+            authUser: action.Cred.User, authPassword: secret,
+            ct: ct).ConfigureAwait(false);
         sw.Stop();
         return new ExploitActionResult
         {

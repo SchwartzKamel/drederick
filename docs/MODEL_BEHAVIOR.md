@@ -3,7 +3,7 @@ title: Model behavior fight notes
 audience: [humans, agents]
 primary: agents
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - README.md
   - LLM_SETUP.md
@@ -37,6 +37,7 @@ fight-history note.
 - [Coding-agent checklist](#coding-agent-checklist)
 - [Data collection fields](#data-collection)
 - [Safe reporting rules](#safe-reporting)
+- [Archetype-aware prompt routing](#archetype-routing)
 
 <a id="purpose"></a>
 ## Purpose and ringside card
@@ -70,7 +71,7 @@ will be willing or competent on offensive tasks.
 | Surface | Durable behavior |
 | ------- | ---------------- |
 | Core `--agent` providers | Copilot SDK, Azure OpenAI, and legacy OpenAI are the supported provider surface. llama.cpp is not used for core `--agent` because tool/function calling is unreliable for local models. |
-| Copilot SDK model selection | The Copilot SDK runner checks `/models`, audits model decisions, and defaults to `claude-haiku-4.5`. `DREDERICK_MODEL` can request another model, but it must pass availability and tool/function-call compliance. |
+| Copilot SDK model selection | The Copilot SDK runner checks `/models`, audits model decisions, and defaults to `claude-sonnet-4.6`. `DREDERICK_MODEL` can request another model, but it must pass availability and tool/function-call compliance. |
 | `CopilotModelCompliance` | Measures availability, policy metadata, and tool-call support. It does not prove offsec willingness, exploit-planning quality, or price-to-performance. |
 | Non-compliant Copilot model | A Copilot model-compliance refusal propagates. `--agent=hybrid` must not hide it behind deterministic fallback. |
 | Hybrid fallback | Hybrid falls back only on operational/provider failures: missing key, network failure, auth failure, rate limit, or transient SDK/provider errors. `ScopeException`, cancellation, and Copilot model-compliance failures propagate. |
@@ -114,6 +115,44 @@ The lesson is not "avoid LLMs." The lesson is "make the first punch
 deterministic when the fingerprint is famous, then spend model tokens
 where they buy a new angle."
 
+<a id="jobtwo-lesson"></a>
+## Fight lesson: JobTwo
+
+JobTwo (hard Windows, Veeam Backup chain) is the rematch that forced
+the CVE-driven planner. Drederick's recon was fine — 15 services, 95
+NSE script results, hMailServer/SMB/WinRM/RDP/Veeam ports surfaced,
+SSL cert revealed `job2.vl` — but autopilot threw 39 password sprays
+and zero CVE actions. The known attack chain hinges on Veeam
+CVE-2024-29849, which the operator had on `findings.db` already; the
+planner just didn't look there.
+
+Two things failed at once:
+
+1. **Copilot SDK couldn't start.** The installed binary lacked the
+   native `runtimes/<rid>/native/copilot` sidecar, so the SDK threw
+   before the first model call. Audit logged `runner.agent_error` +
+   `hybrid.llm_fallback`, but the operator-facing report didn't
+   surface the fallback. Hybrid is supposed to fall back on
+   operational failure — the bug was packaging + reporting, not
+   policy.
+2. **Deterministic planner was spray-only.** `ExploitationPlanner`
+   only matched cached nuclei templates against `port.Product` token.
+   It ignored NSE script CVE IDs, the `findings.kind='cve'` rows
+   already enriched into `findings.db`, and the `poc_refs` table that
+   `PocAggregator` had populated with Metasploit module names per CVE.
+
+| Lesson | Coding implication |
+| ------ | ------------------ |
+| LLM packaging is a fight gate. | Treat the Copilot CLI sidecar as a first-class artefact. Verify `runtimes/<rid>/native/copilot` exists next to the installed binary in CI/install/release. |
+| Fallback must be loud. | When hybrid falls back, the operator-facing report should say so prominently — not just `audit.jsonl`. |
+| CVE evidence must drive actions, not annotate reports. | Read NSE script CVE IDs, `findings.kind='cve'`, and `poc_refs` straight into the planner. Emit `nuclei`/`msfrc` actions above sprays. |
+| MSF must be reachable from autopilot. | Wire `MsfRcRunner` into `AutopilotRunner` with a constrained `msfrc` action shape (module + whitelisted options, host-bearing values re-validated). |
+| Action IDs must dedupe across iterations. | Content-address actions on (tool, target, port, identifying tokens) so re-plans don't churn the same haymaker. |
+
+JobTwo's fix shipped a 500-priority `nuclei` band and a 490-priority
+`msfrc` band, both above the 300/200 spray bands. Next rematch should
+land at least the Veeam CVE-2024-29849 path before any spray fires.
+
 <a id="routing-card"></a>
 ## Model routing card
 
@@ -124,7 +163,7 @@ surfaces and fight history; always re-measure on fresh runs.
 | Scenario | First route | Escalate when | Record |
 | -------- | ----------- | ------------- | ------ |
 | Exact known fingerprint with a stable exploit path | Deterministic mapping plus `ExploitRunner`/`MsfRcRunner`/`NucleiRunner` as applicable. | Tool args are ambiguous, exploit preconditions conflict, or the first run fails for a non-operational reason. | Mapping id, confidence, tool invoked, exit code, session/loot counts. |
-| Low-cost argument synthesis | Copilot default `claude-haiku-4.5` or another cheap tool-compliant model. | The model loops, refuses, misses tools, or cannot rank chains. | Latency, tokens, cost, tool calls, refusal/loop reason. |
+| Low-cost argument synthesis | Copilot default `claude-sonnet-4.6` or another cheap tool-compliant model. | The model loops, refuses, misses tools, or cannot rank chains. | Latency, tokens, cost, tool calls, refusal/loop reason. |
 | Complex multi-stage chain | Strong reasoning model or operator-managed Azure deployment with tool calling. | Cost exceeds budget or deterministic evidence narrows to a known module. | Chain length, first-session time, valid-action rate, budget consumed. |
 | Parallel fleet or benchmark | Cheap model mix with bounded concurrency; Jeopardy-style race where supported. | A class of targets remains unsolved after deterministic and cheap routes. | Per-model win/loss/refusal, canceled losers, aggregate and per-solver cost. |
 | Offline Jeopardy solving | llama.cpp only when the configured model can solve without tools or declares `SupportsTools=true`. | Tool use is required and `SupportsTools=false`. | Model config, stripped-tool status, success/failure. |
@@ -172,7 +211,7 @@ descriptions, hybrid fallback, Jeopardy swarm behavior, or cost reports:
 | ----- | ----------- |
 | Read the tape | Read this guide, `LLM_SETUP.md`, `../.github/fight-history/INDEX.md`, and the latest model benchmark before editing. |
 | Preserve provider facts | Core `--agent` is Copilot SDK / Azure / OpenAI. llama.cpp remains Jeopardy-only unless reliable tool calling is implemented and tested. |
-| Preserve Copilot compliance | Keep `/models` checks, the `claude-haiku-4.5` default, compliance audit records, and hard propagation of non-compliant Copilot model refusals. |
+| Preserve Copilot compliance | Keep `/models` checks, the `claude-sonnet-4.6` default, compliance audit records, and hard propagation of non-compliant Copilot model refusals. |
 | Preserve hybrid semantics | Fallback only for operational/provider failures; propagate scope failures, cancellation, and Copilot model-compliance refusals. |
 | Preserve boundaries | Do not move security trust to model prompts or permission approval. Every tool still owns scope, permissions, argv validation, budgets, and audit. |
 | Fix prompt drift | Do not frame the agent as only producing a remediation-focused summary. It may summarize, but the authorized mission includes exploit planning, sessions, loot accounting, and post-ex actions inside scope. |
@@ -241,3 +280,34 @@ Recommended derived metrics:
 - If a report includes remediation, keep it as a final operator summary;
   do not let remediation wording replace the offensive planning mission
   for authorized in-scope work.
+
+<a id="archetype-routing"></a>
+## Archetype-aware prompt routing
+
+`Drederick.Learning.ArchetypeClassifier`
+(`src/Drederick/Learning/ArchetypeClassifier.cs`) is the pure, stateless
+classifier that maps an already-collected `HostFinding` to a
+`TargetArchetype` (e.g. `htb-linux-easy`, `htb-windows-ad`,
+`ctf-jeopardy-*`) plus a runner-up and a `Confidence ∈ [0, 0.95]`. The
+classifier consumes the unified port-harvest contract
+(`ExploitationPlanner.HarvestPortsFromAllSignals`) so every recon signal —
+nmap, native scanner, native HTTP/TLS/SSH/SMB/FTP/SNMP/LDAP/RPC/Kerberos
+probes — feeds the routing decision.
+
+For LLM agents, the archetype is a **prompt-routing knob**, not a security
+boundary:
+
+- It selects which prompt template / system message variant the runner
+  loads (Linux-easy, Windows-AD, Jeopardy crypto, etc.).
+- It biases tool ordering — e.g. Windows-AD archetypes prefer
+  `KerberosTool` + `LdapTool` + `SmbTool` early; Linux-easy archetypes
+  prefer `HttpProbeTool` + `HttpContentDiscoveryTool` early.
+- It does **not** widen scope, lift permission gates, or change argv
+  validation. Compliance checks, scope `Require`, `RunPermissions`
+  category gates, and the audit log are unchanged regardless of archetype.
+
+When changing prompt templates, archetype playbooks, or routing rules,
+preserve every contract from [`#compliance`](#compliance): Copilot SDK
+checks `/models`, default `claude-haiku-4.5` remains the preferred
+compliant model, non-compliant Copilot model refusals propagate even under
+hybrid, and hybrid falls back only on operational/provider failures.

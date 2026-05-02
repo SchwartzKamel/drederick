@@ -1,58 +1,67 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using Drederick.Audit;
-using Drederick.Doctor;
 using Drederick.Scope;
+using Lextm.SharpSnmpLib;
+using Lextm.SharpSnmpLib.Messaging;
 
 namespace Drederick.Recon;
 
 /// <summary>
-/// Read-only SNMPv2c probe that shells out to <c>snmpwalk</c> and reads only the
-/// <c>1.3.6.1.2.1.1</c> (system) subtree. Tries the two well-known default
-/// communities (<c>public</c>, then <c>private</c>) and stops on the first one
-/// that returns data. Never performs writes (no <c>snmpset</c>), never walks
-/// other subtrees, and never attempts community brute-forcing.
+/// Native SNMPv2c probe using SharpSNMP — no external <c>snmpwalk</c> binary
+/// required. Walks the system MIB (<c>1.3.6.1.2.1.1</c>), running-process
+/// table (<c>1.3.6.1.2.1.25.4.2</c>), and installed-software table
+/// (<c>1.3.6.1.2.1.25.6.3</c>). Tries a list of common read-community strings
+/// and stops on the first one that returns data. Never performs writes
+/// (<c>snmpset</c>) and never attempts communities beyond the fixed list below.
 /// </summary>
 public sealed class SnmpTool : IReconTool
 {
     public string Name => "snmp";
 
     public string Description =>
-        "Probe SNMPv2c on a single target and read the system OID subtree " +
-        "(1.3.6.1.2.1.1) using the default community strings public/private. " +
-        "Read-only; never brute-forces communities or walks other subtrees.";
+        "Native SNMP v1/v2c enumeration: system info, process list, installed software walk " +
+        "without external snmpwalk dependency. Tries common read communities and walks the " +
+        "system MIB, hrSWRun, and hrSWInstalled subtrees. Read-only.";
 
-    // Fixed list of communities. Intentionally small: this is discovery, not a
-    // brute force. If neither works the tool reports Reachable=false.
-    private static readonly string[] DefaultCommunities = ["public", "private"];
+    // Extended discovery community list. This is not a brute force —
+    // these are the universally common defaults found in lab environments.
+    internal static readonly string[] DefaultCommunities =
+        ["public", "private", "community", "manager", "snmp", "secret", "cisco"];
 
-    private const string SystemOid = "1.3.6.1.2.1.1";
+    // OID subtrees to walk (in order: system info first, then process/software).
+    private static readonly string SystemSubtree = "1.3.6.1.2.1.1";
+    private static readonly string HrSwRunSubtree = "1.3.6.1.2.1.25.4.2";
+    private static readonly string HrSwInstalledSubtree = "1.3.6.1.2.1.25.6.3";
 
-    // Output hygiene caps. snmpwalk on a misbehaving agent can otherwise stream
-    // unbounded data; the system subtree should fit comfortably in both.
-    internal const int MaxOids = 200;
+    // Output caps prevent a chatty agent from filling memory.
+    internal const int MaxOids = 500;
     internal const int MaxBytes = 64 * 1024;
 
-    // Per-community wall-clock budget. snmpwalk's own -t 2 -r 0 keeps the
-    // network side short; this caps any runaway subprocess.
-    private const int TimeoutSeconds = 15;
+    // Per-walk timeout in milliseconds. 2 s keeps things fast; on a healthy
+    // LAN the first UDP response is sub-100 ms.
+    private const int TimeoutMs = 2000;
 
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
-    private readonly IProcessRunner _runner;
-    private readonly string _snmpwalkPath;
+    private readonly ISnmpWalker _walker;
 
-    public SnmpTool(
-        Scope.Scope scope,
-        AuditLog audit,
-        IProcessRunner? runner = null,
-        string? snmpwalkPath = null)
+    public SnmpTool(Scope.Scope scope, AuditLog audit)
+        : this(scope, audit, new DefaultSnmpWalker()) { }
+
+    internal SnmpTool(Scope.Scope scope, AuditLog audit, ISnmpWalker walker)
     {
         _scope = scope;
         _audit = audit;
-        _runner = runner ?? new DefaultProcessRunner();
-        _snmpwalkPath = snmpwalkPath ?? "snmpwalk";
+        _walker = walker;
     }
 
-    public Task<SnmpResult> ProbeAsync(string target, int port = 161, CancellationToken ct = default)
+    public async Task<SnmpResult> ProbeAsync(
+        string target,
+        int port = 161,
+        CancellationToken ct = default)
     {
         _scope.Require(target);
 
@@ -60,141 +69,177 @@ public sealed class SnmpTool : IReconTool
         {
             ["target"] = target,
             ["port"] = port,
-            ["communities"] = DefaultCommunities,
+            ["community_count"] = DefaultCommunities.Length,
         });
 
         var result = new SnmpResult { Port = port };
         string? lastError = null;
 
-        foreach (var community in DefaultCommunities)
+        // Resolve hostname to IP — SharpSNMP needs an IPEndPoint.
+        IPAddress? ip = null;
+        if (!IPAddress.TryParse(target, out ip))
         {
-            ct.ThrowIfCancellationRequested();
-
-            var arguments = BuildArguments(community, target, port);
-
-            int exit;
-            string stdout, stderr;
             try
             {
-                (exit, stdout, stderr) = _runner.Run(_snmpwalkPath, arguments, TimeoutSeconds);
+                var addresses = await Dns.GetHostAddressesAsync(target, ct).ConfigureAwait(false);
+                ip = addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
+                    ?? addresses.FirstOrDefault();
             }
             catch (Exception ex)
             {
-                lastError = ex.Message;
-                continue;
+                lastError = $"DNS resolution failed: {ex.Message}";
             }
+        }
 
-            // Runner-level failure (binary missing, spawn error): no point
-            // retrying with another community, the result will be the same.
-            if (exit == -1)
+        if (ip is not null)
+        {
+            var endpoint = new IPEndPoint(ip, port);
+
+            foreach (var community in DefaultCommunities)
             {
-                lastError = FirstNonEmpty(stderr, stdout, $"snmpwalk exited -1");
-                break;
-            }
+                ct.ThrowIfCancellationRequested();
 
-            if (exit != 0 || LooksLikeFailure(stdout, stderr))
-            {
-                lastError = FirstNonEmpty(stderr, stdout, $"snmpwalk exit={exit}");
-                continue;
-            }
+                var variables = new List<(string Oid, string Value)>();
+                try
+                {
+                    // Walk system subtree — if this succeeds the community is valid.
+                    await Task.Run(
+                        () => _walker.Walk(community, endpoint, SystemSubtree, TimeoutMs, variables),
+                        ct).ConfigureAwait(false);
 
-            var parsed = Parse(stdout);
-            if (parsed.Count == 0)
-            {
-                lastError = "snmpwalk returned no OIDs";
-                continue;
-            }
+                    if (variables.Count == 0)
+                    {
+                        lastError = "No OIDs returned for this community";
+                        continue;
+                    }
 
-            result.Community = community;
-            result.Reachable = true;
-            foreach (var kv in parsed) result.SystemOids[kv.Key] = kv.Value;
-            lastError = null;
-            break;
+                    // Best-effort walks for process/software tables; ignore failures so
+                    // a partial system MIB is still reported.
+                    foreach (var subtree in new[] { HrSwRunSubtree, HrSwInstalledSubtree })
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            await Task.Run(
+                                () => _walker.Walk(community, endpoint, subtree, TimeoutMs, variables),
+                                ct).ConfigureAwait(false);
+                        }
+                        catch { /* best-effort */ }
+                    }
+
+                    result.Community = community;
+                    result.Reachable = true;
+                    lastError = null;
+
+                    // Populate with caps to prevent runaway output.
+                    int totalBytes = 0;
+                    foreach (var (oid, value) in variables)
+                    {
+                        if (result.SystemOids.Count >= MaxOids) break;
+                        if (totalBytes + oid.Length + value.Length > MaxBytes) break;
+                        totalBytes += oid.Length + value.Length;
+                        result.SystemOids[oid] = value;
+                    }
+                    break;
+                }
+                catch (SnmpTimeoutException)
+                {
+                    // Timeout can mean: port closed, host unreachable, or community rejected
+                    // by a silent-drop policy. Try remaining communities before giving up.
+                    lastError = "SNMP timeout (no response — port may be closed or community rejected)";
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                }
+            }
         }
 
         if (!result.Reachable)
-        {
-            result.Error = Tail(lastError ?? "snmp probe failed", 500);
-        }
+            result.Error = lastError is { Length: > 500 } e ? e[^500..] : (lastError ?? "snmp probe failed");
 
         _audit.Record("snmp.finish", new Dictionary<string, object?>
         {
             ["target"] = target,
             ["port"] = port,
             ["reachable"] = result.Reachable,
-            ["community"] = result.Community,
+            // SHA-256 of the working community, never the plaintext value.
+            ["community_digest"] = result.Reachable ? Sha256Hex(result.Community) : null,
             ["oid_count"] = result.SystemOids.Count,
         });
 
-        return Task.FromResult(result);
+        return result;
     }
 
-    private static string BuildArguments(string community, string target, int port)
+    private static string Sha256Hex(string input)
     {
-        // -v2c              : SNMPv2c (v1 is weaker; v3 needs creds we don't have)
-        // -c <community>    : read community string
-        // -t 2 -r 0         : 2s timeout, no retries — fail fast
-        // -O n -On          : numeric OIDs, no MIB name translation
-        // <target>:<port>   : target endpoint (snmpwalk does UDP)
-        // SystemOid         : restrict walk to the system subtree
-        return string.Join(' ',
-            "-v2c", "-c", community, "-t", "2", "-r", "0", "-O", "n", "-On",
-            $"{target}:{port}", SystemOid);
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
+}
 
-    private static bool LooksLikeFailure(string stdout, string stderr)
+/// <summary>
+/// Abstraction over a single SNMP GET-NEXT walk operation.
+/// Injected into <see cref="SnmpTool"/> so unit tests can drive the tool
+/// without network access.
+/// </summary>
+internal interface ISnmpWalker
+{
+    /// <summary>
+    /// Walks <paramref name="subtreeOid"/> using SNMPv2c and appends
+    /// <c>(oid, value)</c> pairs to <paramref name="output"/>.
+    /// </summary>
+    /// <exception cref="SnmpTimeoutException">
+    /// Thrown when the agent does not respond within <paramref name="timeoutMs"/> ms.
+    /// </exception>
+    void Walk(
+        string community,
+        IPEndPoint endpoint,
+        string subtreeOid,
+        int timeoutMs,
+        List<(string Oid, string Value)> output);
+}
+
+/// <summary>Signals a UDP timeout from the SNMP agent (port closed, host unreachable, or silent-drop).</summary>
+internal sealed class SnmpTimeoutException : Exception
+{
+    public SnmpTimeoutException(string message) : base(message) { }
+    public SnmpTimeoutException(string message, Exception inner) : base(message, inner) { }
+}
+
+/// <summary>Production walker backed by SharpSNMP's <see cref="Messenger.Walk"/>.</summary>
+internal sealed class DefaultSnmpWalker : ISnmpWalker
+{
+    public void Walk(
+        string community,
+        IPEndPoint endpoint,
+        string subtreeOid,
+        int timeoutMs,
+        List<(string Oid, string Value)> output)
     {
-        var combined = (stdout ?? string.Empty) + "\n" + (stderr ?? string.Empty);
-        return combined.Contains("Timeout", StringComparison.OrdinalIgnoreCase)
-            || combined.Contains("No Response", StringComparison.OrdinalIgnoreCase)
-            || combined.Contains("Authentication failure", StringComparison.OrdinalIgnoreCase)
-            || combined.Contains("unknown community", StringComparison.OrdinalIgnoreCase)
-            || combined.Contains("No more variables left", StringComparison.OrdinalIgnoreCase);
-    }
-
-    internal static Dictionary<string, string> Parse(string stdout)
-    {
-        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (string.IsNullOrEmpty(stdout)) return dict;
-
-        var capped = stdout.Length > MaxBytes ? stdout[..MaxBytes] : stdout;
-        foreach (var rawLine in capped.Split('\n'))
+        var variables = new List<Variable>();
+        try
         {
-            if (dict.Count >= MaxOids) break;
-            var line = rawLine.Trim();
-            if (line.Length == 0) continue;
-
-            // Expected line shape: "<OID> = <TYPE>: <VALUE>" where TYPE is a
-            // short SMI type name (STRING, OID, Timeticks, INTEGER, ...). We
-            // key the dictionary on the raw OID and store the value verbatim
-            // (quotes stripped) — consumers can re-parse types if they care.
-            var eq = line.IndexOf('=');
-            if (eq <= 0) continue;
-            var oid = line[..eq].Trim();
-            if (oid.Length == 0) continue;
-
-            var rhs = line[(eq + 1)..].Trim();
-            var colon = rhs.IndexOf(':');
-            string value = (colon > 0 && colon < 30 && !rhs.StartsWith('"'))
-                ? rhs[(colon + 1)..].Trim()
-                : rhs;
-
-            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-                value = value[1..^1];
-
-            dict[oid] = value;
+            Messenger.Walk(
+                VersionCode.V2,
+                endpoint,
+                new OctetString(community),
+                new ObjectIdentifier(subtreeOid),
+                variables,
+                timeoutMs,
+                WalkMode.WithinSubtree);
         }
-        return dict;
-    }
-
-    private static string FirstNonEmpty(params string?[] candidates)
-    {
-        foreach (var c in candidates)
+        catch (Lextm.SharpSnmpLib.Messaging.TimeoutException ex)
         {
-            if (!string.IsNullOrWhiteSpace(c)) return c!.Trim();
+            throw new SnmpTimeoutException(ex.Message, ex);
         }
-        return string.Empty;
-    }
+        catch (SocketException ex)
+        {
+            // ICMP port-unreachable surfaces as SocketException on Linux
+            throw new SnmpTimeoutException($"Socket error: {ex.Message}", ex);
+        }
 
-    private static string Tail(string s, int max) => s.Length <= max ? s : s[^max..];
+        foreach (var v in variables)
+            output.Add((v.Id.ToString(), v.Data.ToString() ?? string.Empty));
+    }
 }

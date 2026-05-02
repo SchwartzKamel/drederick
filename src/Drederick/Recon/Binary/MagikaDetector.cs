@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Drederick.Audit;
+using Drederick.Ops;
 
 namespace Drederick.Recon.Binary;
 
@@ -26,7 +27,7 @@ public interface IMagikaProcessRunner
 
 /// <summary>
 /// Default <see cref="IMagikaProcessRunner"/> — shells out to <c>magika</c>
-/// on <c>PATH</c> via <c>which</c>/direct <c>Process.Start</c>.
+/// on <c>PATH</c> via native .NET PATH resolution.
 /// </summary>
 internal sealed class DefaultMagikaProcessRunner : IMagikaProcessRunner
 {
@@ -34,7 +35,7 @@ internal sealed class DefaultMagikaProcessRunner : IMagikaProcessRunner
 
     public DefaultMagikaProcessRunner()
     {
-        _magikaPath = ResolveOnPath("magika");
+        _magikaPath = PathResolver.Which("magika");
     }
 
     public async Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string arguments, CancellationToken ct)
@@ -59,28 +60,6 @@ internal sealed class DefaultMagikaProcessRunner : IMagikaProcessRunner
         var errTask = p.StandardError.ReadToEndAsync(ct);
         await p.WaitForExitAsync(ct).ConfigureAwait(false);
         return (p.ExitCode, await outTask.ConfigureAwait(false), await errTask.ConfigureAwait(false));
-    }
-
-    private static string? ResolveOnPath(string tool)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("which", tool)
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using var p = Process.Start(psi);
-            if (p is null) return null;
-            var o = p.StandardOutput.ReadToEnd().Trim();
-            p.WaitForExit();
-            return string.IsNullOrEmpty(o) ? null : o;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }
 

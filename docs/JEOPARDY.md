@@ -3,7 +3,7 @@ title: Jeopardy CTF mode — racing a swarm at a CTFd event
 audience: [humans]
 primary: humans
 stability: evolving
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - README.md
   - SCOPE_AND_LEGAL.md

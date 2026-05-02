@@ -27,6 +27,9 @@ public sealed class ReconToolbox
     private readonly DnsZoneTransferTool? _dnsAxfr;
     private readonly HttpContentDiscoveryTool? _httpContentDiscovery;
     private readonly TlsCipherEnumTool? _tlsCipherEnum;
+    private readonly NativeScannerTool? _nativeScanner;
+    private readonly NativeDnsTool? _nativeDns;
+    private readonly Drederick.Enrichment.FingerprintStack.FingerprintStackTool? _fingerprintStack;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -68,6 +71,9 @@ public sealed class ReconToolbox
         _dnsAxfr = materialized.OfType<DnsZoneTransferTool>().SingleOrDefault();
         _httpContentDiscovery = materialized.OfType<HttpContentDiscoveryTool>().SingleOrDefault();
         _tlsCipherEnum = materialized.OfType<TlsCipherEnumTool>().SingleOrDefault();
+        _nativeScanner = materialized.OfType<NativeScannerTool>().SingleOrDefault();
+        _nativeDns = materialized.OfType<NativeDnsTool>().SingleOrDefault();
+        _fingerprintStack = materialized.OfType<Drederick.Enrichment.FingerprintStack.FingerprintStackTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -121,13 +127,30 @@ public sealed class ReconToolbox
     {
         var count = _calls.AddOrUpdate((target, tool), 1, (_, c) => c + 1);
         Interlocked.Increment(ref _toolCallsTotal);
-        if (count > Budget.PerTargetPerTool)
+        var perToolCap = Budget.CapFor(tool);
+        if (count > perToolCap)
         {
+            _audit.Record("budget.deny", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["tool"] = tool,
+                ["count"] = count,
+                ["cap"] = perToolCap,
+                ["scope"] = "per-tool",
+            });
             throw new InvalidOperationException(
-                $"Budget exceeded: {tool} called {count} times on {target} (cap {Budget.PerTargetPerTool}).");
+                $"Budget exceeded: {tool} called {count} times on {target} (cap {perToolCap}).");
         }
         if (_toolCallsTotal > Budget.MaxTotalCalls)
         {
+            _audit.Record("budget.deny", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["tool"] = tool,
+                ["count"] = _toolCallsTotal,
+                ["cap"] = Budget.MaxTotalCalls,
+                ["scope"] = "global",
+            });
             throw new InvalidOperationException(
                 $"Total tool-call budget exceeded: {_toolCallsTotal} > {Budget.MaxTotalCalls}.");
         }
@@ -165,9 +188,13 @@ public sealed class ReconToolbox
     }
 
     [Description("Fetch an HTTP(S) response from a single port and return status, title, server, " +
-                 "and which common security headers are missing. Non-exploitative.")]
+                 "and which common security headers are missing. Accepts hostname OR IP targets — " +
+                 "hostname is resolved via DNS and the resolved IP must pass scope; the hostname " +
+                 "is sent in the Host header (and SNI for HTTPS) so vhost-routed apps return their " +
+                 "real content. On a 3xx → Location with a hostname, sets vhost_required + " +
+                 "vhost_hostname so you can retry with the hostname as the target.")]
     public async Task<string> HttpProbeAsync(
-        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Target IP or hostname (must resolve to an in-scope IP).")] string target,
         [Description("TCP port number.")] int port,
         [Description("Use TLS (https) if true.")] bool useTls,
         CancellationToken ct = default)
@@ -245,9 +272,10 @@ public sealed class ReconToolbox
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
 
-    [Description("Probe SNMP (UDP 161) by walking a small set of system OIDs against the 'public' " +
-                 "community using snmpwalk. Read-only and capped in output size. Does not attempt " +
-                 "community brute force.")]
+    [Description("Native SNMP v1/v2c enumeration: system info, process list, installed software walk " +
+                 "without external snmpwalk dependency. Tries common read communities (public, private, " +
+                 "community, manager, snmp, secret, cisco) and walks the system MIB, hrSWRun, and " +
+                 "hrSWInstalled subtrees. Read-only.")]
     public async Task<string> SnmpProbeAsync(
         [Description("Target IP address (must be in scope).")] string target,
         [Description("UDP port number (1-65535).")] int port,
@@ -367,6 +395,64 @@ public sealed class ReconToolbox
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
 
+    [Description("Fast native TCP port scanner with banner grabbing. " +
+                 "Use when nmap is unavailable or for initial quick sweep. " +
+                 "Returns a JSON summary of open TCP ports with detected services. " +
+                 "The target MUST be inside the authorized scope.")]
+    public async Task<string> ScanNativeAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Optional comma-separated port list, e.g. '80,443,22'. Omit for built-in top-port list.")] string? ports,
+        CancellationToken ct = default)
+    {
+        var tool = _nativeScanner ?? throw new InvalidOperationException("NativeScannerTool is not registered.");
+        int[]? portList = null;
+        if (!string.IsNullOrWhiteSpace(ports))
+        {
+            portList = ports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(int.Parse)
+                .ToArray();
+        }
+        Charge(target, "nativescan");
+        var hf = await tool.ScanAsync(target, portList, ct: ct).ConfigureAwait(false);
+        GetOrCreate(target).NativeScan = hf.NativeScan;
+        return System.Text.Json.JsonSerializer.Serialize(hf.NativeScan);
+    }
+
+    [Description("Native DNS recon: resolves A/AAAA/MX/NS/TXT/SOA records and attempts AXFR zone " +
+                 "transfers without external dig dependency. Target must be an in-scope IP address. " +
+                 "queryType: 'ALL' (default), 'A', 'AAAA', 'MX', 'NS', 'TXT', 'SOA', 'PTR', 'AXFR'.")]
+    public async Task<string> NativeDnsQueryAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Record type: ALL, A, AAAA, MX, NS, TXT, SOA, PTR, or AXFR. Defaults to ALL.")] string queryType = "ALL",
+        CancellationToken ct = default)
+    {
+        var tool = _nativeDns ?? throw new InvalidOperationException("NativeDnsTool is not registered.");
+        Charge(target, "dns-native");
+        var r = await tool.QueryAsync(target, queryType, ct).ConfigureAwait(false);
+        GetOrCreate(target).NativeDns.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+
+    [Description("Multi-signal host fingerprinter: combines banner / TLS certificate / HTTP headers / " +
+                 "favicon SHA-256 into ranked (vendor, product, version) candidates with confidence " +
+                 "scores and CPE 2.3 strings. Operates on existing recon signals already collected " +
+                 "for the target; optionally fetches /favicon.ico over a scope-checked HTTP probe. " +
+                 "Returns a JSON list of FingerprintReports (one per port).")]
+    public async Task<string> FingerprintStackAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        CancellationToken ct = default)
+    {
+        var tool = _fingerprintStack
+            ?? throw new InvalidOperationException("FingerprintStackTool is not registered.");
+        Charge(target, "fingerprint-stack");
+        var finding = GetOrCreate(target);
+        var reports = await tool.FingerprintHostAsync(target, finding, ct).ConfigureAwait(false);
+        finding.Fingerprint.AddRange(reports);
+        return System.Text.Json.JsonSerializer.Serialize(reports);
+    }
+
+
     private static void ValidatePort(int port)
     {
         if (port < 1 || port > 65535)
@@ -402,7 +488,45 @@ public sealed class ReconToolbox
     }
 }
 
+/// <summary>
+/// Per-target-per-tool and global call caps for <see cref="ReconToolbox"/>.
+/// The budget is a runaway-loop rate-limit, not a security boundary: scope
+/// is enforced inside every tool, so weakening these caps does not weaken
+/// authorization. <see cref="Default"/> (3/200) is calibrated for short
+/// deterministic <c>AdaptiveRunner</c> passes; LLM-driven runs
+/// (<c>--agent</c>, <c>--agent=hybrid</c>) need substantially more headroom
+/// to iterate through service variants and PoCs without starving — see
+/// <see cref="LlmDefault"/> (10/500). Per-tool overrides
+/// (<see cref="PerToolOverrides"/>) let the operator raise specific tools
+/// (e.g. <c>http</c>) further without lifting the global default.
+/// A cap of 0 is "deny-all" (the first call exceeds it). Negative caps
+/// are rejected by <see cref="CommandLineOptions"/> parsing.
+/// </summary>
 public sealed record ToolBudget(int PerTargetPerTool, int MaxTotalCalls)
 {
+    /// <summary>Optional per-tool overrides keyed by <see cref="IReconTool.Name"/>
+    /// (e.g. <c>"http"</c>, <c>"nmap"</c>). When set, the override replaces
+    /// <see cref="PerTargetPerTool"/> for that tool. Other tools fall back to
+    /// the global cap.</summary>
+    public IReadOnlyDictionary<string, int>? PerToolOverrides { get; init; }
+
+    /// <summary>Default budget for deterministic / no-LLM runs. Calibrated for
+    /// short adaptive passes — bumping these values without raising
+    /// <see cref="LlmDefault"/> will not affect LLM-driven planning.</summary>
     public static ToolBudget Default { get; } = new(PerTargetPerTool: 3, MaxTotalCalls: 200);
+
+    /// <summary>Default budget for LLM-driven runs (<c>--agent</c>,
+    /// <c>--agent=hybrid</c>, <c>--agent=llm</c>). The LLM planner needs
+    /// many more iterations than the deterministic runner — R5 JobTwo
+    /// starved on http=3 / nmap=3 after 17 LLM-issued HTTP probes
+    /// (GAP-029). 10 per tool / 500 global is enough for a realistic
+    /// hard-box fight while still capping runaway loops.</summary>
+    public static ToolBudget LlmDefault { get; } = new(PerTargetPerTool: 10, MaxTotalCalls: 500);
+
+    /// <summary>Resolve the effective per-target cap for <paramref name="tool"/>:
+    /// override if present, else global <see cref="PerTargetPerTool"/>.</summary>
+    public int CapFor(string tool) =>
+        PerToolOverrides is not null && PerToolOverrides.TryGetValue(tool, out var cap)
+            ? cap
+            : PerTargetPerTool;
 }

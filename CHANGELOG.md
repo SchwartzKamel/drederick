@@ -23,6 +23,39 @@ below this changelog via the release PR.
 
 ## [Unreleased]
 
+### Added — 2026-05-01 (JobTwo r4 + Round B-1)
+
+- **`HostDiscoveryTool`** (`src/Drederick/Recon/HostDiscoveryTool.cs`,
+  with `HostDiscoveryResult.cs`) — fast native TCP-knock sweep for /N
+  scopes; primes the worker pool before scanner fan-out.
+- **`ArchetypeClassifier`** (`src/Drederick/Learning/ArchetypeClassifier.cs`,
+  `TargetArchetype.cs`) — adaptive planner classifies each target into
+  archetypes (web, AD, file-share, etc.) so the runner can bias
+  enumeration depth and exploit selection per fight.
+- **`LearnedFingerprintStore` + `FingerprintLearner`**
+  (`src/Drederick/Enrichment/FingerprintStack/`) — cross-fight memory
+  layer that auto-grows from each engagement and persists at
+  `out/memory/learned-fingerprints.json`. Between bouts the champ
+  studies the tape; the corpus widens automatically.
+- **Unified port harvest** in `ExploitationPlanner.HarvestPortsFromAllSignals`
+  — the autopilot planner now consumes every recon signal (nmap, native
+  scanner, http, tls, smb, …), not just `host.Nmap.OpenPorts`.
+
+### Fixed — 2026-05-01 (JobTwo r4)
+
+- **GAP-025** — `MicrosoftAgentRunner.BuildSystemPrompt` /
+  `BuildUserMessage` now refuse "recon-only" outcomes; the planner is
+  forced to commit to an exploitation step when one is reachable.
+- **GAP-026** — nmap-vs-native port-truth divergence eliminated; the
+  planner reads from the unified port set rather than treating nmap
+  as the sole source of truth.
+- **GAP-027** — `SslStream` no longer double-sets
+  `RemoteCertificateValidationCallback`; the callback is supplied at
+  one site only, ending the silent-override hazard.
+- **GAP-028** — `ExploitationPlanner.Plan` no longer short-circuits on
+  `host.Nmap is null`; non-nmap recon signals (Http, Tls, native
+  scanner, etc.) feed the action set.
+
 ### Added
 
 - **Empire C2 integration** (`src/Drederick/Exploit/Empire/`) — BC-SECURITY/Empire

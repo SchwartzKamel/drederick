@@ -3,7 +3,7 @@ title: Empire C2 Integration
 audience: [operators, contributors, agents]
 primary: operators
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - docs/C2_INTEGRATION.md
   - docs/POST_EXPLOITATION.md

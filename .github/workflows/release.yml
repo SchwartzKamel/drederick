@@ -71,11 +71,17 @@ jobs:
           staging="staging/${{ matrix.rid }}"
           mkdir -p "$staging/docs"
           cp "publish/${{ matrix.rid }}/drederick" "$staging/drederick"
+          if [ -d "publish/${{ matrix.rid }}/runtimes" ]; then
+            cp -R "publish/${{ matrix.rid }}/runtimes" "$staging/runtimes"
+          fi
           chmod +x "$staging/drederick"
+          if [ -f "$staging/runtimes/${{ matrix.rid }}/native/copilot" ]; then
+            chmod +x "$staging/runtimes/${{ matrix.rid }}/native/copilot"
+          fi
           cp LICENSE "$staging/docs/LICENSE"
           cp README.md "$staging/docs/README.md"
           archive="drederick-${VERSION}-${{ matrix.rid }}.tar.gz"
-          tar -czf "$archive" -C "$staging" drederick docs
+          tar -czf "$archive" -C "$staging" .
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
 
       - name: Compute SHA-256

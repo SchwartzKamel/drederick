@@ -4,7 +4,7 @@ title: AGENTS.md — LLM entry point for drederick
 audience: [agents]
 primary: agents
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - .github/copilot-instructions.md
   - docs/README.md
@@ -129,9 +129,13 @@ surgical edits, identify the owning concept first.
 | `src/Drederick/Scope/` | `Scope`, `ScopeLoader`, `ScopeException`, prefix caps. | scope-policy |
 | `src/Drederick/Recon/` | `IReconTool` scanners + `ReconToolbox`. | recon-tools |
 | `src/Drederick/Recon/HostFinding.cs` | Typed recon result shapes. | recon-results |
+| `src/Drederick/Recon/HostDiscoveryTool.cs` / `HostDiscoveryResult.cs` | Fast native TCP-knock sweep that primes the worker pool for /N scopes before per-host fan-out. | host-discovery |
+| `src/Drederick/Learning/ArchetypeClassifier.cs` / `TargetArchetype.cs` | Adaptive target archetype classifier (web, AD, file-share, …); biases enumeration depth and exploit selection per fight. | learning |
+| `src/Drederick/Enrichment/FingerprintStack/LearnedFingerprintStore.cs` / `FingerprintLearner.cs` | Cross-fight fingerprint memory; auto-grows from each engagement and persists at `out/memory/learned-fingerprints.json`. | enrichment-fingerprint |
 | `src/Drederick/Exploit/` | `IExploitTool` / `ExploitRunner` / `MsfDriver` / `CredRunner` / `PayloadStager` + `ExploitToolbox`. | exploit-tools |
 | `src/Drederick/Exploit/ExploitResult.cs` | Typed exploit / cred / payload / session result shapes. | exploit-results |
 | `src/Drederick/Exploit/Empire/` | Empire C2 integration: `EmpireApiClient`, `EmpireAgentStager`, `EmpireModuleExecutor`, `EmpireModuleLibrary`, `SessionAgentMapper`. | empire-c2 |
+| `src/Drederick/Exploit/Phishing/` | Phishing/macro lure subsystem (VBA/HTA/LNK/ISO `MacroPayloadGenerator` + SMB/WebDAV/HTTP-stager `PhishingDelivery` + `PhishingToolbox`). Master gate `--allow-phishing`; SMTP relay sub-gate `--allow-smtp-relay`. | exploit-phishing |
 | `src/Drederick/Exploit/IPayloadTool.cs` | Interface abstraction for payload generation tools (stagers, reverse shells, agents). | exploit-tools |
 | `docs/EMPIRE.md` | Empire C2 operational guide: agent types, deployment, modules, troubleshooting. | empire-c2 |
 | `docs/C2_INTEGRATION.md` | Architecture, thread-safety, audit invariants, and extension points for C2 frameworks. | empire-c2 |
@@ -179,7 +183,7 @@ surgical edits, identify the owning concept first.
 | `src/Drederick/Jeopardy/Cli/` | `ctf-solve` / `ctf-msg` subcommand handlers. | jeopardy-cli |
 | `src/Drederick/Jeopardy/Submit/` | Flag-submission pipeline with plaintext redaction. | jeopardy-submit |
 | `src/Drederick/Jeopardy/Ops/` | Jeopardy operational helpers (run state, reporting). | jeopardy-ops |
-| `src/Drederick/Autopilot/` | `AutopilotRunner`, `ExploitationPlanner`, `CredentialStore`, `FlagExtractor`, `AutopilotReporter`. | autopilot |
+| `src/Drederick/Autopilot/` | `AutopilotRunner`, `ExploitationPlanner` (with `HarvestPortsFromAllSignals` — unified port set across nmap + native + Http + Tls + SMB signals), `CredentialStore`, `FlagExtractor`, `AutopilotReporter`. | autopilot |
 | `src/Drederick/Ops/` | Operational helpers: `HtbRanges`, `VpnDetector`. | ops |
 | `src/Drederick/Bundling/` | `DatasetteBootstrap`, `BootstrapOptions` (bundled Datasette bring-up). | bundling |
 | `src/Drederick/Agent/HybridAgentRunner.cs` | LLM-first recon runner with automatic fallback to the deterministic runner on operational failure; `ScopeException` / `OperationCanceledException` / Copilot model-compliance refusals always propagate. Wired via `--agent=hybrid`. | orchestration-hybrid |
@@ -350,8 +354,9 @@ each other's zones. Current canonical zones:
 | `release-pipeline`  | `.github/workflows/release.yml` |
 | `docs-audit-index`  | `docs/README.md`, `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `docs/COMPARISON.md` |
 | `recon-*`           | `src/Drederick/Recon/**` |
-| `exploit-*`         | `src/Drederick/Exploit/**` (except empire-c2 subdirectory) |
+| `exploit-*`         | `src/Drederick/Exploit/**` (except empire-c2 and exploit-phishing subdirectories) |
 | `empire-c2`         | `src/Drederick/Exploit/Empire/**`, `docs/EMPIRE.md`, `docs/C2_INTEGRATION.md` |
+| `exploit-phishing`  | `src/Drederick/Exploit/Phishing/**`, `tests/Drederick.Tests/Exploit/Phishing/**` |
 | `enrichment-*`      | `src/Drederick/Enrichment/**` |
 | `scope-policy`      | `src/Drederick/Scope/**` |
 | `ui-shell`          | `src/Drederick.UI/**`, `tests/Drederick.UI.Tests/**`, `src/Drederick/Host/**` |

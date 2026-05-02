@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Drederick.Audit;
@@ -7,8 +6,9 @@ using Drederick.Scope;
 namespace Drederick.Recon.Binary;
 
 /// <summary>
-/// Analyzes binary files (ELF, PE, Mach-O) for metadata, dependencies, and security
-/// hardening features (ASLR, NX, PIE, stack canaries, dangerous functions, format strings).
+/// Analyzes binary files (ELF, PE, Mach-O) for metadata, dependencies, and
+/// security hardening features using native .NET byte-level parsing.
+/// No external tools (file, readelf, nm, strings, objdump, ldd) are required.
 /// </summary>
 public sealed class BinaryAnalyzer : IBinaryAnalyzer
 {
@@ -21,11 +21,6 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
     private readonly MagikaDetector? _magika;
-    private readonly string? _readelfPath;
-    private readonly string? _nmPath;
-    private readonly string? _objdumpPath;
-    private readonly string? _stringsPath;
-    private readonly string? _filePath;
 
     public BinaryAnalyzer(Scope.Scope scope, AuditLog audit)
         : this(scope, audit, new MagikaDetector(audit))
@@ -37,20 +32,13 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         _scope = scope;
         _audit = audit;
         _magika = magika;
-        _readelfPath = WhichTool("readelf");
-        _nmPath = WhichTool("nm");
-        _objdumpPath = WhichTool("objdump");
-        _stringsPath = WhichTool("strings");
-        _filePath = WhichTool("file");
     }
 
-    public async Task<BinaryAnalysisReport> AnalyzeAsync(string filePath, CancellationToken cancellationToken = default)
+    public async Task<BinaryAnalysisReport> AnalyzeAsync(
+        string filePath, CancellationToken cancellationToken = default)
     {
-        // Verify the file exists and is readable
         if (!File.Exists(filePath))
-        {
             throw new FileNotFoundException($"Binary file not found: {filePath}");
-        }
 
         var startTime = DateTime.UtcNow;
         var report = new BinaryAnalysisReport
@@ -68,7 +56,7 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         try
         {
             // Magika pre-pass (first step, non-fatal): gives a fast, ML-based
-            // verdict that downstream steps can cross-check against `file`.
+            // verdict that downstream steps can cross-check against our magic detection.
             if (_magika is not null)
             {
                 try
@@ -77,37 +65,32 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
                 }
                 catch (ArgumentException)
                 {
-                    // Path validation rejected the input — magika is a hint
-                    // only, and the rest of the analyzer accepts any path,
-                    // so swallow and continue without a verdict.
                     report.Magika = null;
                 }
             }
 
-            // Extract metadata
-            report.Metadata = await ExtractMetadataAsync(filePath, cancellationToken);
+            // Read file bytes once for all native parsers.
+            byte[] fileData = await File.ReadAllBytesAsync(filePath, cancellationToken);
 
-            // Extract dependencies
+            // Extract metadata (format, architecture, sections, entry point, SHA256).
+            report.Metadata = ExtractMetadata(filePath, fileData);
+
+            // Extract dependencies (shared libs, RPATH/RUNPATH, PE imports).
             if (!string.IsNullOrEmpty(report.Metadata.Platform))
-            {
-                report.Dependencies = await ExtractDependenciesAsync(filePath, report.Metadata.Platform, cancellationToken);
-            }
+                report.Dependencies = ExtractDependencies(fileData, report.Metadata.Platform);
 
-            // Extract strings
-            report.Strings = await ExtractStringsAsync(filePath, cancellationToken);
+            // Extract strings (native byte-scan replacement for strings(1)).
+            report.Strings = ExtractStrings(fileData);
 
-            // Analyze security hardening
+            // Analyze security hardening features.
             if (!string.IsNullOrEmpty(report.Metadata.Platform))
-            {
-                report.Security = await AnalyzeSecurityAsync(filePath, report.Metadata.Platform, report.Metadata.FileType, cancellationToken);
-            }
+                report.Security = AnalyzeSecurity(fileData, report.Metadata.Platform);
 
-            // Generate findings based on security analysis
+            // Generate findings based on security analysis.
             report.Findings.AddRange(GenerateSecurityFindings(report.Security));
 
-            // Magika vs `file` cross-check: warn loudly when magika thinks
-            // the artifact is NOT actually an executable (e.g. a zip that
-            // claims to be ELF, a polyglot, a text script).
+            // Magika vs native-parser cross-check: warn when magika thinks the
+            // artifact is NOT actually an executable (polyglot, mislabeled, etc.).
             if (report.Magika is not null && !string.IsNullOrEmpty(report.Metadata.Platform))
             {
                 var magikaGroup = report.Magika.Group ?? string.Empty;
@@ -125,7 +108,7 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
                         Category = FindingCategory.Metadata,
                         Title = "Magika disagrees with binary classification",
                         Description =
-                            $"`file` reports {report.Metadata.Platform} ({report.Metadata.FileType}) " +
+                            $"Native parser reports {report.Metadata.Platform} ({report.Metadata.FileType}) " +
                             $"but magika classifies this artifact as '{magikaLabel}' " +
                             $"(group '{magikaGroup}', confidence {report.Magika.Confidence:F2}). " +
                             "This is a strong hint of a disguised, polyglot, or mislabeled artifact — " +
@@ -162,307 +145,309 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         return report;
     }
 
-    /// <summary>
-    /// Extracts binary metadata using the 'file' command and readelf/objdump.
-    /// </summary>
-    private async Task<BinaryMetadata> ExtractMetadataAsync(string filePath, CancellationToken ct)
+    // ── metadata ──────────────────────────────────────────────────────────
+
+    private static BinaryMetadata ExtractMetadata(string filePath, byte[] data)
     {
-        var metadata = new BinaryMetadata();
+        var meta = new BinaryMetadata();
 
         try
         {
-            // Get file type, architecture, and platform using 'file'
-            var fileOutput = await RunCommandAsync(_filePath ?? "file", $"\"{filePath}\"", ct);
-            ParseFileOutput(fileOutput, metadata);
+            var format = ElfParser.DetectFormat(data);
+            meta.Sha256 = Convert.ToHexString(SHA256.HashData(data));
 
-            // Extract sections using readelf or objdump
-            if (metadata.Platform == "ELF" && _readelfPath != null)
+            switch (format)
             {
-                var sectionsOutput = await RunCommandAsync(_readelfPath, $"-S \"{filePath}\"", ct);
-                metadata.Sections = ParseElfSections(sectionsOutput);
+                case BinaryFormat.Elf32:
+                case BinaryFormat.Elf64:
+                    meta.Platform = "ELF";
+                    meta.FileType = format == BinaryFormat.Elf64 ? "ELF64" : "ELF32";
+                    PopulateElfMetadata(data, meta);
+                    break;
 
-                // Extract entry point from ELF header
-                var headerOutput = await RunCommandAsync(_readelfPath, $"-h \"{filePath}\"", ct);
-                metadata.EntryPoint = ExtractElfEntryPoint(headerOutput);
-            }
-            else if (metadata.Platform == "PE" && _objdumpPath != null)
-            {
-                var headerOutput = await RunCommandAsync(_objdumpPath, $"-h \"{filePath}\"", ct);
-                metadata.Sections = ParsePeSections(headerOutput);
-            }
+                case BinaryFormat.Pe32:
+                case BinaryFormat.Pe64:
+                    meta.Platform = "PE";
+                    meta.FileType = format == BinaryFormat.Pe64 ? "PE32+" : "PE32";
+                    meta.Architecture = PeParser.DetectArchitecture(data);
+                    meta.EntryPoint = $"0x{PeParser.GetEntryPoint(data):x}";
+                    meta.Sections = PeParser.GetSectionNames(data).ToList();
+                    break;
 
-            // Calculate SHA256
-            metadata.Sha256 = await CalculateSha256Async(filePath, ct);
+                case BinaryFormat.MachO:
+                    meta.Platform = "Mach-O";
+                    meta.FileType = "Mach-O";
+                    PopulateMachOMetadata(data, meta);
+                    break;
+
+                case BinaryFormat.Script:
+                    meta.Platform = "Script";
+                    meta.FileType = "Script";
+                    break;
+
+                case BinaryFormat.Zip:
+                    meta.Platform = "Archive";
+                    meta.FileType = "ZIP";
+                    break;
+            }
         }
         catch (Exception)
         {
-            // Gracefully handle metadata extraction failures
+            // Gracefully handle metadata extraction failures.
         }
 
-        return metadata;
+        return meta;
     }
 
-    /// <summary>
-    /// Extracts dependencies (imported libraries, RPATH, RUNPATH).
-    /// </summary>
-    private async Task<BinaryDependencies> ExtractDependenciesAsync(string filePath, string platform, CancellationToken ct)
+    private static void PopulateElfMetadata(byte[] data, BinaryMetadata meta)
+    {
+        var header = ElfParser.ParseHeader(data);
+        if (header is null)
+            return;
+
+        meta.Architecture = ElfParser.MachineToArchitecture(header.Machine);
+        meta.EntryPoint = $"0x{header.EntryPoint:x}";
+        meta.Sections = ElfParser.GetSectionNames(data, header)
+            .Where(n => n.StartsWith('.'))
+            .ToList();
+    }
+
+    private static void PopulateMachOMetadata(byte[] data, BinaryMetadata meta)
+    {
+        if (data.Length < 12)
+            return;
+
+        // Determine endianness from magic.
+        bool isLE = data[0] == 0xCE || data[0] == 0xCF;
+        bool is64 = data[0] == 0xCF || data[3] == 0xCF;
+
+        uint cputype = isLE
+            ? BitConverter.ToUInt32(data, 4)
+            : (uint)((data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]);
+
+        meta.Architecture = (cputype & 0x00FFFFFF) switch
+        {
+            7 => is64 ? "x64" : "x86",    // CPU_TYPE_X86(_64)
+            12 => is64 ? "arm64" : "arm",  // CPU_TYPE_ARM(_64)
+            18 => "powerpc",               // CPU_TYPE_POWERPC
+            _ => "",
+        };
+    }
+
+    // ── dependencies ──────────────────────────────────────────────────────
+
+    private static BinaryDependencies ExtractDependencies(byte[] data, string platform)
     {
         var deps = new BinaryDependencies();
 
         try
         {
-            if (platform == "ELF" && _readelfPath != null)
+            if (platform == "ELF")
             {
-                // Extract dynamic section to find library dependencies and RPATH/RUNPATH
-                var dynamicOutput = await RunCommandAsync(_readelfPath, $"-d \"{filePath}\"", ct);
-                ParseElfDynamic(dynamicOutput, deps);
+                var header = ElfParser.ParseHeader(data);
+                if (header is not null)
+                {
+                    var (needed, rpath, runpath) = ElfParser.ExtractDynamicEntries(data, header);
+                    deps.ImportedLibs = needed.ToList();
+                    deps.Rpath = rpath;
+                    deps.Runpath = runpath;
+                }
             }
-            else if (platform == "PE" && _objdumpPath != null)
+            else if (platform == "PE")
             {
-                // Extract PE imports
-                var importsOutput = await RunCommandAsync(_objdumpPath, $"-p \"{filePath}\"", ct);
-                deps.ImportedLibs = ParsePeImports(importsOutput);
+                deps.ImportedLibs = PeParser.ParseImportedDlls(data).ToList();
             }
         }
         catch (Exception)
         {
-            // Gracefully handle dependency extraction failures
+            // Gracefully handle dependency extraction failures.
         }
 
         return deps;
     }
 
-    /// <summary>
-    /// Extracts strings and searches for suspicious keywords and crypto indicators.
-    /// </summary>
-    private async Task<BinaryStrings> ExtractStringsAsync(string filePath, CancellationToken ct)
+    // ── strings ───────────────────────────────────────────────────────────
+
+    private static BinaryStrings ExtractStrings(byte[] data)
     {
-        var strings = new BinaryStrings();
+        var result = new BinaryStrings();
 
         try
         {
-            if (_stringsPath == null)
-                return strings;
+            var allStrings = ElfParser.ExtractStrings(data, minLength: 4);
+            result.Count = allStrings.Count;
 
-            var stringsOutput = await RunCommandAsync(_stringsPath, $"\"{filePath}\"", ct);
-            var allStrings = stringsOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            strings.Count = allStrings.Length;
-
-            // Detect suspicious keywords
             var suspiciousKeywords = new[] { "cmd", "powershell", "curl", "/bin/sh", "/bin/bash", "wget", "nc", "ncat" };
             foreach (var keyword in suspiciousKeywords)
             {
                 if (allStrings.Any(s => s.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
-                {
-                    strings.SuspiciousKeywords.Add(keyword);
-                }
+                    result.SuspiciousKeywords.Add(keyword);
             }
 
-            // Detect crypto indicators
             var cryptoPatterns = new[] { "AES", "RSA", "SHA", "MD5", "DES", "ECC", "ECDSA" };
             foreach (var pattern in cryptoPatterns)
             {
                 if (allStrings.Any(s => s.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
-                {
-                    strings.CryptoIndicators.Add(pattern);
-                }
+                    result.CryptoIndicators.Add(pattern);
             }
         }
         catch (Exception)
         {
-            // Gracefully handle string extraction failures
+            // Gracefully handle string extraction failures.
         }
 
-        return strings;
+        return result;
     }
 
-    /// <summary>
-    /// Analyzes security hardening features: ASLR, NX, PIE, stack canaries, format strings, dangerous functions.
-    /// </summary>
-    private async Task<BinarySecurity> AnalyzeSecurityAsync(string filePath, string platform, string fileType, CancellationToken ct)
+    // ── security analysis ─────────────────────────────────────────────────
+
+    private static BinarySecurity AnalyzeSecurity(byte[] data, string platform)
     {
         var security = new BinarySecurity();
 
         try
         {
-            if (platform == "ELF")
+            switch (platform)
             {
-                await AnalyzeElfSecurityAsync(filePath, security, ct);
-            }
-            else if (platform == "PE")
-            {
-                await AnalyzePeSecurityAsync(filePath, security, ct);
-            }
-            else if (platform == "Mach-O")
-            {
-                await AnalyzeMachOSecurityAsync(filePath, security, ct);
+                case "ELF":
+                    AnalyzeElfSecurity(data, security);
+                    break;
+                case "PE":
+                    AnalyzePeSecurity(data, security);
+                    break;
+                case "Mach-O":
+                    AnalyzeMachOSecurity(data, security);
+                    break;
             }
 
-            // Detect dangerous functions (works across platforms via symbols)
-            await DetectDangerousFunctionsAsync(filePath, security, ct);
+            // Dangerous function detection (ELF symbol scan or string scan for PE/Mach-O).
+            DetectDangerousFunctions(data, platform, security);
 
-            // Detect format string vulnerabilities
-            await DetectFormatStringsAsync(filePath, security, ct);
+            // Format string detection via native string extraction.
+            DetectFormatStrings(data, security);
         }
         catch (Exception)
         {
-            // Gracefully handle security analysis failures
+            // Gracefully handle security analysis failures.
         }
 
         return security;
     }
 
-    /// <summary>
-    /// Analyzes ELF-specific security features (ASLR, NX, PIE, stack canary).
-    /// </summary>
-    private async Task AnalyzeElfSecurityAsync(string filePath, BinarySecurity security, CancellationToken ct)
+    private static void AnalyzeElfSecurity(byte[] data, BinarySecurity security)
     {
-        if (_readelfPath == null)
+        var header = ElfParser.ParseHeader(data);
+        if (header is null)
             return;
 
-        try
+        // ET_DYN (type 3) = position-independent → PIE / ASLR-capable.
+        security.IsPieEnabled = header.Type == 3;
+        security.IsAslrEnabled = header.Type == 3;
+
+        // NX bit: check PT_GNU_STACK program header.
+        var phdrs = ElfParser.ParseProgramHeaders(data, header);
+        var gnuStack = phdrs.FirstOrDefault(p => p.Type == ElfParser.PT_GNU_STACK);
+        if (gnuStack is not null)
         {
-            // Get ELF header to check for ET_DYN (PIE/ASLR-capable)
-            var headerOutput = await RunCommandAsync(_readelfPath, $"-h \"{filePath}\"", ct);
-            var elfType = ExtractElfType(headerOutput);
-
-            // ET_DYN (type 3) means position-independent and ASLR-capable
-            security.IsAslrEnabled = elfType == 3;
-            security.IsPieEnabled = elfType == 3;
-
-            // Check for NX bit via program headers
-            var programHeadersOutput = await RunCommandAsync(_readelfPath, $"-l \"{filePath}\"", ct);
-            security.IsNxEnabled = CheckElfNxBit(programHeadersOutput);
-
-            // Check for stack canary via symbol table
-            var symbolsOutput = await RunCommandAsync(_readelfPath, $"--symbols \"{filePath}\"", ct);
-            security.HasCanary = CheckStackCanary(symbolsOutput);
-            security.HasStackSmashing = security.HasCanary;
+            // NX is enabled when the stack is NOT executable (PF_X not set).
+            security.IsNxEnabled = (gnuStack.Flags & ElfParser.PF_X) == 0;
         }
-        catch (Exception)
+        else
         {
-            // Tool might not be available; findings will reflect unknown status
+            // No PT_GNU_STACK entry — modern kernels assume NX unless overridden.
+            security.IsNxEnabled = true;
+        }
+
+        // Stack canary: look for __stack_chk_fail in the dynamic symbol table.
+        var symbols = ElfParser.ExtractSymbolNames(data, header);
+        bool hasCanary = symbols.Any(s =>
+            s.Contains("__stack_chk_fail", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("__stack_protector", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("stack_chk", StringComparison.OrdinalIgnoreCase));
+        security.HasCanary = hasCanary;
+        security.HasStackSmashing = hasCanary;
+    }
+
+    private static void AnalyzePeSecurity(byte[] data, BinarySecurity security)
+    {
+        // PE files are position-independent by design.
+        security.IsPieEnabled = true;
+        security.IsAslrEnabled = PeParser.HasASLR(data);
+        security.IsNxEnabled = PeParser.HasNXBit(data);
+    }
+
+    private static void AnalyzeMachOSecurity(byte[] data, BinarySecurity security)
+    {
+        // Modern macOS binaries default to PIE.
+        security.IsPieEnabled = true;
+
+        // Check MH_PIE flag (0x200000) in the Mach-O header flags field.
+        if (data.Length >= 28)
+        {
+            bool isLE = data[0] == 0xCE || data[0] == 0xCF;
+            uint flags = isLE
+                ? BitConverter.ToUInt32(data, 24)
+                : (uint)((data[24] << 24) | (data[25] << 16) | (data[26] << 8) | data[27]);
+            security.IsPieEnabled = (flags & 0x200000) != 0;
+        }
+
+        // Canary: scan strings for __stack_chk_fail (sufficient for symbol detection).
+        var strings = ElfParser.ExtractStrings(data, minLength: 4);
+        bool hasCanary = strings.Any(s =>
+            s.Contains("__stack_chk_fail", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("stack_chk", StringComparison.OrdinalIgnoreCase));
+        security.HasCanary = hasCanary;
+        security.HasStackSmashing = hasCanary;
+    }
+
+    private static void DetectDangerousFunctions(byte[] data, string platform, BinarySecurity security)
+    {
+        var dangerousFunctions = new[] { "strcpy", "strcat", "gets", "sprintf", "scanf", "printf" };
+
+        IEnumerable<string> symbolSource;
+
+        if (platform == "ELF")
+        {
+            var header = ElfParser.ParseHeader(data);
+            symbolSource = header is not null
+                ? ElfParser.ExtractSymbolNames(data, header)
+                : ElfParser.ExtractStrings(data, minLength: 4);
+        }
+        else
+        {
+            // For PE and Mach-O, use extracted strings as a proxy for symbol names.
+            symbolSource = ElfParser.ExtractStrings(data, minLength: 4);
+        }
+
+        foreach (var func in dangerousFunctions)
+        {
+            if (symbolSource.Any(s => s.Contains(func, StringComparison.OrdinalIgnoreCase)))
+                security.DangerousFunctions.Add(func);
         }
     }
 
-    /// <summary>
-    /// Analyzes PE-specific security features (ASLR, NX, PIE).
-    /// </summary>
-    private async Task AnalyzePeSecurityAsync(string filePath, BinarySecurity security, CancellationToken ct)
+    private static void DetectFormatStrings(byte[] data, BinarySecurity security)
     {
-        if (_objdumpPath == null)
-            return;
+        var strings = ElfParser.ExtractStrings(data, minLength: 4);
+        var formatStringPattern = new Regex(@"%[xsn]", RegexOptions.IgnoreCase);
 
-        try
+        foreach (var str in strings)
         {
-            // For PE files, we parse the header for DLL characteristics
-            var headerOutput = await RunCommandAsync(_objdumpPath, $"-h \"{filePath}\"", ct);
-
-            // PE files are inherently position-independent
-            security.IsPieEnabled = true;
-
-            // Check for ASLR and NX flags in header (simplified; real implementation would parse binary)
-            security.IsAslrEnabled = headerOutput.Contains("Dynamic", StringComparison.OrdinalIgnoreCase);
-            security.IsNxEnabled = headerOutput.Contains("NX", StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception)
-        {
-            // Tool might not be available; findings will reflect unknown status
-        }
-    }
-
-    /// <summary>
-    /// Analyzes Mach-O-specific security features (PIE, code signing).
-    /// </summary>
-    private async Task AnalyzeMachOSecurityAsync(string filePath, BinarySecurity security, CancellationToken ct)
-    {
-        try
-        {
-            // Mach-O files are typically PIE by default on modern systems
-            security.IsPieEnabled = true;
-
-            // Check for stack canary via strings or symbol table
-            if (_nmPath != null)
+            if (str.Length > 4 && formatStringPattern.IsMatch(str))
             {
-                var symbolsOutput = await RunCommandAsync(_nmPath, $"-u \"{filePath}\"", ct);
-                security.HasCanary = CheckStackCanary(symbolsOutput);
-                security.HasStackSmashing = security.HasCanary;
-            }
-        }
-        catch (Exception)
-        {
-            // Tool might not be available
-        }
-    }
-
-    /// <summary>
-    /// Detects dangerous functions that could lead to buffer overflows, format strings, etc.
-    /// </summary>
-    private async Task DetectDangerousFunctionsAsync(string filePath, BinarySecurity security, CancellationToken ct)
-    {
-        if (_nmPath == null)
-            return;
-
-        try
-        {
-            var symbolsOutput = await RunCommandAsync(_nmPath, $"-u \"{filePath}\"", ct);
-
-            var dangerousFunctions = new[] { "strcpy", "strcat", "gets", "sprintf", "scanf", "printf" };
-
-            foreach (var func in dangerousFunctions)
-            {
-                if (symbolsOutput.Contains(func, StringComparison.OrdinalIgnoreCase))
+                if (!str.Contains("http", StringComparison.OrdinalIgnoreCase) &&
+                    !str.Contains("://", StringComparison.OrdinalIgnoreCase))
                 {
-                    security.DangerousFunctions.Add(func);
+                    security.HasFormatStrings = true;
+                    break;
                 }
             }
         }
-        catch (Exception)
-        {
-            // Tool might not be available
-        }
     }
 
-    /// <summary>
-    /// Detects potential format string vulnerabilities by searching for suspicious patterns.
-    /// </summary>
-    private async Task DetectFormatStringsAsync(string filePath, BinarySecurity security, CancellationToken ct)
-    {
-        try
-        {
-            if (_stringsPath == null)
-                return;
+    // ── findings generation ───────────────────────────────────────────────
 
-            var stringsOutput = await RunCommandAsync(_stringsPath, $"\"{filePath}\"", ct);
-            var allStrings = stringsOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-            // Look for format string patterns: %x, %s, %n, etc.
-            var formatStringPattern = new Regex(@"%[xsn]", RegexOptions.IgnoreCase);
-
-            foreach (var str in allStrings)
-            {
-                if (str.Length > 4 && formatStringPattern.IsMatch(str))
-                {
-                    // Additional heuristic: skip common benign patterns
-                    if (!str.Contains("http", StringComparison.OrdinalIgnoreCase) &&
-                        !str.Contains("://", StringComparison.OrdinalIgnoreCase))
-                    {
-                        security.HasFormatStrings = true;
-                        break;
-                    }
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Tool might not be available
-        }
-    }
-
-    /// <summary>
-    /// Generates BinaryFinding objects based on security analysis results.
-    /// </summary>
-    private List<BinaryFinding> GenerateSecurityFindings(BinarySecurity security)
+    private static List<BinaryFinding> GenerateSecurityFindings(BinarySecurity security)
     {
         var findings = new List<BinaryFinding>();
 
@@ -529,7 +514,7 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         if (security.DangerousFunctions.Count > 0)
         {
             var criticalFunctions = new[] { "strcpy", "gets", "scanf" };
-            var isCritical = security.DangerousFunctions.Any(f => criticalFunctions.Contains(f));
+            bool isCritical = security.DangerousFunctions.Any(f => criticalFunctions.Contains(f));
 
             findings.Add(new BinaryFinding
             {
@@ -542,256 +527,5 @@ public sealed class BinaryAnalyzer : IBinaryAnalyzer
         }
 
         return findings;
-    }
-
-    /// <summary>
-    /// Extracts the ELF type from readelf -h output.
-    /// </summary>
-    private int ExtractElfType(string headerOutput)
-    {
-        var typeMatch = Regex.Match(headerOutput, @"Type:\s+(\w+)");
-        if (typeMatch.Success)
-        {
-            return typeMatch.Groups[1].Value switch
-            {
-                "ET_EXEC" => 2,
-                "ET_DYN" => 3,
-                "ET_REL" => 1,
-                _ => 0,
-            };
-        }
-
-        return 0;
-    }
-
-    /// <summary>
-    /// Extracts the entry point from readelf -h output.
-    /// </summary>
-    private string? ExtractElfEntryPoint(string headerOutput)
-    {
-        var entryMatch = Regex.Match(headerOutput, @"Entry point address:\s+(0x[a-f0-9]+)", RegexOptions.IgnoreCase);
-        return entryMatch.Success ? entryMatch.Groups[1].Value : null;
-    }
-
-    /// <summary>
-    /// Checks if NX bit is enabled by looking for PT_GNU_STACK with no execute flag.
-    /// </summary>
-    private bool CheckElfNxBit(string programHeadersOutput)
-    {
-        // PT_GNU_STACK should have RW flags, not RWE (no execute)
-        var gnuStackMatch = Regex.Match(programHeadersOutput, @"GNU_STACK.*\s([RWE]+)\s");
-        if (gnuStackMatch.Success)
-        {
-            var flags = gnuStackMatch.Groups[1].Value;
-            return !flags.Contains('E');
-        }
-
-        // If PT_GNU_STACK not found, NX is generally not disabled on modern systems
-        return !programHeadersOutput.Contains("GNU_STACK");
-    }
-
-    /// <summary>
-    /// Checks for stack canary (__stack_chk_fail) in symbol table.
-    /// </summary>
-    private bool CheckStackCanary(string symbolsOutput)
-    {
-        return symbolsOutput.Contains("__stack_chk_fail", StringComparison.OrdinalIgnoreCase) ||
-               symbolsOutput.Contains("__stack_protector", StringComparison.OrdinalIgnoreCase) ||
-               symbolsOutput.Contains("stack_chk", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Parses file command output to extract file type, architecture, and platform.
-    /// </summary>
-    private void ParseFileOutput(string fileOutput, BinaryMetadata metadata)
-    {
-        if (fileOutput.Contains("ELF", StringComparison.OrdinalIgnoreCase))
-        {
-            metadata.Platform = "ELF";
-            metadata.FileType = "ELF";
-        }
-        else if (fileOutput.Contains("PE32", StringComparison.OrdinalIgnoreCase) ||
-                 fileOutput.Contains("PE32+", StringComparison.OrdinalIgnoreCase))
-        {
-            metadata.Platform = "PE";
-            metadata.FileType = fileOutput.Contains("PE32+") ? "PE32+" : "PE32";
-        }
-        else if (fileOutput.Contains("Mach-O", StringComparison.OrdinalIgnoreCase))
-        {
-            metadata.Platform = "Mach-O";
-            metadata.FileType = "Mach-O";
-        }
-
-        // Extract architecture
-        if (fileOutput.Contains("x86-64", StringComparison.OrdinalIgnoreCase) || fileOutput.Contains("x64", StringComparison.OrdinalIgnoreCase))
-            metadata.Architecture = "x64";
-        else if (fileOutput.Contains("x86", StringComparison.OrdinalIgnoreCase) || fileOutput.Contains("Intel 80386", StringComparison.OrdinalIgnoreCase))
-            metadata.Architecture = "x86";
-        else if (fileOutput.Contains("ARM aarch64", StringComparison.OrdinalIgnoreCase) || fileOutput.Contains("aarch64", StringComparison.OrdinalIgnoreCase))
-            metadata.Architecture = "arm64";
-        else if (fileOutput.Contains("ARM", StringComparison.OrdinalIgnoreCase))
-            metadata.Architecture = "arm";
-    }
-
-    /// <summary>
-    /// Parses ELF sections from readelf -S output.
-    /// </summary>
-    private List<string> ParseElfSections(string sectionsOutput)
-    {
-        var sections = new List<string>();
-        var lines = sectionsOutput.Split('\n');
-
-        foreach (var line in lines)
-        {
-            var match = Regex.Match(line, @"\[\s*\d+\]\s+(\.\S+)");
-            if (match.Success)
-            {
-                sections.Add(match.Groups[1].Value);
-            }
-        }
-
-        return sections;
-    }
-
-    /// <summary>
-    /// Parses PE sections from objdump -h output.
-    /// </summary>
-    private List<string> ParsePeSections(string headerOutput)
-    {
-        var sections = new List<string>();
-        var lines = headerOutput.Split('\n');
-
-        foreach (var line in lines)
-        {
-            var match = Regex.Match(line, @"^\s*(\.\S+)");
-            if (match.Success && line.Contains("ALLOC"))
-            {
-                sections.Add(match.Groups[1].Value);
-            }
-        }
-
-        return sections;
-    }
-
-    /// <summary>
-    /// Parses ELF dynamic section to extract libraries and RPATH/RUNPATH.
-    /// </summary>
-    private void ParseElfDynamic(string dynamicOutput, BinaryDependencies deps)
-    {
-        var lines = dynamicOutput.Split('\n');
-
-        foreach (var line in lines)
-        {
-            if (line.Contains("NEEDED", StringComparison.OrdinalIgnoreCase))
-            {
-                var match = Regex.Match(line, @"NEEDED\s+Shared library:\s+\[(.+)\]");
-                if (match.Success)
-                {
-                    deps.ImportedLibs.Add(match.Groups[1].Value);
-                }
-            }
-            else if (line.Contains("RPATH", StringComparison.OrdinalIgnoreCase))
-            {
-                var match = Regex.Match(line, @"RPATH\s+Library rpath:\s+\[(.+)\]");
-                if (match.Success)
-                {
-                    deps.Rpath = match.Groups[1].Value;
-                }
-            }
-            else if (line.Contains("RUNPATH", StringComparison.OrdinalIgnoreCase))
-            {
-                var match = Regex.Match(line, @"RUNPATH\s+Library runpath:\s+\[(.+)\]");
-                if (match.Success)
-                {
-                    deps.Runpath = match.Groups[1].Value;
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Parses PE imports from objdump -p output.
-    /// </summary>
-    private List<string> ParsePeImports(string importsOutput)
-    {
-        var imports = new List<string>();
-        var lines = importsOutput.Split('\n');
-
-        foreach (var line in lines)
-        {
-            var match = Regex.Match(line, @"DLL Name:\s+(\S+)");
-            if (match.Success)
-            {
-                imports.Add(match.Groups[1].Value);
-            }
-        }
-
-        return imports;
-    }
-
-    /// <summary>
-    /// Runs a shell command and returns its output.
-    /// </summary>
-    private async Task<string> RunCommandAsync(string command, string arguments, CancellationToken ct)
-    {
-        var psi = new ProcessStartInfo(command)
-        {
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        using var proc = Process.Start(psi);
-        if (proc == null)
-            return "";
-
-        var output = await proc.StandardOutput.ReadToEndAsync(ct);
-        await proc.WaitForExitAsync(ct);
-
-        return output;
-    }
-
-    /// <summary>
-    /// Attempts to find a tool in PATH.
-    /// </summary>
-    private string? WhichTool(string toolName)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("which")
-            {
-                Arguments = toolName,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            using var proc = Process.Start(psi);
-            if (proc == null)
-                return null;
-
-            var output = proc.StandardOutput.ReadToEnd().Trim();
-            proc.WaitForExit();
-
-            return string.IsNullOrEmpty(output) ? null : output;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Calculates SHA256 hash of the binary file.
-    /// </summary>
-    private async Task<string> CalculateSha256Async(string filePath, CancellationToken ct)
-    {
-        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-        using var sha256 = SHA256.Create();
-
-        var hash = await sha256.ComputeHashAsync(stream, ct);
-        return Convert.ToHexString(hash);
     }
 }

@@ -4,7 +4,7 @@ title: Magika integration
 audience: [operators, agents]
 primary: operators
 stability: beta
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - MODULES.md
   - JEOPARDY.md
@@ -37,6 +37,14 @@ Drederick uses magika in two places:
 Drederick **works fine without magika**. The integration is strictly
 additive: when magika is unavailable, the magika field is null and
 downstream analysis proceeds as before.
+
+> **Companion: native magic-byte signatures.** When magika is missing
+> *and* `file(1)` is restricted, Drederick falls back to
+> [`MagicSignatures`](../src/Drederick/Recon/Binary/MagicSignatures.cs)
+> — a small in-process table of magic-byte → format mappings (ELF, PE,
+> Mach-O, ZIP, gzip, JPEG, PNG, PDF, etc.). It is not a replacement for
+> magika's ML-based classification; it is a "we always have *something*"
+> floor so the binary-analysis pre-pass can still tag the artifact.
 
 ## Install
 

@@ -177,6 +177,12 @@ install: publish ## Install the binary to $(PREFIX) (default: ~/.local/bin)
 	 fi
 	@rm -f $(PREFIX)/.drederick.write-test
 	@install -m 755 $(PUBLISHED_BIN) $(INSTALLED_BIN)
+	@if [ -d "$(PUBLISH_DIR)/runtimes" ]; then \
+	    mkdir -p "$(PREFIX)/runtimes"; \
+	    cp -R "$(PUBLISH_DIR)/runtimes/." "$(PREFIX)/runtimes/"; \
+	    if [ -f "$(PREFIX)/runtimes/$(RID)/native/copilot" ]; then chmod 755 "$(PREFIX)/runtimes/$(RID)/native/copilot"; fi; \
+	    if [ -f "$(PREFIX)/runtimes/$(RID)/native/copilot.exe" ]; then chmod 755 "$(PREFIX)/runtimes/$(RID)/native/copilot.exe"; fi; \
+	fi
 	@printf "$(C_GREEN)installed$(C_RESET) → $(INSTALLED_BIN)\n"
 	@case ":$$PATH:" in \
 	    *":$(PREFIX):"*) printf "$(C_GREEN)ok$(C_RESET) $(PREFIX) is on your PATH\n" ;; \

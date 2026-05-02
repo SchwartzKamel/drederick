@@ -3,7 +3,7 @@ title: C2 Integration Architecture
 audience: [contributors, agents]
 primary: contributors
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - docs/EMPIRE.md
   - docs/ARCHITECTURE.md

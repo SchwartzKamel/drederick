@@ -62,11 +62,24 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         switch (provider)
         {
             case LlmProvider.Copilot:
-                return CopilotSdkAgentRunner.TryCreateFromEnvironment(
+            {
+                // Bypass broken Copilot SDK 0.3.0 (GAP-021). Use direct HTTP
+                // to api.githubcopilot.com which is OpenAI-wire-compatible.
+                var (token, source) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
+                if (string.IsNullOrWhiteSpace(token)) return null;
+                audit.Record("copilot.direct.auth.ready", new Dictionary<string, object?>
+                {
+                    ["source"] = source.ToString(),
+                });
+                model ??= CopilotSdkAgentRunner.DefaultModelId;
+                var copilotChat = new AzureOpenAiChatClient(
+                    "https://api.githubcopilot.com",
+                    new AzureOpenAiAuth.Bearer(token),
                     audit,
                     model,
-                    exploitTools,
-                    allowGitHubCliAuth);
+                    copilotMode: true);
+                return new MicrosoftAgentRunner(audit, copilotChat, model, exploitTools);
+            }
 
             case LlmProvider.Azure:
                 {
@@ -120,7 +133,12 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
 
         IList<AITool> aiTools = LlmToolCatalog.BuildAiTools(tools, _exploitTools);
 
-        AIAgent agent = _chatClient.AsAIAgent(
+        // Wrap the chat client with FunctionInvokingChatClient.
+        // NOTE: AllowConcurrentInvocation disabled — Claude via Copilot API
+        // requires strict tool_use→tool_result ordering in conversation history.
+        var funcClient = new FunctionInvokingChatClient(_chatClient);
+
+        AIAgent agent = funcClient.AsAIAgent(
             instructions: BuildSystemPrompt(),
             name: "drederick",
             description: "Authorized-lab recon agent",
@@ -215,6 +233,43 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         exploit → post-ex → pivot → repeat. When finished, respond with a
         factual summary: open ports, service versions, captured creds
         (by SHA-256 only), opened sessions, and any flags extracted.
+
+        Forcing function — DO NOT stop after recon. A fight that ends
+        with only enumeration is a loss. Before you respond with a final
+        summary, you MUST do at least ONE of the following:
+          1. Call exploit_plan for each target and act on every action it
+             returns whose required permission flag is enabled. If
+             exploit_plan returns zero actions, that is a signal to widen
+             recon (e.g., http_content_discovery, tls_cipher_enum,
+             additional protocol probes) and try again — not to stop.
+          2. For every auth-bearing service you observed (ssh, ftp,
+             smb/microsoft-ds, winrm/5985, rdp/3389, mssql/1433, mysql,
+             postgres, ldap, http with login forms) call
+             execute_cred_spray with at least one (user, password) pair
+             — lab defaults if --allow-cred-attacks is set, captured
+             creds otherwise.
+          3. For any session you opened, call run_post_ex_linux or
+             run_post_ex_windows and extract_flags_from_dir.
+          4. If permission flags forbid every offensive action, say so
+             explicitly in the summary and name the missing flag — that
+             is the only acceptable "recon-only" outcome.
+        Native HTTP/TLS probes that succeeded are PROOF a port is open
+        even when nmap reports nothing — treat them as targets, not
+        artifacts. JobTwo r4 lost because nmap returned [] and the
+        runner stopped; the planner now harvests ports from every
+        signal, and so should you.
+
+        Vhost-routed apps (GAP-032 / facts.htb fight): If an http_probe
+        returns 3xx → Location with a hostname (e.g. status=302,
+        final_url=http://facts.htb/login), you MUST retry the probe
+        with that hostname as the target — IP-only requests cannot
+        reach vhost-routed apps and you will only see the redirect
+        bounce, never the real content. http_probe accepts hostname
+        targets; the resolved IP is what scope authorizes, and the
+        hostname is automatically sent in Host: + SNI. When a
+        hostname is in scope (resolves to a scope IP), prefer the
+        hostname over the bare IP for HTTP requests — it gives you
+        the actual application surface.
         """;
 
     internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)
@@ -227,8 +282,11 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             sb.Append("   [prior: ").Append(prior.Digest(t)).AppendLine("]");
         }
         sb.AppendLine();
-        sb.AppendLine("Goal: enumerate services on each target, identify notable findings, ");
-        sb.AppendLine("and write a remediation-focused summary. Use the tools; do not guess.");
+        sb.AppendLine("Goal: COMPROMISE each target. Enumerate widely, then exploit. ");
+        sb.AppendLine("A fight that stops at enumeration is a loss — see the forcing");
+        sb.AppendLine("function in your system instructions. Use the tools; do not guess.");
+        sb.AppendLine("Capture flags, open sessions, escalate where you can, and report");
+        sb.AppendLine("punches thrown — not just punches considered.");
         return sb.ToString();
     }
 }

@@ -3,7 +3,7 @@ title: Getting Started with Drederick
 audience: [humans, agents]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related: [CREDENTIALS.md, SCOPE_AND_LEGAL.md, TROUBLESHOOTING.md, JEOPARDY.md, LLM_SETUP.md, COMPARISON.md, POST_EXPLOITATION.md, ../README.md, DATASETTE.md]
 ---
 

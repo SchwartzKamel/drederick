@@ -189,6 +189,138 @@ public class CveAnnotatorTests : IDisposable
         Assert.Equal(0, result.CveCount);
     }
 
+    // ---------- GAP-031c: harvest products from non-nmap recon signals ----------
+
+    [Fact]
+    public async Task Annotate_With_No_Nmap_But_Http_Product_Emits_Cve()
+    {
+        // Host has zero nmap ports. The only signal identifying the
+        // product is an HTTP `Server: vsftpd/2.3.4` banner. The annotator
+        // must still emit a CVE row (GAP-031c).
+        var cache = new NvdCache(SeedCacheWithFixture(), new ThrowingFetcher(), TimeSpan.FromDays(365));
+        var outDir = NewOutDir();
+        var host = new HostFinding
+        {
+            Target = "10.0.0.2",
+            Started = DateTimeOffset.UtcNow.ToString("o"),
+            Finished = DateTimeOffset.UtcNow.ToString("o"),
+            Nmap = new NmapResult { ReturnCode = 0, OpenPorts = new() }, // 0 nmap ports
+            Http = { new HttpResult { Url = "http://10.0.0.2:21/", Server = "vsftpd/2.3.4" } },
+        };
+        var findings = new List<HostFinding> { host };
+        new SqliteReport(outDir).WriteReport(findings);
+
+        var result = await new CveAnnotator(cache).AnnotateAsync(findings, outDir);
+
+        Assert.True(result.CacheLoaded);
+        Assert.True(result.CveCount >= 1, "expected at least one CVE match from HTTP Server banner");
+        Assert.True(result.FindingCount >= 1);
+        Assert.Contains("CVE-2011-2523", LoadCveIds(outDir));
+
+        var payloads = LoadCveFindingPayloads(outDir);
+        Assert.Contains(payloads, p => p.Contains("CVE-2011-2523") && p.Contains("\"source\":\"http_server\""));
+        Assert.Contains(payloads, p => p.Contains("\"match_confidence\":\"medium\""));
+    }
+
+    [Fact]
+    public async Task Annotate_Dedupes_Same_Cve_Across_Signals()
+    {
+        // nmap AND a fingerprint candidate both identify vsftpd 2.3.4 on
+        // port 21. Only one CVE finding row per (port, cve_id) — nmap
+        // wins because it's iterated first.
+        var cache = new NvdCache(SeedCacheWithFixture(), new ThrowingFetcher(), TimeSpan.FromDays(365));
+        var outDir = NewOutDir();
+        var host = new HostFinding
+        {
+            Target = "10.0.0.3",
+            Started = DateTimeOffset.UtcNow.ToString("o"),
+            Finished = DateTimeOffset.UtcNow.ToString("o"),
+            Nmap = new NmapResult
+            {
+                ReturnCode = 0,
+                OpenPorts = new()
+                {
+                    new NmapPort { Port = 21, Protocol = "tcp", Service = "ftp", Product = "vsftpd", Version = "2.3.4" },
+                },
+            },
+            Fingerprint =
+            {
+                new Drederick.Enrichment.FingerprintStack.FingerprintReport
+                {
+                    Port = 21,
+                    Candidates =
+                    {
+                        new Drederick.Enrichment.FingerprintStack.FingerprintCandidate
+                        {
+                            Vendor = "vsftpd_project",
+                            Product = "vsftpd",
+                            Version = "2.3.4",
+                            Confidence = 0.9,
+                        },
+                    },
+                },
+            },
+        };
+        var findings = new List<HostFinding> { host };
+        new SqliteReport(outDir).WriteReport(findings);
+
+        var result = await new CveAnnotator(cache).AnnotateAsync(findings, outDir);
+
+        Assert.True(result.CacheLoaded);
+        Assert.Equal(1, CountCveFindings(outDir));
+
+        // The single row must be the nmap-source one (higher priority wins).
+        var payloads = LoadCveFindingPayloads(outDir);
+        Assert.Single(payloads);
+        Assert.Contains("\"source\":\"nmap\"", payloads[0]);
+        Assert.Contains("\"match_confidence\":\"high\"", payloads[0]);
+    }
+
+    [Fact]
+    public async Task Annotate_FingerprintLearner_Source_Tags_Confidence_Learned()
+    {
+        // Host has zero nmap ports and no HTTP signals — only the
+        // fingerprint stack identified vsftpd 2.3.4 on port 21. The CVE
+        // finding must be tagged source=fingerprint, confidence=learned.
+        var cache = new NvdCache(SeedCacheWithFixture(), new ThrowingFetcher(), TimeSpan.FromDays(365));
+        var outDir = NewOutDir();
+        var host = new HostFinding
+        {
+            Target = "10.0.0.4",
+            Started = DateTimeOffset.UtcNow.ToString("o"),
+            Finished = DateTimeOffset.UtcNow.ToString("o"),
+            Nmap = new NmapResult { ReturnCode = 0, OpenPorts = new() },
+            Fingerprint =
+            {
+                new Drederick.Enrichment.FingerprintStack.FingerprintReport
+                {
+                    Port = 21,
+                    Candidates =
+                    {
+                        new Drederick.Enrichment.FingerprintStack.FingerprintCandidate
+                        {
+                            Vendor = "vsftpd_project",
+                            Product = "vsftpd",
+                            Version = "2.3.4",
+                            Confidence = 0.85,
+                        },
+                    },
+                },
+            },
+        };
+        var findings = new List<HostFinding> { host };
+        new SqliteReport(outDir).WriteReport(findings);
+
+        var result = await new CveAnnotator(cache).AnnotateAsync(findings, outDir);
+
+        Assert.True(result.CveCount >= 1);
+        var payloads = LoadCveFindingPayloads(outDir);
+        Assert.Contains(payloads, p =>
+            p.Contains("CVE-2011-2523") &&
+            p.Contains("\"source\":\"fingerprint\"") &&
+            p.Contains("\"match_confidence\":\"learned\""));
+    }
+
     // ---------- helpers that read back findings.db ----------
 
     private static List<string> LoadCveIds(string outDir)

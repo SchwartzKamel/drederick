@@ -3,7 +3,7 @@ title: Troubleshooting runbook
 audience: [humans, agents]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - README.md
   - MODULES.md
@@ -31,9 +31,12 @@ from the CLI's error messages, other docs, and issues stay valid.
 | VPN warning but VPN is up | [vpn-detection](#vpn-detection) |
 | `.htb` hostname doesn't resolve | [htb-hostname](#htb-hostname) |
 | Scope rejected | [scope-parse](#scope-parse) |
+| nmap reports 0 ports but native HTTP/TLS probes succeeded | [port-truth-divergence](#port-truth-divergence) |
+| `--agent` LLM stopped after recon (no exploit attempts) | [llm-recon-only](#llm-recon-only) |
 | `--agent` runner errors / timeouts | [llm-runner](#llm-runner) |
 | Copilot model unavailable / not tool-call compliant | [llm-runner](#llm-runner) (item 2) |
 | `--agent=hybrid` unexpectedly fell back to deterministic | [llm-runner](#llm-runner) (item 8) |
+| `Copilot CLI not found at .../runtimes/<rid>/native/copilot` | [llm-runner](#llm-runner) (item 9) |
 | PoC cache empty despite CVEs | [poc-cache](#poc-cache) |
 | Scanner crashed mid-run | [scanner-fail](#scanner-fail) |
 | Jeopardy: Docker sandbox unreachable | [jeopardy-docker](#jeopardy-docker) |
@@ -367,7 +370,7 @@ Common mistakes:
    scope.
 
 3. **Too-broad prefix.** In lab mode (default) anything broader than
-   `/8` IPv4 or `/32` IPv6 is refused; in strict (`--strict`) the caps
+   `/8` IPv4 or `/32` IPv6 is refused; in strict (`--no-lab`) the caps
    are `/16` and `/48`. Pass `--allow-broad` to override deliberately.
 
 4. **Whitespace / CRLF.** Lines are trimmed before parsing, so trailing
@@ -375,6 +378,119 @@ Common mistakes:
    Save scope files as UTF-8 without BOM.
 
 5. **Empty file / all-comments.** Rejected with `Scope is empty`.
+
+6. **YAML form with `exclude:`.** Drederick also accepts a YAML
+   scope file with `include:` and optional `exclude:` lists; the
+   exclude list is a deny-overlay that wins over include (see
+   [SCOPE_AND_LEGAL.md#deny-overlay](SCOPE_AND_LEGAL.md#deny-overlay)).
+   A target rejected by `exclude:` reports the deny rule that fired
+   in the `ScopeException` message — useful when a previously-allowed
+   host suddenly stops responding to scans.
+
+---
+
+<a id="port-truth-divergence"></a>
+## port-truth-divergence
+
+**Symptom:** nmap reports `0 open ports` for a target, but native HTTP
+or TLS probes against the same host succeeded (`http.finish` /
+`tls.finish` events in `out/audit.jsonl`).
+
+**Cause:** nmap's defaults (`-T4 --min-rate 1000` plus a 300-second
+host timeout, see `src/Drederick/Recon/NmapTool.cs`) are tuned for
+fast lab scanning. A slow Windows host — common on HTB / OffSec /
+TryHackMe — drops or delays SYN responses badly enough that the
+host-timeout fires before any port is reported. The rate limit then
+prevents nmap from retrying. JobTwo r4 lost an HTB box this way:
+nmap returned `[]`, the runner stopped, and the operator never saw
+the 80/443/5985/10001/10002 services that native probes had already
+proven open.
+
+**Fix — already applied:** `ExploitationPlanner.HarvestPortsFromAllSignals`
+unifies port evidence across every recon signal (nmap, NativeScan,
+HTTP/TLS/SMB/FTP/SSH/SNMP/LDAP/RPC/Kerberos probes) before the
+exploit planner runs. A port observed by *any* signal is treated as
+open even if nmap missed it. See
+`src/Drederick/Autopilot/ExploitationPlanner.cs` (`HarvestPortsFromAllSignals`).
+
+**Operator workaround if nmap data is desired anyway:**
+
+1. Re-run nmap against the slow target with a longer host timeout
+   and lower rate, bypassing drederick's wrapper for that one
+   target:
+
+    ```bash
+    nmap -Pn -sV -sC --host-timeout 1200s --min-rate 100 -p- <target>
+    ```
+
+2. Inspect what each scanner observed, port-by-port:
+
+    ```bash
+    jq 'select(.event|test("\\.(start|finish)$")) | {event,target:.target,port:.port,url:.url}' \
+      out/audit.jsonl
+    ```
+
+3. Drederick's reports (`out/report.json`, `out/findings.db`) already
+   reflect the unified set; the divergence only matters if you are
+   comparing native nmap output with drederick's view.
+
+---
+
+<a id="llm-recon-only"></a>
+## llm-recon-only
+
+**Symptom:** `--agent` (or `--agent=hybrid` when the LLM leg succeeded)
+finished a fight with only `nmap.*` / `http.*` events in
+`out/audit.jsonl` — no `*.cred_spray.*`, `*.exploit.*`,
+`postex.*`, or session-open events. The operator wanted exploitation
+to be attempted.
+
+**Cause:** previously the system prompt let the model stop after
+recon. Closed by GAP-025: the prompt now contains a forcing function.
+After enumeration the model **must** do at least one of (1) call
+`exploit_plan` and act on every action whose required permission
+flag is enabled, (2) call `execute_cred_spray` against every
+auth-bearing service it observed, (3) run post-ex on any opened
+session, or (4) explicitly state in the summary that every offensive
+category is forbidden by the current permission flags and name the
+missing flag(s). Recon-only is now a documented **loss** unless
+gated by missing permissions. See
+`src/Drederick/Agent/MicrosoftAgentRunner.cs` (`BuildSystemPrompt`).
+
+**Diagnose:**
+
+1. Confirm what categories the run actually allowed:
+
+    ```bash
+    jq 'select(.event=="run.start") | {flags:.flags}' out/audit.jsonl
+    ```
+
+    Look for `allow_exec_pocs`, `allow_cred_attacks`,
+    `allow_payloads`, `acknowledge_lockout_risk`. If they are all
+    `false`, the model has nothing to spend — its summary should say
+    so explicitly.
+
+2. Re-read the model's final assistant message
+   (`out/report.md` or `out/audit.jsonl` `runner.agent.final`
+   events). If the model *did* call out a missing flag, the
+   forcing function worked — fix the flag and re-run.
+
+**Fix — enable the missing permissions:**
+
+- Lab mode (default) already enables exploit categories except DoS;
+  if you are in `--no-lab`, opt in per category:
+
+    ```bash
+    drederick --scope ~/scope.txt --target 10.10.10.42 --no-lab \
+      --allow-exec-pocs --allow-cred-attacks --acknowledge-lockout-risk \
+      --allow-payloads --agent --out ~/results
+    ```
+
+- DoS / malware NSE remain opt-in even in lab — add `--allow-dos`
+  if you specifically want them.
+
+**If the model still stops after recon with permissions enabled:**
+file an issue against the prompt — that is now a regression.
 
 ---
 
@@ -397,11 +513,11 @@ then rethrown.
 2. For Copilot model selection, the SDK runner checks
    `https://api.githubcopilot.com/models` (no `/v1`) and only runs models
    that are available to your token and tool/function-call compliant.
-   Preferred default is `claude-haiku-4.5`; override with
+   Preferred default is `claude-sonnet-4.6`; override with
    `DREDERICK_MODEL` only when the replacement is also compliant:
 
     ```bash
-    export DREDERICK_MODEL=claude-haiku-4.5
+    export DREDERICK_MODEL=claude-sonnet-4.6
     ```
 
    If an explicit model is missing or non-compliant, both pure `--agent`
@@ -456,6 +572,30 @@ then rethrown.
    `--agent=hybrid`. `ScopeException`, `OperationCanceledException`, and
    Copilot model-compliance failures always propagate from hybrid mode —
    they are never swallowed by the fallback.
+
+9. **Copilot CLI not found at `<install>/runtimes/<rid>/native/copilot`.**
+   The `GitHub.Copilot.SDK` ships its native CLI as a sidecar that
+   must live next to the installed `drederick` binary. If the sidecar
+   is missing, `runner.agent_error` records:
+
+    ```text
+    Copilot CLI not found at '<prefix>/runtimes/linux-x64/native/copilot'.
+    ```
+
+   Verify and fix:
+
+    ```bash
+    ls "$(dirname "$(command -v drederick)")/runtimes/linux-x64/native/copilot"
+    # If missing:
+    cd /path/to/drederick && make install
+    # Or reinstall the released tarball:
+    curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | bash
+    ```
+
+   `make install`, `scripts/install.sh`, and the release tarball all
+   ship the `runtimes/<rid>/native/copilot` sidecar with the executable
+   bit preserved. Older builds installed only the single binary —
+   reinstall after upgrading.
 
 ---
 

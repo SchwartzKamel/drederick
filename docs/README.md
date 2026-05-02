@@ -3,7 +3,7 @@ title: Documentation index
 audience: [humans, agents]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ../README.md
   - ../AGENTS.md
@@ -11,6 +11,7 @@ related:
   - SCOPE_AND_LEGAL.md
   - DEVELOPING.md
   - MODULES.md
+  - SELF_SUFFICIENCY.md
   - DATASETTE.md
   - DB_SCHEMA.md
   - UI.md
@@ -81,6 +82,10 @@ related:
 | [`../SECURITY.md`](../SECURITY.md) | humans | Private security-bug reporting channel + disclosure posture. | human |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | humans | Release notes, breaking-change log. | human |
 | [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | humans | Community expectations for issues, PRs, discussions. | human |
+| [`SELF_SUFFICIENCY.md`](SELF_SUFFICIENCY.md) | operators + contributors | Native-first architecture: what's built in vs what stays external, zero-dep recon mode, NuGet packages, performance gains, multi-tier roadmap. | both |
+| [`PLUGIN_STRATEGY.md`](PLUGIN_STRATEGY.md) | contributors + agents | Patterns 1–4 of the self-sufficiency strategy: graceful enrichment, embedded community data, ported community logic, original Drederick tooling. | both |
+| [`LEARNING_LOOP.md`](LEARNING_LOOP.md) | contributors + agents | Pattern 5 — self-improving feedback loop: fight telemetry, corpus, archetypes, planner self-tune, tool-forge. | both |
+| [`FIGHTS.md`](FIGHTS.md) | humans + agents | The tape room, surfaced — chronological roll call of every fight, what each tape taught us, recurring patterns, and how to add a new tape. | both |
 
 <a id="by-role"></a>
 ## By role

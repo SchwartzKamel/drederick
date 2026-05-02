@@ -8,6 +8,41 @@ public sealed class CommandLineOptions
     public List<string> Targets { get; } = new();
     public string OutputDir { get; set; } = "out";
     public string MemoryPath { get; set; } = "memory/findings.json";
+
+    // --- learning -----------------------------------------------------------
+    /// <summary>Override path to the operator-curated fight corpus
+    /// (<c>~/HTB/fight-log.yaml</c>). When null, discovery falls through to
+    /// <c>DREDERICK_FIGHT_CORPUS</c> and the default <c>~/HTB/fight-log.yaml</c>.
+    /// CLI: <c>--fight-corpus &lt;path&gt;</c>. See docs/LEARNING_LOOP.md.</summary>
+    public string? FightCorpusPath { get; set; }
+    // --- end learning -------------------------------------------------------
+
+    /// <summary>Use raw-socket TCP SYN scan (CAP_NET_RAW) before connect-scan;
+    /// transparently falls back to connect-scan when raw sockets unavailable.
+    /// CLI: <c>--scan-syn</c>. See <c>src/Drederick/Recon/Scanning/SynScanner.cs</c>.</summary>
+    public bool ScanSyn { get; set; }
+
+    // --- telemetry ----------------------------------------------------------
+    /// <summary>Whether to record per-attempt structured telemetry to
+    /// <see cref="TelemetryDbPath"/>. Default true. CLI: <c>--telemetry</c> /
+    /// <c>--no-telemetry</c>. See <c>docs/LEARNING_LOOP.md</c>.</summary>
+    public bool Telemetry { get; set; } = true;
+    /// <summary>Override path to the telemetry SQLite database. When null
+    /// (default), <c>{OutputDir}/telemetry.db</c> is used. CLI:
+    /// <c>--telemetry-db &lt;path&gt;</c>.</summary>
+    public string? TelemetryDbPath { get; set; }
+    // --- end telemetry ------------------------------------------------------
+
+    // --- chain-reasoner-cli-options ---
+    /// <summary>chain subcommand selected: prints ranked AttackChain[] from KnowledgeBase.</summary>
+    public bool ChainSubcommand { get; set; }
+    /// <summary>If true, emit per-step explainability (rationale + confidence + cost).</summary>
+    public bool ChainExplain { get; set; }
+    /// <summary>If true, emit JSON instead of human-readable text.</summary>
+    public bool ChainJson { get; set; }
+    /// <summary>How many top-ranked chains to print. Default 5.</summary>
+    public int ChainTopN { get; set; } = 5;
+    // --- end chain-reasoner-cli-options ---
     public bool AllowBroad { get; set; }
     public bool UseAgent { get; set; } // -a / --agent: use MS Agent Framework
 
@@ -20,6 +55,27 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool UseHybridAgent { get; set; }
     public bool Expand { get; set; }   // --expand: expand scope to all hosts
+
+    // --- gap-029 budget tuning ---
+    /// <summary>Override the global per-target-per-tool budget cap. Null =
+    /// use mode-aware default (3 for deterministic, 10 for LLM modes).
+    /// 0 is interpreted as "deny-all" — every tool call exceeds it.
+    /// Negative values are rejected at parse time. See
+    /// <see cref="Drederick.Recon.ToolBudget"/>.</summary>
+    public int? BudgetPerTool { get; set; }
+
+    /// <summary>Override the global total tool-call budget. Null = use
+    /// mode-aware default (200 for deterministic, 500 for LLM modes).</summary>
+    public int? BudgetGlobal { get; set; }
+
+    /// <summary>Per-tool overrides parsed from <c>--budget=tool:N,tool:N</c>.
+    /// Tool name keys match <see cref="Drederick.Recon.IReconTool.Name"/> /
+    /// <see cref="Drederick.Exploit.IExploitTool.Name"/> (e.g.
+    /// <c>"http"</c>, <c>"nmap"</c>, <c>"nuclei"</c>). Empty when no
+    /// per-tool overrides were supplied.</summary>
+    public Dictionary<string, int> BudgetPerToolOverrides { get; } = new();
+    // --- end gap-029 budget tuning ---
+
     public int Parallelism { get; set; } = 4;
 
     /// <summary>
@@ -106,6 +162,47 @@ public sealed class CommandLineOptions
     /// accounts. Required in addition to <see cref="AllowCredAttacks"/>. CLI:
     /// <c>--acknowledge-lockout-risk</c>.</summary>
     public bool AcknowledgeLockoutRisk { get; set; }
+
+    /// <summary>Override for the cred-spray subprocess timeout, in seconds.
+    /// CLI: <c>--cred-spray-timeout=N</c>. When unset, the runner picks a
+    /// mode-appropriate default via
+    /// <see cref="Drederick.Exploit.PasswordSprayTool.ResolveDefaultTimeoutSeconds"/>:
+    /// 60s for strict + adaptive, 120s for lab / hybrid / llm. Capped at
+    /// <see cref="Drederick.Exploit.PasswordSprayTool.MaxAdaptiveTimeoutSeconds"/>.
+    /// </summary>
+    public int? CredSprayTimeoutSeconds { get; set; }
+
+    /// <summary>Override for every netexec-driven replay-adapter
+    /// subprocess timeout (SMB/WinRM/MSSQL/LDAP/SSH/RDP), in seconds. CLI:
+    /// <c>--replay-timeout=N</c>. When unset, the runner picks a
+    /// mode-appropriate default via
+    /// <see cref="Drederick.Exploit.Replay.CrossProtocolReplay.ResolveDefaultTimeoutSeconds"/>:
+    /// 60s for strict + adaptive, 120s for lab / hybrid / llm. Capped at
+    /// <see cref="Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds"/>.
+    /// Mirrors the <c>--cred-spray-timeout</c> plumbing from 95a328d so
+    /// the same R5 slow-target pain doesn't regress in cross-protocol
+    /// replay.</summary>
+    public int? ReplayTimeoutSeconds { get; set; }
+
+    /// <summary>Master gate for the phishing/macro subsystem
+    /// (<see cref="Drederick.Exploit.ExploitCategory.Phishing"/>). Without
+    /// this flag, every <see cref="Drederick.Exploit.Phishing.IPhishingTool"/>
+    /// refuses cleanly. CLI: <c>--allow-phishing</c>.</summary>
+    public bool AllowPhishing { get; set; }
+    /// <summary>Sub-gate enabling SMTP relay phishing delivery on top of
+    /// <see cref="AllowPhishing"/>. Default off in every mode (including
+    /// lab). CLI: <c>--allow-smtp-relay</c>.</summary>
+    public bool AllowSmtpRelay { get; set; }
+    /// <summary>Bind for the one-shot HTTP phishing stager. Format
+    /// <c>HOST:PORT</c>. Default <c>127.0.0.1:0</c> (loopback,
+    /// kernel-assigned). Non-loopback hosts must also be in scope. CLI:
+    /// <c>--phish-stager-bind</c>.</summary>
+    public string PhishStagerBind { get; set; } = "127.0.0.1:0";
+    /// <summary>Default payload command embedded in generated phishing
+    /// artifacts. Literal string or <c>@/path/to/file</c> to read from
+    /// disk. The plaintext is never logged; only its SHA-256 hits the
+    /// audit trail. CLI: <c>--phish-payload-cmd</c>.</summary>
+    public string? PhishPayloadCmd { get; set; }
     // --- end exploit opt-ins ------------------------------------------------
 
     // --- autopilot options --------------------------------------------------
@@ -374,6 +471,13 @@ public sealed class CommandLineOptions
             start = 1;
         }
         // --- end web-cli-subcommand-dispatch ---
+        // --- chain-reasoner-cli-subcommand-dispatch ---
+        else if (args.Length > 0 && args[0] == "chain")
+        {
+            o.ChainSubcommand = true;
+            start = 1;
+        }
+        // --- end chain-reasoner-cli-subcommand-dispatch ---
         for (int i = start; i < args.Length; i++)
         {
             var a = args[i];
@@ -384,6 +488,45 @@ public sealed class CommandLineOptions
                 continue;
             }
             // --- end jeopardy-doctor ---
+            // --- gap-029 budget shorthand: --budget-per-tool=N / --budget-global=N / --budget=tool:N[,tool:N] ---
+            if (a.StartsWith("--budget-per-tool=", StringComparison.Ordinal))
+            {
+                o.BudgetPerTool = ParseBudgetCap("--budget-per-tool", a.Substring("--budget-per-tool=".Length));
+                continue;
+            }
+            if (a.StartsWith("--budget-global=", StringComparison.Ordinal))
+            {
+                o.BudgetGlobal = ParseBudgetCap("--budget-global", a.Substring("--budget-global=".Length));
+                continue;
+            }
+            if (a.StartsWith("--budget=", StringComparison.Ordinal))
+            {
+                ParseBudgetSpec(a.Substring("--budget=".Length), o.BudgetPerToolOverrides);
+                continue;
+            }
+            // --- end gap-029 budget shorthand ---
+            // --- cred-spray-timeout shorthand: --cred-spray-timeout=N ---
+            if (a.StartsWith("--cred-spray-timeout=", StringComparison.Ordinal))
+            {
+                var v = a.Substring("--cred-spray-timeout=".Length);
+                if (!int.TryParse(v, out var n) || n < 1 || n > Drederick.Exploit.PasswordSprayTool.MaxAdaptiveTimeoutSeconds)
+                    throw new ArgumentException(
+                        $"--cred-spray-timeout must be in [1,{Drederick.Exploit.PasswordSprayTool.MaxAdaptiveTimeoutSeconds}], got '{v}'.");
+                o.CredSprayTimeoutSeconds = n;
+                continue;
+            }
+            // --- end cred-spray-timeout shorthand ---
+            // --- replay-timeout shorthand: --replay-timeout=N ---
+            if (a.StartsWith("--replay-timeout=", StringComparison.Ordinal))
+            {
+                var v = a.Substring("--replay-timeout=".Length);
+                if (!int.TryParse(v, out var n) || n < 1 || n > Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds)
+                    throw new ArgumentException(
+                        $"--replay-timeout must be in [1,{Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds}], got '{v}'.");
+                o.ReplayTimeoutSeconds = n;
+                continue;
+            }
+            // --- end replay-timeout shorthand ---
             // --- jeopardy-llm-provider: accept --flag=value shorthand ---
             // The provider flags are documented with --flag=value syntax
             // (e.g. --llm-provider=azure). Split those inline; everything else
@@ -487,6 +630,34 @@ public sealed class CommandLineOptions
                     o.OutputDir = RequireNext(args, ref i, a); break;
                 case "--memory":
                     o.MemoryPath = RequireNext(args, ref i, a); break;
+                // --- learning flag parse ---
+                case "--fight-corpus":
+                    o.FightCorpusPath = RequireNext(args, ref i, a); break;
+                // --- end learning flag parse ---
+                // --- telemetry flag parse ---
+                case "--telemetry":
+                    o.Telemetry = true; break;
+                case "--no-telemetry":
+                    o.Telemetry = false; break;
+                case "--telemetry-db":
+                    o.TelemetryDbPath = RequireNext(args, ref i, a); break;
+                // --- end telemetry flag parse ---
+                // --- scan-syn flag parse ---
+                case "--scan-syn":
+                    o.ScanSyn = true; break;
+                case "--no-scan-syn":
+                    o.ScanSyn = false; break;
+                // --- end scan-syn flag parse ---
+                // --- chain-reasoner-flag-parse ---
+                case "--explain":
+                    if (!o.ChainSubcommand) throw new ArgumentException($"--explain only valid with `chain` subcommand");
+                    o.ChainExplain = true; break;
+                case "--top":
+                    if (!o.ChainSubcommand) throw new ArgumentException($"--top only valid with `chain` subcommand");
+                    if (!int.TryParse(RequireNext(args, ref i, a), out var topN) || topN < 1)
+                        throw new ArgumentException("--top requires a positive integer");
+                    o.ChainTopN = topN; break;
+                // --- end chain-reasoner-flag-parse ---
                 case "--allow-broad":
                     o.AllowBroad = true; break;
                 case "--lab":
@@ -527,6 +698,32 @@ public sealed class CommandLineOptions
                     o.AllowDos = true; break;
                 case "--acknowledge-lockout-risk":
                     o.AcknowledgeLockoutRisk = true; break;
+                case "--cred-spray-timeout":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > Drederick.Exploit.PasswordSprayTool.MaxAdaptiveTimeoutSeconds)
+                            throw new ArgumentException(
+                                $"--cred-spray-timeout must be in [1,{Drederick.Exploit.PasswordSprayTool.MaxAdaptiveTimeoutSeconds}], got '{v}'.");
+                        o.CredSprayTimeoutSeconds = n;
+                        break;
+                    }
+                case "--replay-timeout":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds)
+                            throw new ArgumentException(
+                                $"--replay-timeout must be in [1,{Drederick.Exploit.Replay.CrossProtocolReplay.MaxTimeoutSeconds}], got '{v}'.");
+                        o.ReplayTimeoutSeconds = n;
+                        break;
+                    }
+                case "--allow-phishing":
+                    o.AllowPhishing = true; break;
+                case "--allow-smtp-relay":
+                    o.AllowSmtpRelay = true; break;
+                case "--phish-stager-bind":
+                    o.PhishStagerBind = RequireNext(args, ref i, a); break;
+                case "--phish-payload-cmd":
+                    o.PhishPayloadCmd = RequireNext(args, ref i, a); break;
                 // --- end exploit opt-in flag parse ---
                 // --- autopilot flag parse ---
                 case "--autopilot":
@@ -550,6 +747,26 @@ public sealed class CommandLineOptions
                 case "--cred":
                     o.AutopilotCreds.Add(RequireNext(args, ref i, a)); break;
                 // --- end autopilot flag parse ---
+                // --- gap-029 budget tuning flag parse ---
+                case "--budget-per-tool":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        o.BudgetPerTool = ParseBudgetCap("--budget-per-tool", v);
+                        break;
+                    }
+                case "--budget-global":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        o.BudgetGlobal = ParseBudgetCap("--budget-global", v);
+                        break;
+                    }
+                case "--budget":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        ParseBudgetSpec(v, o.BudgetPerToolOverrides);
+                        break;
+                    }
+                // --- end gap-029 budget tuning flag parse ---
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;
@@ -666,6 +883,10 @@ public sealed class CommandLineOptions
                     else if (o.NoteSubcommand != null)
                     {
                         o.NoteJson = true;
+                    }
+                    else if (o.ChainSubcommand)
+                    {
+                        o.ChainJson = true;
                     }
                     else
                     {
@@ -968,6 +1189,44 @@ public sealed class CommandLineOptions
         return args[++i];
     }
 
+    // --- gap-029 budget tuning helpers ---
+    /// <summary>Parse a single integer cap value for <c>--budget-per-tool</c>
+    /// / <c>--budget-global</c>. Accepts 0 as "deny-all"; rejects negatives
+    /// and non-integer values.</summary>
+    private static int ParseBudgetCap(string flag, string value)
+    {
+        if (!int.TryParse(value, out var n) || n < 0)
+            throw new ArgumentException(
+                $"{flag} must be a non-negative integer (0 = deny-all), got '{value}'.");
+        return n;
+    }
+
+    /// <summary>Parse a <c>--budget=tool:N[,tool:N]...</c> spec into the
+    /// supplied dictionary, replacing any prior value for repeated tool
+    /// keys. Throws <see cref="ArgumentException"/> on malformed input
+    /// (missing colon, non-integer N, negative N, empty tool name).</summary>
+    private static void ParseBudgetSpec(string spec, Dictionary<string, int> dest)
+    {
+        if (string.IsNullOrWhiteSpace(spec))
+            throw new ArgumentException("--budget requires <tool>:<N>[,<tool>:<N>...] spec, got empty value.");
+        foreach (var raw in spec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var colon = raw.IndexOf(':');
+            if (colon <= 0 || colon == raw.Length - 1)
+                throw new ArgumentException(
+                    $"--budget entry must be <tool>:<N>, got '{raw}'.");
+            var tool = raw[..colon].Trim();
+            var capStr = raw[(colon + 1)..].Trim();
+            if (tool.Length == 0)
+                throw new ArgumentException($"--budget entry has empty tool name in '{raw}'.");
+            if (!int.TryParse(capStr, out var n) || n < 0)
+                throw new ArgumentException(
+                    $"--budget entry '{raw}' must have a non-negative integer cap (0 = deny-all), got '{capStr}'.");
+            dest[tool] = n;
+        }
+    }
+    // --- end gap-029 budget tuning helpers ---
+
     public static string HelpText =>
         """
         drederick - authorized-lab adaptive recon harness
@@ -1126,6 +1385,21 @@ public sealed class CommandLineOptions
           --acknowledge-lockout-risk
                                Required in addition to --allow-cred-attacks. Attests that
                                the operator understands account-lockout impact.
+          --cred-spray-timeout=N
+                               Override the per-attempt netexec subprocess timeout, in
+                               seconds. Range [1,240]. Default: 60s in strict adaptive
+                               mode (--no-lab without --agent), 120s in lab/hybrid/llm
+                               mode. The runner adaptively doubles the timeout (up to
+                               240s) for any target that has previously timed out, so
+                               sluggish endpoints stop eating good punches.
+          --replay-timeout=N
+                               Override the per-attempt subprocess timeout for every
+                               netexec-driven cross-protocol replay adapter
+                               (SMB/WinRM/MSSQL/LDAP/SSH/RDP), in seconds. Range
+                               [1,240]. Default: 60s in strict adaptive mode (--no-lab
+                               without --agent), 120s in lab/hybrid/llm mode. Mirrors
+                               --cred-spray-timeout for cross-protocol replay so slow
+                               targets don't poison a working credential.
           --allow-payloads     Permit payload generation, staging, delivery, and
                                driving post/* Metasploit modules. Unlocks PAYLOAD /
                                CMD / LHOST / SRVHOST options in msfconsole RC files;

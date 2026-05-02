@@ -15,7 +15,7 @@ namespace Drederick.Agent;
 /// </summary>
 public sealed class CopilotSdkAgentRunner : IReconAgentRunner
 {
-    internal const string DefaultModelId = "claude-haiku-4.5";
+    internal const string DefaultModelId = "claude-sonnet-4.6";
 
     private readonly AuditLog _audit;
     private readonly string _githubToken;
@@ -109,9 +109,18 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
                 CreateSessionConfig(aiTools, modelDecision.SelectedModelId),
                 ct).ConfigureAwait(false);
 
+            var prompt = MicrosoftAgentRunner.BuildUserMessage(targets, prior);
+            _audit.Record("copilot.sdk.sending", new Dictionary<string, object?>
+            {
+                ["prompt_len"] = prompt.Length,
+                ["model"] = modelDecision.SelectedModelId,
+                ["streaming"] = true,
+                ["idle_timeout_s"] = 600,
+            });
+
             var response = await session.SendAndWaitAsync(
-                new MessageOptions { Prompt = MicrosoftAgentRunner.BuildUserMessage(targets, prior) },
-                timeout: null,
+                new MessageOptions { Prompt = prompt },
+                timeout: TimeSpan.FromMinutes(15),
                 ct).ConfigureAwait(false);
 
             var text = response?.Data?.Content;
@@ -152,7 +161,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
     {
         GitHubToken = _githubToken,
         UseLoggedInUser = false,
-        LogLevel = "warn",
+        LogLevel = "warning",
         Cwd = Directory.GetCurrentDirectory(),
     };
 
@@ -167,7 +176,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         AvailableTools = aiTools.Select(t => t.Name).ToArray(),
         OnPermissionRequest = PermissionHandler.ApproveAll,
         WorkingDirectory = Directory.GetCurrentDirectory(),
-        Streaming = false,
+        Streaming = true,
         InfiniteSessions = new InfiniteSessionConfig { Enabled = false },
         GitHubToken = _githubToken,
         SystemMessage = new SystemMessageConfig
