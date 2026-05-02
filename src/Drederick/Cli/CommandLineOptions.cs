@@ -207,6 +207,12 @@ public sealed class CommandLineOptions
     public bool AllowDos { get; set; }
     public bool AllowExecShell { get; set; }
     public bool AllowExecShellBash { get; set; }
+    /// <summary>Master gate for the cve-lead → LLM-author fallback bridge
+    /// (<see cref="Drederick.Autopilot.CveLeadLlmAuthor"/>). Lab default-on,
+    /// strict default-off. Useful only when <see cref="AllowExecShell"/> is
+    /// also enabled — without it the bridge short-circuits to skip. CLI:
+    /// <c>--allow-cve-lead-llm-author</c> / <c>--no-allow-cve-lead-llm-author</c>.</summary>
+    public bool AllowCveLeadLlmAuthor { get; set; }
     /// <summary>Explicit acknowledgement that credential attacks can lock
     /// accounts. Required in addition to <see cref="AllowCredAttacks"/>. CLI:
     /// <c>--acknowledge-lockout-risk</c>.</summary>
@@ -252,6 +258,17 @@ public sealed class CommandLineOptions
     /// disk. The plaintext is never logged; only its SHA-256 hits the
     /// audit trail. CLI: <c>--phish-payload-cmd</c>.</summary>
     public string? PhishPayloadCmd { get; set; }
+    /// <summary>Master gate for the AD attack family (AS-REP roast,
+    /// kerberoast, WinRM auth, NTDS dump). Default-on in lab mode.
+    /// CLI: <c>--allow-ad-attacks</c> / <c>--no-allow-ad-attacks</c>.
+    /// </summary>
+    public bool AllowAdAttacks { get; set; }
+
+    /// <summary>When non-null, overrides the lab-mode default-on for
+    /// <see cref="AllowAdAttacks"/>. Used so <c>--no-allow-ad-attacks</c>
+    /// can disable the family even in lab mode.</summary>
+    public bool? AllowAdAttacksExplicit { get; set; }
+
     // --- end exploit opt-ins ------------------------------------------------
 
     // --- autopilot options --------------------------------------------------
@@ -751,6 +768,10 @@ public sealed class CommandLineOptions
                     o.AllowExecShell = false; break;
                 case "--allow-exec-shell-bash":
                     o.AllowExecShellBash = true; break;
+                case "--allow-cve-lead-llm-author":
+                    o.AllowCveLeadLlmAuthor = true; break;
+                case "--no-allow-cve-lead-llm-author":
+                    o.AllowCveLeadLlmAuthor = false; break;
                 case "--acknowledge-lockout-risk":
                     o.AcknowledgeLockoutRisk = true; break;
                 case "--cred-spray-timeout":

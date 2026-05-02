@@ -31,6 +31,7 @@ public sealed class AutopilotRunner
     private readonly PasswordSprayTool? _spray;
     private readonly MsfRcRunner? _msf;
     private readonly PocAggregator? _pocAggregator;
+    private readonly CveLeadLlmAuthor? _cveLeadLlmAuthor;
     private readonly bool _fetchPoc;
     private readonly CredentialStore _creds;
     private readonly ExploitationPlanner _planner;
@@ -57,6 +58,7 @@ public sealed class AutopilotRunner
         PasswordSprayTool? spray = null,
         MsfRcRunner? msf = null,
         PocAggregator? pocAggregator = null,
+        CveLeadLlmAuthor? cveLeadLlmAuthor = null,
         bool fetchPoc = true,
         int maxIterations = 3,
         int maxActionsPerIteration = 64)
@@ -72,6 +74,7 @@ public sealed class AutopilotRunner
         _spray = spray;
         _msf = msf;
         _pocAggregator = pocAggregator;
+        _cveLeadLlmAuthor = cveLeadLlmAuthor;
         _fetchPoc = fetchPoc;
         _maxIterations = Math.Max(1, maxIterations);
         _maxActionsPerIteration = Math.Max(1, maxActionsPerIteration);
@@ -95,6 +98,13 @@ public sealed class AutopilotRunner
         var executedIds = new HashSet<string>(StringComparer.Ordinal);
         // GAP-033 loop guard — one fetch attempt per CVE per RunAsync.
         var cveFetchTried = new Dictionary<string, CveFetchOutcome>(StringComparer.OrdinalIgnoreCase);
+        // cve-lead-llm-author-fallback loop guard — one LLM-author attempt
+        // per (cve, target) tuple per RunAsync. Keyed via
+        // CveLeadLlmAuthor.MakeAttemptKey so the planner re-emitting the
+        // same dead lead never costs additional LLM calls. Thread-safe
+        // because exec_shell results may flow back from concurrent shell
+        // runners in future revisions.
+        var cveLlmAttempted = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
         int iteration = 0;
         int executed = 0;
 
@@ -117,7 +127,7 @@ public sealed class AutopilotRunner
             {
                 ct.ThrowIfCancellationRequested();
                 executedIds.Add(action.Id);
-                var outcome = await ExecuteAsync(action, flagsSeen, cveFetchTried, ct).ConfigureAwait(false);
+                var outcome = await ExecuteAsync(action, flagsSeen, cveFetchTried, cveLlmAttempted, ct).ConfigureAwait(false);
                 allResults.Add(outcome);
                 executed++;
             }
@@ -152,6 +162,7 @@ public sealed class AutopilotRunner
         ExploitAction action,
         ConcurrentDictionary<string, FlagMatch> flagsSeen,
         Dictionary<string, CveFetchOutcome> cveFetchTried,
+        ConcurrentDictionary<string, byte> cveLlmAttempted,
         CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
@@ -196,7 +207,7 @@ public sealed class AutopilotRunner
                     // cve.lead.unfetchable and mark the CVE as a dead end
                     // for the rest of this RunAsync so subsequent leads
                     // for the same id skip without re-querying sources.
-                    return await RunCveLeadAsync(action, cveFetchTried, sw, ct).ConfigureAwait(false);
+                    return await RunCveLeadAsync(action, cveFetchTried, cveLlmAttempted, flagsSeen, sw, ct).ConfigureAwait(false);
                 default:
                     return Skip(action, $"unknown tool '{action.Tool}'", sw);
             }
@@ -209,6 +220,8 @@ public sealed class AutopilotRunner
     private async Task<ExploitActionResult> RunCveLeadAsync(
         ExploitAction action,
         Dictionary<string, CveFetchOutcome> cveFetchTried,
+        ConcurrentDictionary<string, byte> cveLlmAttempted,
+        ConcurrentDictionary<string, FlagMatch> flagsSeen,
         Stopwatch sw, CancellationToken ct)
     {
         var cveId = action.CveId;
@@ -291,6 +304,76 @@ public sealed class AutopilotRunner
         }
 
         cveFetchTried[key] = CveFetchOutcome.Empty;
+
+        // cve-lead-llm-author-fallback — last-chance authoring path. The
+        // facts.htb R3+R4 fights showed 640/640 cve-leads dead-ending here
+        // because no source had a cached or on-demand artifact. The R5 win
+        // came from a Copilot driver authoring shell commands from CVE
+        // knowledge. This bridges that gap: prompt the LLM with structured
+        // context and the bounded exec_shell handle, then feed any
+        // authored-and-run result back into the autopilot loop.
+        //
+        // Every gate (AllowCveLeadLlmAuthor master, AllowExecShell
+        // dependency, no-LLM-key, attempted dedup) is enforced inside
+        // CveLeadLlmAuthor.TryAuthorAsync; failures fall through to the
+        // pre-existing unfetchable skip without disturbing the audit chain.
+        if (_cveLeadLlmAuthor is not null)
+        {
+            CveLeadLlmAuthorResult llmResult;
+            try
+            {
+                llmResult = await _cveLeadLlmAuthor.TryAuthorAsync(action, cveLlmAttempted, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (ScopeException ex)
+            {
+                // Defense-in-depth scope refusal from the bridge — propagate
+                // through the standard ExecuteAsync ScopeException handler
+                // shape so the audit chain matches every other tool.
+                _audit.Record("cve.lead.unfetchable", new Dictionary<string, object?>
+                {
+                    ["id"] = action.Id,
+                    ["cve"] = key,
+                    ["target"] = action.Target,
+                    ["port"] = action.Port,
+                    ["refs"] = result.RefCount,
+                    ["reason"] = $"scope_refused: {ex.Message}",
+                });
+                return Fail(action, $"scope: {ex.Message}", sw);
+            }
+
+            if (llmResult.DidAuthorShell && llmResult.ShellResult is { } shell)
+            {
+                _flagExtractor.ScanText(shell.StdoutTruncated,
+                    $"cve-lead-llm:{action.Target}:{action.Port}", flagsSeen);
+                _audit.Record("cve.lead.unfetchable", new Dictionary<string, object?>
+                {
+                    ["id"] = action.Id,
+                    ["cve"] = key,
+                    ["target"] = action.Target,
+                    ["port"] = action.Port,
+                    ["refs"] = result.RefCount,
+                    ["reason"] = "llm_authored_exec_shell",
+                    ["argv_digest"] = shell.ArgvDigest,
+                    ["exit_code"] = shell.ExitCode,
+                });
+                sw.Stop();
+                return new ExploitActionResult
+                {
+                    Action = action,
+                    Succeeded = shell.ExitCode == 0 && !shell.KilledOnTimeout,
+                    ExitCode = shell.ExitCode,
+                    Error = shell.Error,
+                    DurationMs = sw.ElapsedMilliseconds,
+                };
+            }
+            // Skip / no-key / disabled / error / already-attempted all
+            // fall through to the standard unfetchable skip — the bridge
+            // has already audited the detailed reason in its own event
+            // chain (cve.lead.llm_author.*).
+        }
+
         _audit.Record("cve.lead.unfetchable", new Dictionary<string, object?>
         {
             ["id"] = action.Id,

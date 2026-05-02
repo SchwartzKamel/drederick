@@ -711,7 +711,10 @@ var permissions = new RunPermissions(
     allowDos: opts.AllowDos,
     acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk,
     allowPhishing: opts.AllowPhishing,
-    allowSmtpRelay: opts.AllowSmtpRelay);
+    allowSmtpRelay: opts.AllowSmtpRelay,
+    allowExecShell: opts.AllowExecShell,
+    allowExecShellBash: opts.AllowExecShellBash,
+    allowCveLeadLlmAuthor: opts.AllowCveLeadLlmAuthor || opts.LabMode);
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions);
 var http = new HttpProbeTool(scope, audit);
@@ -736,6 +739,8 @@ var nseProxy = new NseProxy(scope, audit, labMode: opts.LabMode, permissions: pe
 var s3Probe = new S3MinioProbeTool(scope, audit);
 // --- cms fingerprint (gap-036) ---
 var cmsFingerprint = new CmsFingerprintTool(scope, audit);
+// --- smb null-session + anon ldap (gap-042) ---
+var smbNullSession = new Drederick.Recon.Ad.SmbNullSessionTool(scope, audit);
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
@@ -778,6 +783,7 @@ var toolbox = new ReconToolbox(
         nseProxy,
         s3Probe,
         cmsFingerprint,
+        smbNullSession,
     },
     audit,
     reconBudget);
@@ -1177,6 +1183,27 @@ if (opts.Autopilot)
         // GAP-033 — wire the on-demand PoC fetcher so cve-lead actions
         // route to the aggregator when the recon-time cache was empty.
         var autopilotPocAggregator = new PocAggregator(audit: audit);
+
+        // cve-lead-llm-author-fallback (R3+R4 facts.htb gap): when the
+        // PoC aggregator returns nothing, prompt the LLM to author an
+        // exec_shell command from CVE knowledge. The bridge enforces
+        // permission gates, scope re-validation, plaintext discipline,
+        // and a 1-LLM-call/1-exec_shell budget per cve-lead. With no
+        // chat client wired the bridge cleanly audits no_llm_key and
+        // the autopilot continues exactly like before. Production
+        // chat-client wiring (Copilot/Azure/OpenAI) is a follow-up;
+        // the gates and integration ship now so the loop closes the
+        // moment a Func is provided.
+        LlmExecShellTool? autopilotExecShell = null;
+        if (permissions.AllowExecShell)
+        {
+            autopilotExecShell = new LlmExecShellTool(scope, audit, permissions, opts.OutputDir);
+        }
+        var cveLeadLlmAuthor = new CveLeadLlmAuthor(
+            scope, audit, permissions,
+            execShell: autopilotExecShell,
+            llm: null);
+
         var autopilot = new AutopilotRunner(
             scope, audit, permissions, planner, credStore, flagExtractor,
              opts.OutputDir,
@@ -1184,6 +1211,7 @@ if (opts.Autopilot)
              spray: spray,
              msf: msf,
              pocAggregator: autopilotPocAggregator,
+             cveLeadLlmAuthor: cveLeadLlmAuthor,
              fetchPoc: opts.FetchPoc,
              maxIterations: opts.AutopilotMaxIterations,
              maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
