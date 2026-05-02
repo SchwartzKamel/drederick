@@ -5,7 +5,10 @@ namespace Drederick.Agent;
 
 internal static class LlmToolCatalog
 {
-    internal static List<AIFunction> BuildAiFunctions(ReconToolbox tools, LlmExploitTools? exploitTools)
+    internal static List<AIFunction> BuildAiFunctions(
+        ReconToolbox tools,
+        LlmExploitTools? exploitTools,
+        LlmNotebookTool? notebook = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -46,9 +49,25 @@ internal static class LlmToolCatalog
         }
         // --- end llm-exploit-wiring ---
 
+        // --- llm-notebook-wiring ---
+        // Long-term fight notebook. Lets the model record observations,
+        // tactics, gaps, mistakes, winning moves, and lessons during a
+        // run so the operator can review between fights and the planner
+        // can replay them into future engagements. Local-disk only —
+        // no network surface, no scope/permission gate (note-taking is
+        // bookkeeping, not an offensive action).
+        if (notebook is not null)
+        {
+            aiTools.AddRange(notebook.BuildAiFunctions());
+        }
+        // --- end llm-notebook-wiring ---
+
         return aiTools;
     }
 
-    internal static IList<AITool> BuildAiTools(ReconToolbox tools, LlmExploitTools? exploitTools) =>
-        BuildAiFunctions(tools, exploitTools).Cast<AITool>().ToArray();
+    internal static IList<AITool> BuildAiTools(
+        ReconToolbox tools,
+        LlmExploitTools? exploitTools,
+        LlmNotebookTool? notebook = null) =>
+        BuildAiFunctions(tools, exploitTools, notebook).Cast<AITool>().ToArray();
 }
