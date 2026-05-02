@@ -732,6 +732,8 @@ var nativeScanner = new NativeScannerTool(scope, audit);
 var nativeDns = new NativeDnsTool(scope, audit);
 var fingerprintStack = new Drederick.Enrichment.FingerprintStack.FingerprintStackTool(scope, audit);
 var nseProxy = new NseProxy(scope, audit, labMode: opts.LabMode, permissions: permissions);
+// --- s3 minio probe (gap-037) ---
+var s3Probe = new S3MinioProbeTool(scope, audit);
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
@@ -772,6 +774,7 @@ var toolbox = new ReconToolbox(
         nativeScanner, nativeDns,
         fingerprintStack,
         nseProxy,
+        s3Probe,
     },
     audit,
     reconBudget);
