@@ -989,6 +989,13 @@ var kerberoast = new Drederick.Exploit.Ad.KerberoastTool(
 var ntdsSamDump = new Drederick.Exploit.PostEx.Windows.NtdsSamDumpTool(
     scope, audit, permissions, opts.OutputDir, credentialStore: null);
 
+// ZeroLogon (CVE-2020-1472): native C# Netlogon auth bypass for DC compromise.
+// Exploits AES-CFB8 IV reuse to set DC machine password to empty, then optionally
+// extracts domain credentials via secretsdump. Requires BOTH --allow-cred-attacks
+// AND --allow-destructive (modifies DC state, breaks replication until restored).
+// Lab/CTF use only. Master gates: CredAttacks + Destructive.
+var zeroLogon = new ZeroLogonTool(scope, audit, permissions, exploitRunner);
+
 var exploitBudgetBase = opts.UseAgent
     ? Drederick.Exploit.ToolBudget.LlmDefault
     : Drederick.Exploit.ToolBudget.Default;
@@ -1001,7 +1008,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sshKeyPassphraseBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sshKeyPassphraseBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump, zeroLogon },
     audit,
     exploitBudget);
 
