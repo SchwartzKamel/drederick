@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Text.RegularExpressions;
 using Drederick.Audit;
@@ -11,6 +13,14 @@ namespace Drederick.Recon;
 /// HTTP fingerprinting probe. GETs "/" and reports status, title, server
 /// header, and which common security headers are missing. Does not follow
 /// redirects off the target host and does not submit credentials.
+/// <para>
+/// GAP-032: targets may be either a literal IP or a hostname. Hostnames
+/// are resolved via DNS; the resolved IP is what <see cref="Scope.Scope.Require"/>
+/// authorizes — the hostname alone is informational (used for the
+/// <c>Host:</c> header and SNI). On a 3xx → Location to a different
+/// hostname, the result records <c>VhostRequired</c>/<c>VhostHostname</c>
+/// so the planner / LLM retries with the hostname as the target.
+/// </para>
 /// </summary>
 public sealed partial class HttpProbeTool : IReconTool
 {
@@ -18,7 +28,8 @@ public sealed partial class HttpProbeTool : IReconTool
 
     public string Description =>
         "Fetch an HTTP(S) response from a single port and return status, title, server, " +
-        "and which common security headers are missing. Non-exploitative.";
+        "and which common security headers are missing. Accepts hostname targets " +
+        "(resolved IP must pass scope). Non-exploitative.";
 
     private static readonly string[] SecurityHeaders =
     [
@@ -38,11 +49,89 @@ public sealed partial class HttpProbeTool : IReconTool
 
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
+    private readonly Func<string, CancellationToken, Task<IPAddress[]>> _dnsResolver;
+    private readonly Func<IPAddress, HttpMessageHandler>? _handlerFactory;
 
     public HttpProbeTool(Scope.Scope scope, AuditLog audit)
+        : this(scope, audit, null, null)
+    {
+    }
+
+    internal HttpProbeTool(
+        Scope.Scope scope,
+        AuditLog audit,
+        Func<string, CancellationToken, Task<IPAddress[]>>? dnsResolver,
+        Func<IPAddress, HttpMessageHandler>? handlerFactory)
     {
         _scope = scope;
         _audit = audit;
+        _dnsResolver = dnsResolver ?? ((host, ct) => Dns.GetHostAddressesAsync(host, ct));
+        _handlerFactory = handlerFactory;
+    }
+
+    /// <summary>
+    /// Resolved-target record: which IP we will dial, the optional
+    /// hostname for <c>Host:</c>/SNI, and every IP the hostname mapped
+    /// to (for the audit trail). Only the <see cref="ResolvedIp"/> is
+    /// authorized — DNS rebinding is mitigated by validating the IP and
+    /// always dialing it via <c>SocketsHttpHandler.ConnectCallback</c>.
+    /// </summary>
+    internal sealed record ResolvedTarget(
+        IPAddress ResolvedIp,
+        string? Hostname,
+        IReadOnlyList<IPAddress> AllResolved);
+
+    /// <summary>
+    /// Resolve <paramref name="target"/> to an authorized IP. If
+    /// <paramref name="target"/> parses as an IP, returns it directly
+    /// after <c>_scope.Require</c>. Otherwise resolves via DNS and picks
+    /// the first IP that passes scope; throws <see cref="ScopeException"/>
+    /// when none resolved IPs are in scope.
+    /// </summary>
+    internal async Task<ResolvedTarget> ResolveAsync(string target, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(target);
+        // Strip brackets that callers may pass for bare-IPv6 targets.
+        var stripped = target.StartsWith('[') && target.EndsWith(']')
+            ? target.Substring(1, target.Length - 2)
+            : target;
+
+        if (IPAddress.TryParse(stripped, out var ipDirect))
+        {
+            // IP target — scope authorizes directly. Backward-compatible path.
+            _scope.Require(stripped);
+            return new ResolvedTarget(ipDirect, null, new[] { ipDirect });
+        }
+
+        // Hostname target. Resolve, then authorize the resolved IP.
+        IPAddress[] addrs;
+        try
+        {
+            addrs = await _dnsResolver(target, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw new ScopeException(
+                $"Failed to resolve hostname '{target}' for http_probe: {ex.Message}");
+        }
+        if (addrs.Length == 0)
+        {
+            throw new ScopeException(
+                $"Hostname '{target}' did not resolve to any address.");
+        }
+
+        foreach (var addr in addrs)
+        {
+            if (_scope.Contains(addr.ToString()))
+            {
+                _scope.Require(addr.ToString());
+                return new ResolvedTarget(addr, target, addrs);
+            }
+        }
+
+        var joined = string.Join(", ", addrs.Select(a => a.ToString()));
+        throw new ScopeException(
+            $"hostname '{target}' resolves to {{{joined}}}, none in scope.");
     }
 
     public async Task<HttpResult> ProbeAsync(
@@ -51,28 +140,43 @@ public sealed partial class HttpProbeTool : IReconTool
         bool useTls,
         CancellationToken ct = default)
     {
-        _scope.Require(target);
+        // Scope enforcement: target may be an IP or a hostname. Hostnames
+        // are resolved first, then the resolved IP is authorized via
+        // _scope.Require. The hostname is never an authorization signal.
+        // (@invariant-id:scope-in-every-tool — interpretation: the FIRST
+        // authorization call is _scope.Require on the resolved IP; no
+        // request to the target is issued before this.)
+        var resolved = await ResolveAsync(target, ct).ConfigureAwait(false);
 
         var scheme = useTls ? "https" : "http";
-        var url = $"{scheme}://{target}:{port}/";
+        var authority = BuildAuthority(resolved.Hostname ?? resolved.ResolvedIp.ToString());
+        var url = $"{scheme}://{authority}:{port}/";
+
         _audit.Record("http.start", new Dictionary<string, object?>
         {
             ["target"] = target,
             ["url"] = url,
+            ["resolved_ip"] = resolved.ResolvedIp.ToString(),
+            ["hostname"] = resolved.Hostname,
+            ["all_resolved"] = resolved.AllResolved.Select(a => a.ToString()).ToArray(),
         });
 
-        // Lab targets frequently use self-signed certs. Accept them for
-        // fingerprinting; never submit credentials or follow off-host redirects.
-        var handler = new HttpClientHandler
+        var handler = _handlerFactory is not null
+            ? _handlerFactory(resolved.ResolvedIp)
+            : BuildSocketsHandler(resolved.ResolvedIp);
+
+        using var http = new HttpClient(handler, disposeHandler: true)
         {
-            AllowAutoRedirect = false,
-            ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
-            SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            Timeout = TimeSpan.FromSeconds(15),
         };
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("drederick/0.1 (+lab-recon)");
 
-        var result = new HttpResult { Url = url };
+        var result = new HttpResult
+        {
+            Url = url,
+            Hostname = resolved.Hostname,
+            ResolvedIp = resolved.ResolvedIp.ToString(),
+        };
         try
         {
             using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
@@ -89,17 +193,16 @@ public sealed partial class HttpProbeTool : IReconTool
                 .Where(h => !allHeaders.Contains(h))
                 .ToList();
 
-            if (resp.StatusCode is HttpStatusCode.Redirect or HttpStatusCode.MovedPermanently
-                or HttpStatusCode.Found or HttpStatusCode.SeeOther
-                or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
+            if (IsRedirect(resp.StatusCode))
             {
-                result.FinalUrl = resp.Headers.Location?.ToString();
+                var loc = resp.Headers.Location?.ToString();
+                result.FinalUrl = loc;
+                DetectVhost(target, resolved, loc, result);
             }
 
             if ((resp.Content.Headers.ContentType?.MediaType ?? "").Contains("html",
                     StringComparison.OrdinalIgnoreCase))
             {
-                // Read at most MaxTitleBufferBytes for title extraction.
                 var buf = new byte[MaxTitleBufferBytes];
                 await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                 int total = 0;
@@ -131,7 +234,102 @@ public sealed partial class HttpProbeTool : IReconTool
             ["url"] = url,
             ["status"] = result.Status,
             ["error"] = result.Error,
+            ["vhost_required"] = result.VhostRequired,
+            ["vhost_hostname"] = result.VhostHostname,
         });
         return result;
+    }
+
+    private static bool IsRedirect(HttpStatusCode code) =>
+        code is HttpStatusCode.Redirect or HttpStatusCode.MovedPermanently
+            or HttpStatusCode.Found or HttpStatusCode.SeeOther
+            or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
+
+    /// <summary>
+    /// Inspect a 3xx Location and, if it points at a hostname authority
+    /// distinct from the target we just probed, flag the finding as
+    /// vhost-routed and emit an audit event so the operator and the LLM
+    /// planner can retry with the hostname as the target.
+    /// </summary>
+    internal void DetectVhost(string target, ResolvedTarget resolved, string? location, HttpResult result)
+    {
+        if (string.IsNullOrEmpty(location)) return;
+        if (!Uri.TryCreate(location, UriKind.RelativeOrAbsolute, out var uri)) return;
+        if (!uri.IsAbsoluteUri) return;
+
+        var locHost = uri.Host;
+        if (string.IsNullOrEmpty(locHost)) return;
+
+        // If Location points back at the same IP/hostname, this isn't a
+        // vhost redirect (just an in-app redirect). Filter those out.
+        if (string.Equals(locHost, resolved.ResolvedIp.ToString(), StringComparison.OrdinalIgnoreCase))
+            return;
+        if (resolved.Hostname is not null
+            && string.Equals(locHost, resolved.Hostname, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Only flag when Location authority is a hostname (not another IP).
+        // Cross-IP redirects are a different (out-of-scope) concern.
+        if (IPAddress.TryParse(locHost, out _)) return;
+
+        result.VhostRequired = true;
+        result.VhostHostname = locHost;
+        _audit.Record("http.vhost.detected", new Dictionary<string, object?>
+        {
+            ["target"] = target,
+            ["resolved_ip"] = resolved.ResolvedIp.ToString(),
+            ["vhost_hostname"] = locHost,
+            ["location"] = location,
+        });
+    }
+
+    /// <summary>
+    /// Wraps an IPv6 literal in brackets when used as a URI authority.
+    /// Hostnames and IPv4 literals pass through unchanged.
+    /// </summary>
+    private static string BuildAuthority(string host)
+    {
+        if (IPAddress.TryParse(host, out var ip)
+            && ip.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            return $"[{host}]";
+        }
+        return host;
+    }
+
+    /// <summary>
+    /// Build a <see cref="SocketsHttpHandler"/> whose <c>ConnectCallback</c>
+    /// always dials the scope-authorized resolved IP. The HTTP layer still
+    /// uses the URI authority for <c>Host:</c> and SNI, which is exactly
+    /// what vhost-routed apps require — and DNS rebinding is mitigated
+    /// because the URI's hostname is never re-resolved by the runtime.
+    /// </summary>
+    private static SocketsHttpHandler BuildSocketsHandler(IPAddress resolvedIp)
+    {
+        return new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            },
+            ConnectCallback = async (context, ct) =>
+            {
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    await socket.ConnectAsync(
+                        new IPEndPoint(resolvedIp, context.DnsEndPoint.Port), ct)
+                        .ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            },
+        };
     }
 }

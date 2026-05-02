@@ -258,6 +258,18 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         artifacts. JobTwo r4 lost because nmap returned [] and the
         runner stopped; the planner now harvests ports from every
         signal, and so should you.
+
+        Vhost-routed apps (GAP-032 / facts.htb fight): If an http_probe
+        returns 3xx → Location with a hostname (e.g. status=302,
+        final_url=http://facts.htb/login), you MUST retry the probe
+        with that hostname as the target — IP-only requests cannot
+        reach vhost-routed apps and you will only see the redirect
+        bounce, never the real content. http_probe accepts hostname
+        targets; the resolved IP is what scope authorizes, and the
+        hostname is automatically sent in Host: + SNI. When a
+        hostname is in scope (resolves to a scope IP), prefer the
+        hostname over the bare IP for HTTP requests — it gives you
+        the actual application surface.
         """;
 
     internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)

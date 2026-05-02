@@ -83,6 +83,16 @@ public sealed class HttpResult
     [JsonPropertyName("content_type")] public string? ContentType { get; set; }
     [JsonPropertyName("missing_security_headers")] public List<string> MissingSecurityHeaders { get; set; } = new();
     [JsonPropertyName("error")] public string? Error { get; set; }
+
+    // GAP-032: vhost-aware http_probe. When a probe to an IP returns
+    // 3xx → Location with a hostname authority, mark the finding so the
+    // planner / LLM retries with the hostname as the target. The hostname
+    // is informational (`Host:` header + SNI); the resolved IP is what
+    // _scope.Require authorizes.
+    [JsonPropertyName("vhost_required")] public bool VhostRequired { get; set; }
+    [JsonPropertyName("vhost_hostname")] public string? VhostHostname { get; set; }
+    [JsonPropertyName("hostname")] public string? Hostname { get; set; }
+    [JsonPropertyName("resolved_ip")] public string? ResolvedIp { get; set; }
 }
 
 public sealed class TlsResult

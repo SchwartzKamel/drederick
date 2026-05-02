@@ -188,9 +188,13 @@ public sealed class ReconToolbox
     }
 
     [Description("Fetch an HTTP(S) response from a single port and return status, title, server, " +
-                 "and which common security headers are missing. Non-exploitative.")]
+                 "and which common security headers are missing. Accepts hostname OR IP targets — " +
+                 "hostname is resolved via DNS and the resolved IP must pass scope; the hostname " +
+                 "is sent in the Host header (and SNI for HTTPS) so vhost-routed apps return their " +
+                 "real content. On a 3xx → Location with a hostname, sets vhost_required + " +
+                 "vhost_hostname so you can retry with the hostname as the target.")]
     public async Task<string> HttpProbeAsync(
-        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Target IP or hostname (must resolve to an in-scope IP).")] string target,
         [Description("TCP port number.")] int port,
         [Description("Use TLS (https) if true.")] bool useTls,
         CancellationToken ct = default)
