@@ -260,12 +260,17 @@ public sealed partial class HttpProbeTool : IReconTool
         var locHost = uri.Host;
         if (string.IsNullOrEmpty(locHost)) return;
 
-        // If Location points back at the same IP/hostname, this isn't a
-        // vhost redirect (just an in-app redirect). Filter those out.
-        if (string.Equals(locHost, resolved.ResolvedIp.ToString(), StringComparison.OrdinalIgnoreCase))
+        // If Location points back at the same IP/hostname that was used as
+        // the *request target*, this is an in-app redirect, not a vhost
+        // redirect. Compare against `target` (the caller-supplied argument),
+        // NOT `resolved.Hostname` — reverse DNS may resolve the IP to
+        // exactly the vhost hostname (e.g. 10.x → facts.htb), which would
+        // cause us to miss the redirect when the request was sent to the IP.
+        if (string.Equals(locHost, target, StringComparison.OrdinalIgnoreCase))
             return;
-        if (resolved.Hostname is not null
-            && string.Equals(locHost, resolved.Hostname, StringComparison.OrdinalIgnoreCase))
+
+        // If Location points at the resolved IP itself, also not a vhost.
+        if (string.Equals(locHost, resolved.ResolvedIp.ToString(), StringComparison.OrdinalIgnoreCase))
             return;
 
         // Only flag when Location authority is a hostname (not another IP).
