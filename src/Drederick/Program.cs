@@ -616,7 +616,12 @@ var spray = new PasswordSprayTool(
         labMode: opts.LabMode,
         useAgent: opts.UseAgent,
         explicitOverride: opts.CredSprayTimeoutSeconds));
-var httpSpray = new NativeHttpSprayTool(scope, audit, permissions);
+var httpSpray = new NativeHttpSprayTool(
+    scope, audit, permissions,
+    timeoutSeconds: PasswordSprayTool.ResolveDefaultTimeoutSeconds(
+        labMode: opts.LabMode,
+        useAgent: opts.UseAgent,
+        explicitOverride: opts.CredSprayTimeoutSeconds));
 
 // Empire tools
 var empireStager = new EmpireAgentStager(scope, audit);
