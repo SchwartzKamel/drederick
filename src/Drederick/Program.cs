@@ -239,6 +239,15 @@ if (!string.IsNullOrEmpty(opts.NoteSubcommand))
 }
 // --- end note-subcommand-wiring -----------------------------------------------
 
+// --- llm-fight-notebook-subcommand-wiring ---
+if (!string.IsNullOrEmpty(opts.NotebookSubcommand))
+{
+    using var notebookCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; notebookCts.Cancel(); };
+    return await Drederick.Learning.Cli.NotebookCommand.RunAsync(opts, notebookCts.Token);
+}
+// --- end llm-fight-notebook-subcommand-wiring ---
+
 // --- jeopardy-cli-wiring ---
 if (opts.CtfSolveSubcommand)
 {
@@ -1056,6 +1065,36 @@ audit.Record("llm.exploit_tools.ready", new Dictionary<string, object?>
 });
 // --- end llm-exploit-wiring ---
 
+// --- llm-notebook-wiring ---
+// Long-term fight notebook. Persists LLM-authored observations,
+// tactics, gaps, mistakes, winning moves, and lessons to JSONL so
+// `drederick notes` can review them between fights and the planner
+// can replay them into future engagements.
+//
+// Two sinks (mirrors docs/LEARNING_LOOP.md):
+//   • <out>/fight-notes.jsonl                  (per-run)
+//   • ~/.drederick/fight-notebook.jsonl        (cross-fight aggregate)
+//
+// Disabled when --no-telemetry is set: notes are part of the same
+// learning-loop substrate as telemetry, so the same opt-out covers
+// both. The audit log still records the take attempt regardless.
+var fightNotebook = new Drederick.Learning.FightNotebook(
+    runPath: Path.Combine(opts.OutputDir, "fight-notes.jsonl"),
+    aggregatePath: Drederick.Learning.FightNotebook.DefaultAggregatePath(),
+    audit: audit,
+    enabled: opts.Telemetry);
+var llmNotebookTool = new Drederick.Agent.LlmNotebookTool(
+    fightNotebook,
+    fightId: null,
+    targetArchetype: null);
+audit.Record("llm.notebook.ready", new Dictionary<string, object?>
+{
+    ["enabled"] = fightNotebook.Enabled,
+    ["run_path"] = fightNotebook.RunPath,
+    ["aggregate_path"] = fightNotebook.AggregatePath,
+});
+// --- end llm-notebook-wiring ---
+
 if (!opts.Quiet)
 {
     // Live progress: one-liner per tool invocation on stderr so stdout stays
@@ -1071,7 +1110,8 @@ if (opts.UseAgent)
         opts.LlmProvider,
         opts.AzureDeploymentMap,
         audit,
-        llmExploitTools);
+        llmExploitTools,
+        notebook: llmNotebookTool);
     if (agentRunner is null)
     {
         var requestedProviderName = opts.LlmProvider.ToString().ToLowerInvariant();
@@ -1161,7 +1201,8 @@ if (opts.UseHybridAgent)
         opts.LlmProvider,
         opts.AzureDeploymentMap,
         audit,
-        llmExploitTools);
+        llmExploitTools,
+        notebook: llmNotebookTool);
     if (llmCandidate is not null)
     {
         llmInner = llmCandidate;
