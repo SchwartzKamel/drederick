@@ -1436,13 +1436,13 @@ public sealed class CommandLineOptions
                                detailed strings and dependencies. --output: write
                                results to file (default: stdout).
           windows-vulns        Moriarty-style Windows privesc triage against the
-                               bundled offline MSRC corpus (33 entries: EternalBlue,
-                               ZeroLogon, PrintNightmare, HiveNightmare, SMBGhost,
-                               ProxyLogon, Log4Shell, Spring4Shell, AFD.sys, CLFS,
-                               …). --list prints every CVE; --analyze --postex-json
-                               <file> reads a captured PostExWindowsResult JSON
-                               and prints prioritised candidates. Read-only,
-                               offline, no scope, no subprocess.
+                               bundled offline MSRC corpus (EternalBlue, ZeroLogon,
+                               PrintNightmare, HiveNightmare, SMBGhost, ProxyLogon,
+                               Log4Shell, Spring4Shell, AFD.sys, CLFS, …). --list
+                               prints every CVE; --analyze --postex-json <file>
+                               reads a captured PostExWindowsResult JSON and prints
+                               prioritised candidates. Read-only, offline, no scope,
+                               no subprocess.
           note <op>            Manage operator notes in findings.db
                                (CTF flags, creds, screenshots, observations).
                                Ops: add, list, view, search, flags, archive,

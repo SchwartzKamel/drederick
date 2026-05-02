@@ -10,7 +10,7 @@ namespace Drederick.Cli;
 /// <list type="bullet">
 ///   <item><c>--list</c> prints every CVE / bulletin / title / severity in
 ///   the bundled <see cref="WindowsMsrcCorpus"/>. Operator-friendly
-///   listing (mirrors Moriarty's <c>--list-vulns</c>). No scope, no
+///   listing analogous to Moriarty's vuln listing. No scope, no
 ///   subprocess, no network.</item>
 ///   <item><c>--analyze --postex-json &lt;file&gt;</c> reads a captured
 ///   <see cref="PostExWindowsResult"/> JSON, builds a
@@ -116,6 +116,16 @@ public sealed class WindowsVulnsCommand
         catch (JsonException ex)
         {
             _err.WriteLine($"windows-vulns --analyze: failed to parse JSON: {ex.Message}");
+            return 2;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _err.WriteLine($"windows-vulns --analyze: permission denied reading {opts.WindowsVulnsPostExJson}: {ex.Message}");
+            return 2;
+        }
+        catch (IOException ex)
+        {
+            _err.WriteLine($"windows-vulns --analyze: I/O error reading {opts.WindowsVulnsPostExJson}: {ex.Message}");
             return 2;
         }
         if (postex is null)
