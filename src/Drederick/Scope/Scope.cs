@@ -14,18 +14,38 @@ namespace Drederick.Scope;
 public sealed class Scope
 {
     public IReadOnlyList<ScopeEntry> Entries { get; }
+
+    /// <summary>
+    /// Optional deny-overlay rules. A target that matches any exclude entry is
+    /// rejected by <see cref="Require"/> even if it also matches an
+    /// <see cref="Entries"/> rule (deny wins). Sourced exclusively from the
+    /// scope file's <c>exclude:</c> list — never from CLI flags, env vars, or
+    /// LLM input.
+    /// </summary>
+    public IReadOnlyList<ScopeEntry> Excludes { get; }
     public string Source { get; }
 
     internal Scope(IReadOnlyList<ScopeEntry> entries, string source)
+        : this(entries, Array.Empty<ScopeEntry>(), source) { }
+
+    internal Scope(IReadOnlyList<ScopeEntry> entries, IReadOnlyList<ScopeEntry> excludes, string source)
     {
         Entries = entries;
+        Excludes = excludes;
         Source = source;
     }
 
-    /// <summary>True if <paramref name="target"/> parses as an IP and falls inside the scope.</summary>
+    /// <summary>
+    /// True if <paramref name="target"/> parses as an IP, falls inside an
+    /// include rule, and is NOT covered by any exclude rule (deny wins).
+    /// </summary>
     public bool Contains(string target)
     {
         if (!IPAddress.TryParse(target, out var ip)) return false;
+        foreach (var ex in Excludes)
+        {
+            if (ex.Contains(ip)) return false;
+        }
         foreach (var e in Entries)
         {
             if (e.Contains(ip)) return true;
@@ -37,15 +57,38 @@ public sealed class Scope
     /// Throws <see cref="ScopeException"/> if <paramref name="target"/> is not a valid
     /// IP address that falls inside the scope. This is the required guard for every
     /// tool that touches the network.
+    /// <para>
+    /// Precedence: exclude rules are evaluated first and hard-deny — a target
+    /// matching any <see cref="Excludes"/> entry is rejected with a message
+    /// naming the exclude rule that fired, even if it also matches an include
+    /// rule. Include rules are then consulted; default-deny applies if neither
+    /// matches.
+    /// </para>
     /// </summary>
     public void Require(string target)
     {
-        if (!Contains(target))
+        if (!IPAddress.TryParse(target, out var ip))
         {
             throw new ScopeException(
                 $"Target '{target}' is not in scope (source: {Source}). " +
                 "Add it to the scope file or refuse the action.");
         }
+        foreach (var ex in Excludes)
+        {
+            if (ex.Contains(ip))
+            {
+                throw new ScopeException(
+                    $"Target '{target}' excluded by scope.exclude rule {ex.Display} " +
+                    $"(source: {Source}).");
+            }
+        }
+        foreach (var e in Entries)
+        {
+            if (e.Contains(ip)) return;
+        }
+        throw new ScopeException(
+            $"Target '{target}' is not in scope (source: {Source}). " +
+            "Add it to the scope file or refuse the action.");
     }
 
     /// <summary>
@@ -100,12 +143,27 @@ public sealed class ScopeEntry
     public int PrefixLength { get; }
     public AddressFamily Family => Network.AddressFamily;
 
+    /// <summary>
+    /// Optional human-readable origin label (e.g. the hostname that resolved
+    /// to this network, or the raw scope-file line). Used by
+    /// <see cref="Scope.Require"/> to produce informative deny messages.
+    /// </summary>
+    public string? OriginLabel { get; }
+
+    /// <summary>Display form: "<c>10.10.10.5/32 (prod.example.com)</c>" if an origin
+    /// label is present, otherwise "<c>10.10.10.5/32</c>".</summary>
+    public string Display => OriginLabel is null ? ToString() : $"{this} ({OriginLabel})";
+
     private readonly BigInteger _networkInt;
     private readonly BigInteger _mask;
     private readonly int _totalBits;
 
     public ScopeEntry(IPAddress network, int prefixLength)
+        : this(network, prefixLength, null) { }
+
+    public ScopeEntry(IPAddress network, int prefixLength, string? originLabel)
     {
+        OriginLabel = originLabel;
         _totalBits = network.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
         if (prefixLength < 0 || prefixLength > _totalBits)
             throw new ScopeException($"Invalid prefix length {prefixLength}.");

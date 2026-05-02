@@ -162,4 +162,166 @@ public class ScopeTests
     {
         Assert.Throws<ScopeException>(() => ScopeLoader.LoadFile("/nonexistent/path.txt"));
     }
+
+    // ---- deny-overlay (exclude:) tests ----
+
+    [Fact]
+    public void Scope_Empty_Exclude_Behaves_As_Before()
+    {
+        // YAML form with no exclude key — must behave identically to legacy.
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   """;
+        var s = ScopeLoader.Parse(yaml);
+        Assert.True(s.Contains("10.10.10.5"));
+        Assert.True(s.Contains("10.10.255.1"));
+        Assert.False(s.Contains("10.11.0.1"));
+        s.Require("10.10.10.5");
+        Assert.Throws<ScopeException>(() => s.Require("10.11.0.1"));
+        Assert.Empty(s.Excludes);
+    }
+
+    [Fact]
+    public void Scope_Excludes_Single_Ip_Even_If_Cidr_Includes_It()
+    {
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   exclude:
+                     - 10.10.10.5
+                   """;
+        var s = ScopeLoader.Parse(yaml);
+        Assert.True(s.Contains("10.10.10.4"));
+        Assert.False(s.Contains("10.10.10.5"));
+        Assert.Throws<ScopeException>(() => s.Require("10.10.10.5"));
+        s.Require("10.10.10.4"); // sibling still ok
+    }
+
+    [Fact]
+    public void Scope_Excludes_Cidr_Subset()
+    {
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   exclude:
+                     - 10.10.10.0/28
+                   """;
+        var s = ScopeLoader.Parse(yaml);
+        // /28 covers .0–.15
+        Assert.False(s.Contains("10.10.10.0"));
+        Assert.False(s.Contains("10.10.10.7"));
+        Assert.False(s.Contains("10.10.10.15"));
+        Assert.True(s.Contains("10.10.10.16"));
+        Assert.True(s.Contains("10.10.20.5"));
+        Assert.Throws<ScopeException>(() => s.Require("10.10.10.7"));
+    }
+
+    [Fact]
+    public void Scope_Excludes_Hostname_After_Resolution()
+    {
+        // 'localhost' resolves to 127.0.0.1 (and ::1) on every supported
+        // platform; use it as a hostname that can be tested without network.
+        var yaml = """
+                   include:
+                     - 127.0.0.0/8
+                   exclude:
+                     - localhost
+                   """;
+        var s = ScopeLoader.Parse(yaml, allowBroad: true);
+        Assert.False(s.Contains("127.0.0.1"));
+        Assert.True(s.Contains("127.0.0.2"));
+        var ex = Assert.Throws<ScopeException>(() => s.Require("127.0.0.1"));
+        // Hostname origin label must surface in the deny message.
+        Assert.Contains("localhost", ex.Message);
+    }
+
+    [Fact]
+    public void ScopeLoader_Refuses_Wildcard_In_Exclude()
+    {
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   exclude:
+                     - 0.0.0.0/0
+                   """;
+        var ex = Assert.Throws<ScopeException>(() => ScopeLoader.Parse(yaml));
+        Assert.Contains("wildcard", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        var yamlV6 = """
+                     include:
+                       - fd00::/32
+                     exclude:
+                       - ::/0
+                     """;
+        Assert.Throws<ScopeException>(() => ScopeLoader.Parse(yamlV6));
+    }
+
+    [Fact]
+    public void Scope_Exclude_Wins_Over_Include_Match()
+    {
+        // The "JobTwo-corp-CTF" case: whole /16 is in scope EXCEPT one box
+        // which is the customer's prod. Even though both rules match, the
+        // exclude takes precedence (deny wins).
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   exclude:
+                     - 10.10.10.5
+                   """;
+        var s = ScopeLoader.Parse(yaml);
+        // Belt-and-braces: include rule does cover .5 ...
+        Assert.Contains(s.Entries, e => e.Contains(System.Net.IPAddress.Parse("10.10.10.5")));
+        // ... but Require still denies.
+        Assert.Throws<ScopeException>(() => s.Require("10.10.10.5"));
+    }
+
+    [Fact]
+    public void ScopeException_Message_Names_The_Exclude_Rule_That_Fired()
+    {
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   exclude:
+                     - 10.10.10.5
+                     - 10.10.20.0/28
+                   """;
+        var s = ScopeLoader.Parse(yaml);
+        var ex1 = Assert.Throws<ScopeException>(() => s.Require("10.10.10.5"));
+        Assert.Contains("10.10.10.5", ex1.Message);
+        Assert.Contains("excluded by scope.exclude rule", ex1.Message);
+
+        var ex2 = Assert.Throws<ScopeException>(() => s.Require("10.10.20.7"));
+        Assert.Contains("10.10.20.0/28", ex2.Message);
+        Assert.Contains("excluded by scope.exclude rule", ex2.Message);
+    }
+
+    [Fact]
+    public void Yaml_Without_Include_Key_Is_Refused()
+    {
+        // YAML-shaped but no include list — default-deny posture preserved.
+        var yaml = """
+                   exclude:
+                     - 10.10.10.5
+                   """;
+        Assert.Throws<ScopeException>(() => ScopeLoader.Parse(yaml));
+    }
+
+    [Fact]
+    public void Yaml_Mixed_Cidr_And_Single_Ip_In_Exclude()
+    {
+        var yaml = """
+                   include:
+                     - 10.10.0.0/16
+                   exclude:
+                     - 10.10.1.1
+                     - 10.10.2.0/30
+                   """;
+        var s = ScopeLoader.Parse(yaml);
+        Assert.Equal(2, s.Excludes.Count);
+        Assert.False(s.Contains("10.10.1.1"));
+        Assert.True(s.Contains("10.10.1.2"));
+        Assert.False(s.Contains("10.10.2.1"));
+        Assert.True(s.Contains("10.10.2.5"));
+    }
 }
