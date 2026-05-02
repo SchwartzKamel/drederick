@@ -54,7 +54,8 @@ public sealed class SshHostkeyTool : IReconTool
         _scope.Require(target);
         _audit.Record("ssh-hostkey.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
         });
 
         var result = new SshHostkeyResult { Port = port };
@@ -79,7 +80,8 @@ public sealed class SshHostkeyTool : IReconTool
 
         _audit.Record("ssh-hostkey.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
             ["banner"] = result.Banner,
             ["host_key_algorithms"] = result.HostKeyAlgorithms.Count,
             ["error"] = result.Error,

@@ -36,7 +36,10 @@ public sealed class HttpMethodsTool : IReconTool
         var url = NativeHttpClientFactory.BuildUrl(target, port, tls);
         _audit.Record("http-methods.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["tls"] = tls, ["url"] = url,
+            ["target"] = target,
+            ["port"] = port,
+            ["tls"] = tls,
+            ["url"] = url,
         });
 
         var result = new HttpMethodsResult { Url = url };
@@ -64,7 +67,9 @@ public sealed class HttpMethodsTool : IReconTool
 
         _audit.Record("http-methods.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["status"] = result.Status,
+            ["target"] = target,
+            ["port"] = port,
+            ["status"] = result.Status,
             ["allow_count"] = result.Allow.Count,
             ["risky_count"] = result.RiskyMethods.Count,
             ["error"] = result.Error,

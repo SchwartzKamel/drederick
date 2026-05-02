@@ -44,7 +44,8 @@ public sealed class SslCertTool : IReconTool
         _scope.Require(target);
         _audit.Record("ssl-cert.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
+            ["target"] = target,
+            ["port"] = port,
         });
 
         var result = new SslCertResult { Port = port };
@@ -66,8 +67,10 @@ public sealed class SslCertTool : IReconTool
 
         _audit.Record("ssl-cert.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port,
-            ["subject"] = result.Subject, ["error"] = result.Error,
+            ["target"] = target,
+            ["port"] = port,
+            ["subject"] = result.Subject,
+            ["error"] = result.Error,
         });
         return result;
     }

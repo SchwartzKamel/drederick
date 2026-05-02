@@ -33,7 +33,10 @@ public sealed class HttpRobotsTool : IReconTool
         var url = NativeHttpClientFactory.BuildUrl(target, port, tls, "/robots.txt");
         _audit.Record("http-robots.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["tls"] = tls, ["url"] = url,
+            ["target"] = target,
+            ["port"] = port,
+            ["tls"] = tls,
+            ["url"] = url,
         });
 
         var result = new HttpRobotsResult { Url = url };
@@ -54,7 +57,9 @@ public sealed class HttpRobotsTool : IReconTool
 
         _audit.Record("http-robots.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["status"] = result.Status,
+            ["target"] = target,
+            ["port"] = port,
+            ["status"] = result.Status,
             ["disallowed"] = result.Disallowed.Count,
             ["allowed"] = result.Allowed.Count,
             ["sitemaps"] = result.Sitemaps.Count,

@@ -41,6 +41,17 @@ public sealed class KnowledgeBase
     [JsonPropertyName("pivot_findings")]
     public List<PivotKbEntry> PivotFindings { get; set; } = new();
 
+    /// <summary>
+    /// SharpHound / BloodHound ingest output. Populated by
+    /// <see cref="Drederick.Memory.SharpHoundIngest"/> and consumed by
+    /// the planner to prioritize follow-ups (kerberoastable users get
+    /// fed to <c>KerberoastTool</c>; AS-REP-roastable users get fed to
+    /// <c>AsRepRoastTool</c>; unconstrained-delegation hosts move to
+    /// the front of the post-ex queue).
+    /// </summary>
+    [JsonPropertyName("bloodhound")]
+    public BloodhoundFindings? Bloodhound { get; set; }
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
@@ -133,6 +144,35 @@ public sealed class KnowledgeBase
         if (openPorts.Count == 0) return $"prior scan at {f.Finished}: no open ports";
         var parts = openPorts.Select(p => $"{p.Port}/{p.Service ?? "?"}");
         return $"prior scan at {f.Finished}: " + string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Ingest a SharpHound zip into the knowledge base. The full
+    /// <see cref="BloodhoundFindings"/> is stored under
+    /// <see cref="Bloodhound"/>; subsequent calls append into the
+    /// existing bucket so multiple SharpHound runs can be merged.
+    /// Thread-safe.
+    /// </summary>
+    public BloodhoundIngestResult IngestSharpHoundZip(string zipPath)
+    {
+        lock (_gate)
+        {
+            Bloodhound ??= new BloodhoundFindings();
+            return SharpHoundIngest.IngestZip(zipPath, Bloodhound);
+        }
+    }
+
+    /// <summary>
+    /// Ingest a single SharpHound JSON file. Same merge semantics as
+    /// <see cref="IngestSharpHoundZip"/>.
+    /// </summary>
+    public BloodhoundIngestResult IngestSharpHoundJsonFile(string jsonPath)
+    {
+        lock (_gate)
+        {
+            Bloodhound ??= new BloodhoundFindings();
+            return SharpHoundIngest.IngestJsonFile(jsonPath, Bloodhound);
+        }
     }
 
     /// <summary>Record the successful execution of an Empire module on a target.</summary>

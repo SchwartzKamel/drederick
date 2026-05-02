@@ -169,25 +169,19 @@ public class HostDiscoveryToolTests
     [Fact]
     public async Task Sweep_Respects_CancellationToken()
     {
-        var scope = ScopeLoader.Parse("127.0.0.1");
+        var scope = ScopeLoader.Parse("10.255.255.0/24");
         using var audit = NewAudit();
         var tool = new HostDiscoveryTool(scope, audit);
 
-        // Pick a closed port so each probe burns its full timeout.
-        int closedPort;
-        using (var tmp = new TcpListener(IPAddress.Loopback, 0))
-        {
-            tmp.Start();
-            closedPort = ((IPEndPoint)tmp.LocalEndpoint).Port;
-        }
-
         using var cts = new CancellationTokenSource();
-        cts.CancelAfter(50);
+        cts.CancelAfter(100);
 
+        // Use an unreachable IP so connect attempts take the full timeout.
+        // This ensures cancellation fires before natural completion.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => tool.SweepAsync(
-                Enumerable.Repeat("127.0.0.1", 64).ToList(),
-                ports: new[] { closedPort },
+                Enumerable.Range(1, 32).Select(i => $"10.255.255.{i}").ToList(),
+                ports: new[] { 80, 443 },
                 connectTimeoutMs: 5000,
                 maxConcurrency: 4,
                 ct: cts.Token));

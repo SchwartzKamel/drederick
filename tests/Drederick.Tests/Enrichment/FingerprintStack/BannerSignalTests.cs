@@ -7,14 +7,14 @@ namespace Drederick.Tests.Enrichment.FingerprintStack;
 public class BannerSignalTests
 {
     [Theory]
-    [InlineData("Apache/2.4.41 (Ubuntu)",          "apache",   "http_server",  "2.4.41")]
-    [InlineData("nginx/1.18.0",                    "nginx",    "nginx",        "1.18.0")]
-    [InlineData("Microsoft-IIS/10.0",              "microsoft","iis",          "10.0")]
-    [InlineData("OpenSSH_8.2p1 Ubuntu-4ubuntu0.5", "openbsd",  "openssh",      "8.2p1")]
-    [InlineData("vsftpd 3.0.3",                    "vsftpd",   "vsftpd",       "3.0.3")]
-    [InlineData("MySQL 8.0.32",                    "oracle",   "mysql",        "8.0.32")]
-    [InlineData("Apache Tomcat/9.0.65",            "apache",   "tomcat",       "9.0.65")]
-    [InlineData("Jenkins/2.387.3",                 "jenkins",  "jenkins",      "2.387.3")]
+    [InlineData("Apache/2.4.41 (Ubuntu)", "apache", "http_server", "2.4.41")]
+    [InlineData("nginx/1.18.0", "nginx", "nginx", "1.18.0")]
+    [InlineData("Microsoft-IIS/10.0", "microsoft", "iis", "10.0")]
+    [InlineData("OpenSSH_8.2p1 Ubuntu-4ubuntu0.5", "openbsd", "openssh", "8.2p1")]
+    [InlineData("vsftpd 3.0.3", "vsftpd", "vsftpd", "3.0.3")]
+    [InlineData("MySQL 8.0.32", "oracle", "mysql", "8.0.32")]
+    [InlineData("Apache Tomcat/9.0.65", "apache", "tomcat", "9.0.65")]
+    [InlineData("Jenkins/2.387.3", "jenkins", "jenkins", "2.387.3")]
     public void ExactPattern_MatchesAtHighWeight(string banner, string vendor, string product, string version)
     {
         var sig = new BannerSignal();

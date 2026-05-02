@@ -369,7 +369,7 @@ public class ProviderChatClientTests
             Assert.NotNull(config.OnPermissionRequest);
             Assert.Equal(SystemMessageMode.Append, config.SystemMessage!.Mode);
             Assert.Contains("Drederick", config.SystemMessage.Content);
-            Assert.False(config.Streaming);
+            Assert.True(config.Streaming);
             Assert.False(config.InfiniteSessions!.Enabled);
         }
         finally

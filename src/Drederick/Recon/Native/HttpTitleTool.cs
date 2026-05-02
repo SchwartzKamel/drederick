@@ -38,7 +38,10 @@ public sealed partial class HttpTitleTool : IReconTool
         var url = NativeHttpClientFactory.BuildUrl(target, port, tls);
         _audit.Record("http-title.start", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["tls"] = tls, ["url"] = url,
+            ["target"] = target,
+            ["port"] = port,
+            ["tls"] = tls,
+            ["url"] = url,
         });
 
         var result = new HttpTitleResult { Url = url };
@@ -56,8 +59,11 @@ public sealed partial class HttpTitleTool : IReconTool
 
         _audit.Record("http-title.finish", new Dictionary<string, object?>
         {
-            ["target"] = target, ["port"] = port, ["status"] = result.Status,
-            ["has_title"] = result.Title is not null, ["error"] = result.Error,
+            ["target"] = target,
+            ["port"] = port,
+            ["status"] = result.Status,
+            ["has_title"] = result.Title is not null,
+            ["error"] = result.Error,
         });
         return result;
     }
