@@ -340,12 +340,192 @@
 ### GAP-035: Escalate gap-031b-2 (Git-Clone PoC Sources) — Load-Bearing for Auto-Takedown
 - **Exposed by:** facts-2026-05-02-R3, facts-2026-05-02-R4
 - **Severity:** high (meta — escalation, not new fix)
+- **Status (update 2026-05-02 later):** ✅ resolved as escalation — the
+  todo `gap-031b-2-git-poc-sources` is in flight (concurrent agent zone
+  `gap-031b-2-git-poc-sources` — `MetasploitGitSource`,
+  `NucleiTemplatesGitSource`, `PocInGitHubSource`, `GitPocSourceShared`
+  staged in working tree). Close on landing; production-tape credit
+  pending the next CVE-driven box.
 - **Impact:** The GAP-033 cve-lead router (`8751e4a`) is sound — production tape confirms it invokes `PocAggregator.FetchOnDemandAsync` per CVE. But every fetch returns unfetchable on R3+R4 because `PocAggregator` only ships on-disk probe sources (msf-on-disk, nuclei-templates-on-disk) and the operator workstation has neither installed. **640 of 640 cve-leads slipped per fight, both fights**, despite 31 CVEs matched on the box. This is now the single biggest blocker between Drederick's recon stack and an autonomous takedown. Without git-clone PoC sources, the router has nowhere to fetch from; with them, the router pulls from `rapid7/metasploit-framework`, `projectdiscovery/nuclei-templates`, `nomi-sec/PoC-in-GitHub`, `trickest/cve` on demand and the cve-lead action self-promotes to `nuclei`/`msfrc` as designed.
 - **Status:** open, **escalated to top priority**
 - **Description:** This gap does not introduce a new fix — it surfaces that the existing todo `gap-031b-2-git-poc-sources` (sparse-checkout-based on-demand git-clone PoC sources matching the maximalist matching contract) has become load-bearing in production. Until it lands, GAP-033's router runs unfed and every CVE-driven box where the operator workstation lacks pre-installed msf modules / nuclei templates loses on the autopilot card.
 - **Suggested fix:** Ship `gap-031b-2`. Implement `IPocSource` for each of: `metasploit-framework` (sparse-checkout `modules/exploits/**`, `modules/auxiliary/**`, `modules/post/**`), `nuclei-templates` (sparse-checkout CVE folder), `PoC-in-GitHub` and `trickest/cve` (raw-fetch referenced files). Cache to `out/poc_cache/<source>/<external_id>/` with provenance per `docs/MODULES.md`. Use `git clone --depth=1 --filter=blob:none` then `sparse-checkout set` for repo-shaped sources. Use `GITHUB_TOKEN` when set. Respect the existing 5 MB / 2 GB caps. Audit every fetch as `poc.fetch`. Once shipped, GAP-033's `FetchOnDemandAsync` has somewhere to call and the cve-lead → `nuclei`/`msfrc` self-promotion path closes end-to-end.
 - **Code path:** `src/Drederick/Enrichment/PocAggregator.cs`, new `IPocSource` implementations alongside `SearchsploitSource.cs`. Owner zone: `enrichment-*`.
 - **Resolution:** unblocks once `gap-031b-2` ships; close GAP-035 the same day.
+
+### GAP-036: CMS Fingerprinting Tool
+- **Exposed by:** facts-2026-05-02-R5-copilot (operator yaml numbers this GAP-034 — registry uses GAP-036, see changelog)
+- **Severity:** high
+- **Impact:** Drederick's banner-only fingerprint stack failed to identify
+  CameleonCMS 2.9.0 across R1-R4 on Facts despite `cama_*` cookie names,
+  Rails 8.0.2 generator metadata, and theme asset paths being present in
+  every `http_probe` response. Cornerman fingerprinted it manually by
+  eyeball in seconds. Without CMS identification the GAP-041 chain
+  templates have nothing to dispatch on; this is the upstream blocker
+  for the entire CMS exploitation pattern (CameleonCMS, WordPress,
+  Joomla, Drupal, Ghost, Strapi, …).
+- **Status:** open
+- **Description:** Add a CMS fingerprint tool that reads cookie names,
+  HTML `<meta name="generator">`, theme asset paths
+  (`/assets/<theme>/...`), CSS class prefixes, JavaScript globals, and
+  HTTP headers, and matches against a CMS fingerprint corpus
+  (CameleonCMS, WordPress, Joomla, Drupal, Ghost, Strapi, Shopify,
+  Magento, …). Should plug into the existing `LearnedFingerprintStore`
+  so successful fingerprints persist across fights.
+- **Suggested fix:** New `IReconTool` `CmsFingerprintTool` under
+  `src/Drederick/Recon/` (or as part of the fingerprint stack under
+  `src/Drederick/Enrichment/FingerprintStack/`). Seed the corpus from
+  Wappalyzer's open-source rule database. Emit `cms.fingerprint` audit
+  events; record `(product, version, confidence)` tuples on
+  `HostFinding.Http`. Expose to the LLM with a precise `[Description]`
+  so the planner picks it after `http_probe`.
+- **Code path:** new `src/Drederick/Recon/CmsFingerprintTool.cs` or
+  `src/Drederick/Enrichment/FingerprintStack/CmsFingerprinter.cs`;
+  wire into `ReconToolbox`. Owner zone: `recon-*` or
+  `enrichment-fingerprint`.
+- **Resolution:**
+
+### GAP-037: MinIO/S3 Service Prober
+- **Exposed by:** facts-2026-05-02-R5-copilot
+- **Severity:** high
+- **Impact:** Port 54321/tcp on Facts was the pivot — internal MinIO
+  bucket carrying the `trivia` ed25519 SSH key. Drederick's autopilot
+  saw it as "unknown service" because no probe in the bag speaks the
+  S3 API on non-standard ports. Cornerman pivoted with `aws-cli
+  --endpoint http://10.129.30.236:54321`. Without an S3-aware probe
+  every backup-bucket-pivot box stays opaque.
+- **Status:** open
+- **Description:** S3-compatible storage (MinIO, Ceph RGW, Wasabi,
+  AWS S3 directly) frequently runs on non-standard ports in lab/CTF
+  scenarios. The probe should detect S3 API surface from
+  `ListBuckets` / `GetBucketLocation` / `?versioning` responses,
+  enumerate buckets when credentials land in the credential store,
+  and list keys recursively into the `loot` table.
+- **Suggested fix:** New `IReconTool` `MinioProbeTool` (and/or
+  `S3ProbeTool`) under `src/Drederick/Recon/`. Detect S3 surface via
+  the unauthenticated `GET /` XML envelope and HTTP headers
+  (`x-amz-*`). Once Drederick's `CredentialStore` carries S3
+  access/secret pairs, escalate to authenticated `ListBuckets` /
+  `ListObjectsV2` and stream artifacts into `out/<host>/s3/` with
+  SHA-256 + provenance.
+- **Code path:** new `src/Drederick/Recon/MinioProbeTool.cs`; wire
+  into `ReconToolbox` and the `ExploitationPlanner` port-harvest
+  signal. Owner zone: `recon-*`.
+- **Resolution:**
+
+### GAP-038: SQLite Credential Pillage Post-Ex
+- **Exposed by:** facts-2026-05-02-R5-copilot
+- **Severity:** high
+- **Impact:** `production.sqlite3` exfiltrated in step 5 of the chain
+  carried MinIO access/secret in plaintext in the `cama_metas` table.
+  Without an automated DB pillage step, every captured DB file
+  becomes manual-cornerman work. Pattern repeats across Rails / Django
+  / Laravel / WordPress / Joomla / Drupal / Strapi — the credentials
+  table is always somewhere on disk and always plaintext-or-decryptable.
+- **Status:** open
+- **Description:** Post-exploitation step that walks any captured
+  `.sqlite*` / `.db` / `.mdb` / `.sqlitedb` file (and SQL dumps),
+  enumerates tables, and grep-extracts likely credential fields
+  (`password`, `secret`, `key`, `token`, `access_key`, `aws_*`,
+  `s3_*`, `smtp_*`, `db_*`, `_credential`, `_token`, `_key`). Emit
+  to `loot` with SHA-256 of the secret value (per
+  `@invariant-id:audit-everything`).
+- **Suggested fix:** New post-ex tool under
+  `src/Drederick/PostEx/` (or `src/Drederick/Exploit/PostEx/`)
+  `SqlitePillageTool` that takes a path on a session, downloads via
+  the session, opens with `Microsoft.Data.Sqlite`, enumerates schema,
+  matches credential columns against a regex bank, writes findings
+  to `KnowledgeBase.CredentialStore` and `loot`.
+- **Code path:** new tool under `src/Drederick/PostEx/`; wire into
+  the post-ex dispatcher. Owner zone: post-ex.
+- **Resolution:**
+
+### GAP-039: SSH Key Passphrase Brute
+- **Exposed by:** facts-2026-05-02-R5-copilot
+- **Severity:** high
+- **Impact:** ed25519 key for `trivia` came out of the MinIO bucket
+  passphrase-encrypted. Cornerman cracked `dragonballz` in 3,185
+  tries against rockyou-1k via paramiko. Without this capability,
+  any captured key with a passphrase becomes manual work.
+- **Status:** open
+- **Description:** Take a captured private key file
+  (`-----BEGIN OPENSSH PRIVATE KEY-----` / RSA / ECDSA / DSA),
+  attempt empty passphrase, then iterate a wordlist with
+  lockout-aware throttling defaults-on. Record SHA-256 of attempted
+  passphrase only — never plaintext. On crack, decrypt the key,
+  store in `CredentialStore`, optionally chain into `ssh` session
+  open against any host where the key's `comment` field maps.
+- **Suggested fix:** New `ICredTool` `SshKeyPassphraseTool` under
+  `src/Drederick/Exploit/` (or `src/Drederick/PostEx/Cred/`).
+  Default wordlist: rockyou-1k. Cap attempts at 100k by default;
+  bcrypt-rounds-aware sizing for ed25519. Audit shape:
+  `ssh-key-brute.{start,attempt,finish}` with `secret_digest`
+  field per `@invariant-id:audit-everything`.
+- **Code path:** new `src/Drederick/Exploit/SshKeyPassphraseTool.cs`;
+  wire into `ExploitToolbox` and `CredentialStore`. Owner zone:
+  `exploit-*`.
+- **Resolution:**
+
+### GAP-040: sudo -l Enum + GTFOBins-Aware Privesc
+- **Exposed by:** facts-2026-05-02-R5-copilot
+- **Severity:** critical
+- **Impact:** `sudo -l` showed `(root) NOPASSWD: /usr/bin/facter` —
+  GTFOBins-canonical for sudo privesc via `--custom-dir`. Cornerman
+  loaded a custom Ruby fact and got root in one shot. Without this,
+  every "Linux user shell → root via sudo entry" path is manual.
+  On Linux easy-medium boxes this is the most common privesc vector.
+- **Status:** open
+- **Description:** Post-ex step that runs `sudo -l` on a Linux
+  session, parses the entry list, looks each binary up in a local
+  GTFOBins corpus, and synthesizes the exploit command. Should
+  cover the GTFOBins `sudo` taxonomy: shell, command, file-read,
+  file-write, library-load, environment, capabilities, suid.
+- **Suggested fix:** New post-ex tool under
+  `src/Drederick/PostEx/` `SudoEnumTool` + a GTFOBins corpus
+  embedded as a JSON resource (sourced from the
+  `GTFOBins/GTFOBins.github.io` repo data files). On a match,
+  return the synthesized command and (lab mode) execute via the
+  session; (strict mode) require `--allow-exec-pocs`. Audit shape:
+  `sudo-l.{start,parse,exploit}.{start,finish}` with target,
+  binary, and gtfobins-id.
+- **Code path:** new `src/Drederick/PostEx/SudoEnumTool.cs` +
+  `src/Drederick/PostEx/GtfoBinsCorpus.cs` (embedded JSON). Owner
+  zone: post-ex.
+- **Resolution:**
+
+### GAP-041: CMS Chain Templates (Multi-Stage)
+- **Exposed by:** facts-2026-05-02-R5-copilot
+- **Severity:** high
+- **Depends on:** GAP-036 (CMS fingerprint must fire first to pick
+  the right template)
+- **Impact:** CameleonCMS chain on Facts ran 5 conceptual steps
+  (register → mass-assign → traversal → DB exfil → S3 pivot) before
+  pivoting off the CMS surface. The same shape applies to
+  WordPress, Joomla, Drupal, Ghost, Strapi, Magento — register
+  endpoint → role escalation primitive → file read primitive →
+  credential database → service-credential pivot. Without
+  templated chains the LLM has to re-derive the pattern every box.
+- **Status:** open (blocked on GAP-036)
+- **Description:** A multi-stage chain bank under
+  `src/Drederick/Autopilot/Chains/` keyed by `(cms_product,
+  cms_version_range)`. Each chain is a sequence of named steps
+  with parameter-binding contracts (output of step N → input of
+  step N+1). The `MicrosoftAgentRunner` and `AdaptiveRunner` both
+  consult the bank when GAP-036 produces a CMS fingerprint hit.
+- **Suggested fix:** New `IExploitChain` interface under
+  `src/Drederick/Autopilot/`. Ship CameleonCMS 2.x first (matching
+  the demonstrated chain on Facts) as a reference implementation.
+  Then WordPress 5.x/6.x, Joomla 4.x/5.x, Drupal 9.x/10.x.
+  Persist `chain.run.{start,step,finish}` audit events with chain
+  id, step index, step result. Each step re-checks scope (per
+  `@invariant-id:scope-in-every-tool`).
+- **Code path:** new `src/Drederick/Autopilot/Chains/` with
+  `IExploitChain.cs`, `CameleonCmsChain.cs`, `WordPressChain.cs`,
+  …; wire into `MicrosoftAgentRunner` and `AdaptiveRunner` as a
+  preferred-action when CMS fingerprint lands. Owner zone:
+  `autopilot`.
+- **Resolution:** open until GAP-036 lands; ship CameleonCMS chain
+  as the first reference template once it does.
 
 ### GAP-031: Autopilot Plan 100% Spray-Based Despite CVE Evidence
 - **Exposed by:** jobtwo-2026-05-02-R5
@@ -363,11 +543,11 @@
 
 | Severity | Total | Open | In Progress | Resolved | Workaround | Planned | Partial |
 |----------|-------|------|-------------|----------|------------|---------|---------|
-| Critical | 11    | 2    | 0           | 6        | 2 workaround | 1     | 0       |
-| High     | 13    | 7    | 0           | 6        |            | 1       | 0       |
+| Critical | 12    | 3    | 0           | 6        | 2 workaround | 1     | 0       |
+| High     | 18    | 12   | 0           | 7        |            | 1       | 0       |
 | Medium   | 9     | 6    | 1 blocked   | 1        |            | 1       | 0       |
 | Low      | 2     | 2    | 0           | 0        |            | 0       | 0       |
-| **Total**| **35**| **17**| **1**      | **13**   | **2 workaround** | **3** | **0**   |
+| **Total**| **41**| **23**| **1**      | **14**   | **2 workaround** | **3** | **0**   |
 
 ---
 
@@ -384,3 +564,4 @@
 - **2026-05-02:** GAP-029 (high — tool budget caps starve Hard boxes), GAP-030 (critical — no phishing/macro subsystem), GAP-031 (high — autopilot plan 100% spray-based despite CVE evidence) added from JobTwo r5 tape (30 sprays / 0 connects / 34 min). GAP-025 status moves `open` → `partially resolved` — `claude-sonnet-4.6` via Copilot called `exploit_plan` / `run_multi_stage` / `execute_cred_spray` ×5 unprompted; depth half tracked under GAP-031.
 - **2026-05-02:** GAP-032 (critical — native HTTP probes can't use Host header / hostname targets) and GAP-033 (high — `cve-lead` autopilot actions all skipped, no router from lead → PoC fetch → LLM handoff) added from facts-2026-05-02-R1/R2 (two losses, 6 min each, 0 errors / 0 budget denials, 1,611 audit events on R2 — densest fight on file; 1,271 cve-leads slipped on R2 with 31 CVEs matched). GAP-025 status moves `partially resolved` → `resolved` — facts-R2 had `claude-sonnet-4.6` calling `exploit_plan` (`ok=true`), `run_multi_stage`, `execute_cred_spray`, **and `extract_flags_from_dir` proactively**; remaining "non-spray exploit selection" reattributed to GAP-031 (cache breadth) + GAP-033 (cve-lead routing). Production-tape credit landings: `26f72e4` (GAP-029 tunable per-tool budget — 0 denials), `b9bbdb5` (no-nmap-from-LLM — 0 LLM-issued nmap calls), `1808cea` (tunable native HTTP timeout), `d773904` (GAP-031b PoC cache priming — 31 CVEs into the planner).
 - **2026-05-02 (later):** facts-2026-05-02-R3 + facts-2026-05-02-R4 tape study. GAP-032 + GAP-033 production-tape confirmed: `a9e305a` vhost fix landed clean (`http_probe` usage `0 → 35 → 48` across `R2 → R3 → R4`); `8751e4a` cve-lead router invokes `FetchOnDemandAsync` per CVE as designed. **GAP-033 effective only when PoC sources have artifacts** — R3+R4 returned 640/640 unfetchable per fight because `PocAggregator` only ships on-disk probe sources. New: GAP-034 (medium — `http.error` events lack reason taxonomy; manual tail-grep needed to distinguish closed-port exploration from vhost regression), GAP-035 (high, meta — escalates `gap-031b-2` git-clone PoC sources to top priority because the cve-lead router is now starved for artifacts). R3: 28 LLM calls / 1,624 events / 6 min. R4: 42 LLM calls / 1,785 events / 6 min — densest planner ever recorded. Operator caught a flag manually after R4 off-harness; Drederick's recon scaffold credited (31 CVEs, vhost reachable, 5 creds, full 25-tool LLM bag). Autopilot record on Facts now 0-4.
+- **2026-05-02 (later):** **First W of the harness arc.** facts-2026-05-02-R5-copilot tape study — Copilot cornerman ran an 11-step exploitation chain on Facts after 4 autonomous losses; both flags captured (user `e205d77c…d077d`, root `df6ad544…41c36`). Tag-team: Drederick laid the recon scaffold (R4's 31 CVEs, vhost reachable via GAP-032 fix, scope policy on the operator workstation), Copilot threw the chain (CameleonCMS register → CVE-2025-2304 mass-assign → CVE-2026-1776 traversal → SQLite `cama_metas` exfil → MinIO bucket raid via 54321/tcp → ed25519 SSH key passphrase brute → user shell → sudo `facter --custom-dir` → root). Steps 2-11 ran off-harness in operator bash; no `out-r5/` directory or `audit.jsonl` for this fight. Six new gaps land: **GAP-036** (high — CMS fingerprint), **GAP-037** (high — MinIO/S3 prober), **GAP-038** (high — SQLite credential pillage post-ex), **GAP-039** (high — SSH key passphrase brute), **GAP-040** (critical — `sudo -l` + GTFOBins lookup + exploit), **GAP-041** (high — CMS chain templates, depends on GAP-036). **Numbering note:** the operator's R5-copilot yaml entry uses `GAP-034` for the CMS-fingerprint gap; that number was already taken by `http.error` taxonomy from R3+R4. The operator's yaml is canonical for the operator's numbering; the registry uses GAP-036+ to avoid collision. **GAP-035 status update:** ✅ resolved as escalation — `gap-031b-2-git-poc-sources` is in flight (concurrent agent zone with `MetasploitGitSource`, `NucleiTemplatesGitSource`, `PocInGitHubSource`, `GitPocSourceShared` staged in working tree). Records: chain length 11 (prev. record: 1); Drederick autonomous on Facts 0-4; with cornerman 1-0; overall card per writeup `1-8-1` auto / **`2-8-1` with assist**. Pingpong-2026-05-02-R1 logged in parallel as in-flight (no `autopilot.finish` yet, 176 events, provider `azure_openai`, 14 LLM / 11 `http_probe` / 5 `execute_cred_spray` / 2 `msf-rc` / 3 `budget.deny`); next entry will tell the story. Pingpong is the test bed for whether `llm-exec-shell-tool`, `gap-031b-2`, `gap-032b`, and `gap-034-http-error-taxonomy` carry over to a fresh box.
