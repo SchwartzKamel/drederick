@@ -15,6 +15,7 @@
   <ItemGroup>
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="GitHub.Copilot.SDK" Version="0.3.0" />
+    <PackageReference Include="Kerberos.NET" Version="4.6.47" />
     <PackageReference Include="Lextm.SharpSnmpLib" Version="12.5.7" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.0.0" />
     <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.0.0" />

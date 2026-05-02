@@ -800,6 +800,12 @@ public sealed class CommandLineOptions
                     o.PhishStagerBind = RequireNext(args, ref i, a); break;
                 case "--phish-payload-cmd":
                     o.PhishPayloadCmd = RequireNext(args, ref i, a); break;
+                case "--allow-ad-attacks":
+                    o.AllowAdAttacks = true;
+                    o.AllowAdAttacksExplicit = true; break;
+                case "--no-allow-ad-attacks":
+                    o.AllowAdAttacks = false;
+                    o.AllowAdAttacksExplicit = false; break;
                 // --- end exploit opt-in flag parse ---
                 // --- autopilot flag parse ---
                 case "--autopilot":

@@ -714,7 +714,12 @@ var permissions = new RunPermissions(
     allowSmtpRelay: opts.AllowSmtpRelay,
     allowExecShell: opts.AllowExecShell,
     allowExecShellBash: opts.AllowExecShellBash,
-    allowCveLeadLlmAuthor: opts.AllowCveLeadLlmAuthor || opts.LabMode);
+    allowCveLeadLlmAuthor: opts.AllowCveLeadLlmAuthor || opts.LabMode,
+    // GAP-043: AD attack family (AS-REP roast, kerberoast, WinRM auth,
+    // NTDS dump). Default-on in lab mode; strict mode requires
+    // --allow-ad-attacks. --no-allow-ad-attacks lets an operator
+    // disable the family even inside lab.
+    allowAdAttacks: opts.AllowAdAttacksExplicit ?? (opts.AllowAdAttacks || opts.LabMode));
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions);
 var http = new HttpProbeTool(scope, audit);
@@ -843,6 +848,15 @@ audit.Record("replay.config", new Dictionary<string, object?>
 var empireStager = new EmpireAgentStager(scope, audit);
 var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary);
 
+// GAP-043: AS-REP roasting (managed Kerberos.NET, no impacket subprocess).
+// Master gate: ExploitCategory.AsRepRoast → RunPermissions.AllowAdAttacks.
+// CredentialStore is wired up later (after autopilot constructs it); for
+// the toolbox surface here we omit it — the LLM/AdaptiveRunner path
+// captures hashes on the returned AsRepRoastResult and the Autopilot
+// runner re-instantiates the tool with the live store.
+var asRepRoast = new Drederick.Exploit.Ad.AsRepRoastTool(
+    scope, audit, permissions, credentialStore: null);
+
 var exploitBudgetBase = opts.UseAgent
     ? Drederick.Exploit.ToolBudget.LlmDefault
     : Drederick.Exploit.ToolBudget.Default;
@@ -855,7 +869,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast },
     audit,
     exploitBudget);
 
