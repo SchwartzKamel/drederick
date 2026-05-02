@@ -362,10 +362,27 @@ public sealed class SmbNullSessionTool : IReconTool
         }
 
         // ---- LDAP layer (independent of SMB outcome — anon LDAP can be
-        // open even when SMB null-session is locked down). ----
-        var ldap = _ldapBackendFactory();
+        // open even when SMB null-session is locked down). GAP-042-samr:
+        // skip this phase entirely when SAMR already produced users —
+        // the SAMR list is authoritative on hardened DCs that lock down
+        // LDAP user enum. We still hit LDAP when SAMR returned nothing
+        // (rpcclient missing, access denied, or genuine empty domain)
+        // so naming contexts + SASL mechs remain visible. ----
+        bool samrYieldedUsers = users.Count > 0;
+        if (samrYieldedUsers)
+        {
+            _audit.Record("smb-null-session.ldap_skipped", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["reason"] = "samr_users_present",
+                ["samr_user_count"] = users.Count,
+            });
+        }
+        var ldap = samrYieldedUsers ? null : _ldapBackendFactory();
         try
         {
+            if (ldap is not null)
+            {
             var ldapResult = await ldap.QueryAsync(
                 resolved.ResolvedIp, port: 389, timeout: _connectTimeout, ct).ConfigureAwait(false);
             if (ldapResult is not null)
@@ -399,6 +416,7 @@ public sealed class SmbNullSessionTool : IReconTool
                     }
                 }
             }
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -414,7 +432,7 @@ public sealed class SmbNullSessionTool : IReconTool
         }
         finally
         {
-            try { ldap.Dispose(); } catch { /* best-effort */ }
+            try { ldap?.Dispose(); } catch { /* best-effort */ }
         }
 
         var finding = new SmbNullSessionFinding

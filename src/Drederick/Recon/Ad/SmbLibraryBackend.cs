@@ -52,15 +52,28 @@ internal sealed class SmbLibraryBackend : ISmbNullSessionBackend
 {
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
+    private readonly SmbSamrEnumerator? _samr;
     private SMB2Client? _smb2;
     private SMB1Client? _smb1;
     private IPAddress? _ip;
     private bool _disposed;
 
     public SmbLibraryBackend(Scope.Scope scope, AuditLog audit)
+        : this(scope, audit, samr: null)
+    {
+    }
+
+    /// <summary>
+    /// Construct with an optional <see cref="SmbSamrEnumerator"/>. When
+    /// supplied, <see cref="SamrEnumDomainUsersAsync"/> shells out to
+    /// <c>rpcclient</c> for real SAMR enumeration (gap-042-samr); when
+    /// null the call returns an empty list (legacy contract).
+    /// </summary>
+    public SmbLibraryBackend(Scope.Scope scope, AuditLog audit, SmbSamrEnumerator? samr)
     {
         _scope = scope;
         _audit = audit;
+        _samr = samr;
     }
 
     public async Task<SmbNegotiateInfo?> NegotiateAsync(IPAddress ip, TimeSpan timeout, CancellationToken ct)
@@ -278,11 +291,21 @@ internal sealed class SmbLibraryBackend : ISmbNullSessionBackend
         return Task.FromResult<DomainPolicyInfo?>(null);
     }
 
-    public Task<IReadOnlyList<DomainUser>> SamrEnumDomainUsersAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<DomainUser>> SamrEnumDomainUsersAsync(CancellationToken ct)
     {
-        // SMBLibrary 1.5.7 does not expose SAMR primitives publicly.
-        // Tracked as gap-042-samr-over-smb-rpc follow-up.
-        return Task.FromResult<IReadOnlyList<DomainUser>>(Array.Empty<DomainUser>());
+        // GAP-042-samr: when an SmbSamrEnumerator is wired (production
+        // path) we shell out to rpcclient over the null-session SMB
+        // connection and parse `enumdomusers`. When no enumerator is
+        // injected we keep the legacy empty-list contract so older
+        // callers (and the SmbBackend_RpcMethodsReturnEmpty test) stay
+        // green.
+        if (_samr is null || _ip is null)
+        {
+            return Array.Empty<DomainUser>();
+        }
+        _scope.Require(_ip.ToString());
+        var result = await _samr.EnumerateDomainUsersAsync(_ip, ct).ConfigureAwait(false);
+        return result.Users;
     }
 
 #pragma warning disable CS1998

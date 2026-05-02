@@ -38,6 +38,7 @@ public sealed class DoctorRunner
         "seclists",
         "evil-winrm",
         "enum4linux-ng",
+        "rpcclient",
         "wfuzz",
         "magika",
         // Fuzzing tools (Recon/Fuzz/* subsystem):
@@ -80,6 +81,7 @@ public sealed class DoctorRunner
             ["kerbrute"] = new("kerbrute", Array.Empty<string>(), new[] { "version" }),
             ["evil-winrm"] = new("evil-winrm", Array.Empty<string>(), new[] { "--version", "-h" }),
             ["enum4linux-ng"] = new("enum4linux-ng", Array.Empty<string>(), new[] { "--help" }),
+            ["rpcclient"] = new("rpcclient", Array.Empty<string>(), new[] { "--version", "--help" }),
             ["wfuzz"] = new("wfuzz", Array.Empty<string>(), new[] { "--version" }),
             ["magika"] = new("magika", Array.Empty<string>(), new[] { "--version" }),
             // Fuzzing tools:

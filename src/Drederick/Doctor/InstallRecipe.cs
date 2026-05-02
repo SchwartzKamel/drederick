@@ -260,6 +260,33 @@ public static class InstallRecipes
                 return PipxBootstrapRecipe(tool, "enum4linux-ng", pm,
                     "enum4linux-ng via pipx; bootstrap pipx from the system package manager.");
 
+            case "rpcclient":
+                // rpcclient ships with samba-common-bin (Debian/Kali) /
+                // samba-client (Fedora/openSUSE) / smbclient (Arch).
+                // Required for GAP-042-samr's anonymous SAMR enum over
+                // SMB DCERPC.
+                return pm switch
+                {
+                    PackageManager.Apt => new InstallRecipe(tool,
+                        "apt-get install -y samba-common-bin", true,
+                        "rpcclient ships in samba-common-bin (Debian/Kali)."),
+                    PackageManager.Dnf => new InstallRecipe(tool,
+                        "dnf install -y samba-client", true,
+                        "rpcclient ships in samba-client (Fedora/RHEL)."),
+                    PackageManager.Pacman => new InstallRecipe(tool,
+                        "pacman -S --noconfirm smbclient", true,
+                        "rpcclient ships in smbclient (Arch)."),
+                    PackageManager.Zypper => new InstallRecipe(tool,
+                        "zypper install -y samba-client", true,
+                        "rpcclient ships in samba-client (openSUSE)."),
+                    PackageManager.Brew => new InstallRecipe(tool,
+                        "brew install samba", false,
+                        "rpcclient ships in samba (Homebrew)."),
+                    _ => new InstallRecipe(tool,
+                        "apt-get install -y samba-common-bin", true,
+                        "rpcclient ships in samba-common-bin (default recipe)."),
+                };
+
             case "wfuzz":
                 if (hasPipx)
                     return new InstallRecipe(tool, "pipx install wfuzz", false, "wfuzz via pipx.");
