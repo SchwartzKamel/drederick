@@ -839,6 +839,13 @@ var dbPillage = new Drederick.Exploit.PostEx.DbPillageTool(
 var sshKeyBrute = new Drederick.Exploit.PostEx.SshKeyBruteTool(
     scope, audit, permissions, opts.OutputDir, credentialStore: null);
 
+// GAP-040: sudo -l + GTFOBins one-shot privesc on a captured-key SSH
+// foothold. Two-phase: enumerate then optionally auto-execute the safe
+// variant of each match. Destructive candidates require
+// --allow-destructive on top of --allow-exec-pocs.
+var sudoGtfoBins = new Drederick.Exploit.PostEx.SudoGtfoBinsTool(
+    scope, audit, permissions, opts.OutputDir, credentialStore: null);
+
 // --- replay-timeout config (cross-protocol replay) ---
 // CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by
 // callers via CrossProtocolReplay.BuildDefault(...) — but we resolve the
@@ -883,7 +890,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, sshKeyBrute },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, sshKeyBrute, sudoGtfoBins },
     audit,
     exploitBudget);
 
