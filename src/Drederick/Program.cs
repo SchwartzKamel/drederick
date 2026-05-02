@@ -528,7 +528,9 @@ var permissions = new RunPermissions(
     allowPayloads: opts.AllowPayloads || opts.LabMode,
     allowDestructive: opts.AllowDestructive || opts.LabMode,
     allowDos: opts.AllowDos,
-    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk);
+    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk,
+    allowPhishing: opts.AllowPhishing,
+    allowSmtpRelay: opts.AllowSmtpRelay);
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions);
 var http = new HttpProbeTool(scope, audit);
@@ -549,6 +551,37 @@ var nativeScanner = new NativeScannerTool(scope, audit);
 var nativeDns = new NativeDnsTool(scope, audit);
 var fingerprintStack = new Drederick.Enrichment.FingerprintStack.FingerprintStackTool(scope, audit);
 var nseProxy = new NseProxy(scope, audit, labMode: opts.LabMode, permissions: permissions);
+
+// --- gap-029 budget construction ---
+// LLM-driven runs need substantially more headroom than deterministic
+// passes (R5 JobTwo loss: planner starved on http=3 / nmap=3 after 17
+// HTTP probes). Pick the mode-aware default, then apply per-flag CLI
+// overrides on top. The budget is a runaway-loop rate-limit; scope is
+// enforced inside every tool so adjusting caps does not weaken
+// authorization.
+var reconBudgetBase = opts.UseAgent
+    ? Drederick.Recon.ToolBudget.LlmDefault
+    : Drederick.Recon.ToolBudget.Default;
+var reconBudget = new Drederick.Recon.ToolBudget(
+    PerTargetPerTool: opts.BudgetPerTool ?? reconBudgetBase.PerTargetPerTool,
+    MaxTotalCalls: opts.BudgetGlobal ?? reconBudgetBase.MaxTotalCalls)
+{
+    PerToolOverrides = opts.BudgetPerToolOverrides.Count > 0
+        ? new Dictionary<string, int>(opts.BudgetPerToolOverrides)
+        : null,
+};
+audit.Record("budget.config", new Dictionary<string, object?>
+{
+    ["domain"] = "recon",
+    ["per_tool"] = reconBudget.PerTargetPerTool,
+    ["global"] = reconBudget.MaxTotalCalls,
+    ["overrides"] = opts.BudgetPerToolOverrides.Count > 0
+        ? (object)opts.BudgetPerToolOverrides
+        : null,
+    ["agent_mode"] = opts.UseAgent ? (opts.UseHybridAgent ? "hybrid" : "llm") : "adaptive",
+});
+// --- end gap-029 budget construction ---
+
 var toolbox = new ReconToolbox(
     new IReconTool[]
     {
@@ -559,7 +592,8 @@ var toolbox = new ReconToolbox(
         fingerprintStack,
         nseProxy,
     },
-    audit);
+    audit,
+    reconBudget);
 toolbox.SeedFromKnowledgeBase(kb, targets);
 
 // --- empire c2 ---
@@ -576,16 +610,46 @@ var empireModuleLibrary = new EmpireModuleLibrary(audit);
 var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
 var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
 var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);
-var spray = new PasswordSprayTool(scope, audit, permissions, exploitRunner);
+var spray = new PasswordSprayTool(
+    scope, audit, permissions, exploitRunner,
+    timeoutSeconds: PasswordSprayTool.ResolveDefaultTimeoutSeconds(
+        labMode: opts.LabMode,
+        useAgent: opts.UseAgent,
+        explicitOverride: opts.CredSprayTimeoutSeconds));
 var httpSpray = new NativeHttpSprayTool(scope, audit, permissions);
 
 // Empire tools
 var empireStager = new EmpireAgentStager(scope, audit);
 var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary);
 
+var exploitBudgetBase = opts.UseAgent
+    ? Drederick.Exploit.ToolBudget.LlmDefault
+    : Drederick.Exploit.ToolBudget.Default;
+var exploitBudget = new Drederick.Exploit.ToolBudget(
+    PerTargetPerTool: opts.BudgetPerTool ?? exploitBudgetBase.PerTargetPerTool,
+    MaxTotalCalls: opts.BudgetGlobal ?? exploitBudgetBase.MaxTotalCalls)
+{
+    PerToolOverrides = opts.BudgetPerToolOverrides.Count > 0
+        ? new Dictionary<string, int>(opts.BudgetPerToolOverrides)
+        : null,
+};
 var exploitToolbox = new ExploitToolbox(
     new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor },
+    audit,
+    exploitBudget);
+
+// Phishing/macro subsystem (GAP-030). Master gate is --allow-phishing on
+// RunPermissions; SMTP relay is sub-gated on --allow-smtp-relay. The
+// toolbox is a registry, not the authorization boundary — every tool
+// re-checks scope + the phishing category on its own entry point.
+var phishingGenerator = new Drederick.Exploit.Phishing.MacroPayloadGenerator(
+    scope, audit, permissions, opts.OutputDir);
+var phishingDelivery = new Drederick.Exploit.Phishing.PhishingDelivery(
+    scope, audit, permissions);
+var phishingToolbox = new Drederick.Exploit.Phishing.PhishingToolbox(
+    new Drederick.Exploit.Phishing.IPhishingTool[] { phishingGenerator, phishingDelivery },
     audit);
+
 audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
 {
     ["tools"] = exploitToolbox.Tools.Select(t => t.Name).ToList(),
@@ -595,6 +659,9 @@ audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
     ["allow_destructive"] = permissions.AllowDestructive,
     ["allow_dos"] = permissions.AllowDos,
     ["acknowledge_lockout_risk"] = permissions.AcknowledgeLockoutRisk,
+    ["allow_phishing"] = permissions.AllowPhishing,
+    ["allow_smtp_relay"] = permissions.AllowSmtpRelay,
+    ["phishing_tools"] = phishingToolbox.Tools.Select(t => t.Name).ToList(),
 });
 // --- end exploit tools ---
 
@@ -656,7 +723,9 @@ var llmExploitTools = new LlmExploitTools(
     pivot: llmExploitPivot,
     sessions: sessionManager,
     flags: llmExploitFlags,
-    multiStage: multiStage);
+    multiStage: multiStage,
+    phishGen: phishingGenerator,
+    phishDeliver: phishingDelivery);
 audit.Record("llm.exploit_tools.ready", new Dictionary<string, object?>
 {
     ["count"] = llmExploitTools.BuildAiTools().Count,
