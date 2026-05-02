@@ -31,6 +31,7 @@ public sealed class ReconToolbox
     private readonly NativeDnsTool? _nativeDns;
     private readonly Drederick.Enrichment.FingerprintStack.FingerprintStackTool? _fingerprintStack;
     private readonly S3MinioProbeTool? _s3;
+    private readonly CmsFingerprintTool? _cmsFingerprint;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -76,6 +77,7 @@ public sealed class ReconToolbox
         _nativeDns = materialized.OfType<NativeDnsTool>().SingleOrDefault();
         _fingerprintStack = materialized.OfType<Drederick.Enrichment.FingerprintStack.FingerprintStackTool>().SingleOrDefault();
         _s3 = materialized.OfType<S3MinioProbeTool>().SingleOrDefault();
+        _cmsFingerprint = materialized.OfType<CmsFingerprintTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -221,6 +223,25 @@ public sealed class ReconToolbox
         Charge(target, "s3");
         var r = await _s3.ProbeAsync(target, port, ct).ConfigureAwait(false);
         GetOrCreate(target).S3.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Identify the CMS / web framework running on a target. Embedded fingerprint corpus matches " +
+                 "CameleonCMS, WordPress, Drupal, Joomla, Magento, Ghost, TYPO3, SilverStripe, MediaWiki, " +
+                 "phpBB, SuiteCRM, ManageEngine via cookies, meta generator tags, response headers, HTML " +
+                 "patterns, and path probes. Returns ranked matches with version where extractable. Run " +
+                 "before exploitation planning to unlock CMS-specific chains.")]
+    public async Task<string> CmsFingerprintAsync(
+        [Description("Target IP or hostname (must resolve to an in-scope IP).")] string target,
+        [Description("TCP port (default 80).")] int port = 80,
+        [Description("Use TLS (https) if true.")] bool tls = false,
+        [Description("Optional Host header / vhost (gap-032 pattern).")] string? hostname = null,
+        CancellationToken ct = default)
+    {
+        if (_cmsFingerprint is null) throw new InvalidOperationException("CmsFingerprintTool not registered.");
+        Charge(target, "cms-fingerprint");
+        var r = await _cmsFingerprint.FingerprintAsync(target, port, tls, hostname, ct).ConfigureAwait(false);
+        GetOrCreate(target).CmsFingerprint.Add(r);
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
 

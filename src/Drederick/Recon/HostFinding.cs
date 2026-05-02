@@ -37,6 +37,8 @@ public sealed class HostFinding
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
     // --- s3 --- (GAP-037)
     [JsonPropertyName("s3")] public List<S3Finding> S3 { get; set; } = new();
+    // --- cms fingerprint --- (GAP-036)
+    [JsonPropertyName("cms_fingerprint")] public List<CmsFinding> CmsFingerprint { get; set; } = new();
 }
 
 /// <summary>
@@ -380,3 +382,18 @@ public sealed record S3ObjectEntry
     [JsonPropertyName("size")] public long Size { get; init; }
     [JsonPropertyName("last_modified")] public string? LastModified { get; init; }
 }
+
+// --- GAP-036 CMS fingerprint result records ---
+public sealed record CmsFinding
+{
+    [JsonPropertyName("target")] public required string Target { get; init; }
+    [JsonPropertyName("base_url")] public required string BaseUrl { get; init; }
+    [JsonPropertyName("matches")] public IReadOnlyList<CmsMatch> Matches { get; init; } = [];
+    [JsonPropertyName("error")] public string? Error { get; init; }
+}
+
+public sealed record CmsMatch(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("version")] string? Version,
+    [property: JsonPropertyName("confidence")] int Confidence,
+    [property: JsonPropertyName("signals_matched")] IReadOnlyList<string> SignalsMatched);

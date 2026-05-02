@@ -734,6 +734,8 @@ var fingerprintStack = new Drederick.Enrichment.FingerprintStack.FingerprintStac
 var nseProxy = new NseProxy(scope, audit, labMode: opts.LabMode, permissions: permissions);
 // --- s3 minio probe (gap-037) ---
 var s3Probe = new S3MinioProbeTool(scope, audit);
+// --- cms fingerprint (gap-036) ---
+var cmsFingerprint = new CmsFingerprintTool(scope, audit);
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
@@ -775,6 +777,7 @@ var toolbox = new ReconToolbox(
         fingerprintStack,
         nseProxy,
         s3Probe,
+        cmsFingerprint,
     },
     audit,
     reconBudget);
@@ -806,6 +809,10 @@ var httpSpray = new NativeHttpSprayTool(
         labMode: opts.LabMode,
         useAgent: opts.UseAgent,
         explicitOverride: opts.CredSprayTimeoutSeconds));
+// GAP-038: auto-credential pillage from captured DBs (SQLite/MySQL).
+// Reads embedded YAML corpus; pushes findings into CredentialStore.
+var dbPillage = new Drederick.Exploit.PostEx.DbPillageTool(
+    scope, audit, permissions, opts.OutputDir, credentialStore: null);
 
 // --- replay-timeout config (cross-protocol replay) ---
 // CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by
@@ -842,7 +849,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage },
     audit,
     exploitBudget);
 

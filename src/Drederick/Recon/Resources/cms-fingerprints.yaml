@@ -1,0 +1,213 @@
+# GAP-036: CMS / web-framework fingerprint corpus.
+# Quality > quantity. CameleonCMS is non-negotiable (R5-copilot win).
+# Each entry: name, optional description, signals (cookies, meta_generator,
+# header_patterns, html_patterns, path_probes), confidence_required (default 2),
+# version_extract (regex + source).
+fingerprints:
+  - name: CameleonCMS
+    description: "Ruby on Rails CMS (Camaleon)"
+    signals:
+      cookies:
+        - "_camaleon_cms_session"
+      meta_generator:
+        - "Camaleon CMS"
+      html_patterns:
+        - "(?i)<link[^>]+camaleon"
+        - "(?i)themes/camaleon"
+      header_patterns:
+        - "X-Powered-By: Camaleon"
+      path_probes:
+        - path: "/admin/login"
+          expect_status: [200, 302]
+          expect_body_contains: ["camaleon", "Camaleon"]
+        - path: "/admin/cama_uploads"
+          expect_status: [200, 302, 401, 403]
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)Camaleon\s+CMS\s*v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: html
+      - regex: '(?i)Camaleon\s+CMS\s*v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+
+  - name: WordPress
+    description: "WordPress CMS"
+    signals:
+      cookies:
+        - "wordpress_logged_in_*"
+        - "wp-settings-*"
+      meta_generator:
+        - "WordPress"
+      html_patterns:
+        - "(?i)wp-content/themes/"
+        - "(?i)wp-includes/"
+      path_probes:
+        - path: "/wp-login.php"
+          expect_status: [200]
+          expect_body_contains: ["WordPress"]
+        - path: "/wp-json/"
+          expect_status: [200]
+        - path: "/readme.html"
+          expect_status: [200]
+          expect_body_contains: ["WordPress"]
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)WordPress\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+      - regex: '(?i)WordPress\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: html
+
+  - name: Drupal
+    description: "Drupal CMS"
+    signals:
+      cookies:
+        - "SESS*"
+        - "Drupal.*"
+      header_patterns:
+        - "X-Generator: Drupal"
+      meta_generator:
+        - "Drupal"
+      html_patterns:
+        - "(?i)/sites/default/files/"
+        - "(?i)Drupal\\.settings"
+      path_probes:
+        - path: "/CHANGELOG.txt"
+          expect_status: [200]
+          expect_body_contains: ["Drupal"]
+        - path: "/user/login"
+          expect_status: [200]
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)Drupal\s*([0-9]+(?:\.[0-9]+){1,2})'
+        source: meta_generator
+      - regex: '(?i)Drupal\s*([0-9]+(?:\.[0-9]+){1,2})'
+        source: header
+
+  - name: Joomla
+    description: "Joomla CMS"
+    signals:
+      meta_generator:
+        - "Joomla"
+      cookies:
+        - "joomla_user_state"
+      html_patterns:
+        - "(?i)/media/jui/"
+        - "(?i)/templates/system/"
+      path_probes:
+        - path: "/administrator/"
+          expect_status: [200]
+          expect_body_contains: ["Joomla"]
+        - path: "/language/en-GB/en-GB.xml"
+          expect_status: [200]
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)Joomla!?\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+
+  - name: Magento
+    description: "Magento eCommerce"
+    signals:
+      cookies:
+        - "frontend"
+      html_patterns:
+        - "(?i)Mage\\.Cookies"
+        - "(?i)/skin/frontend/"
+      header_patterns:
+        - "X-Magento-Cache-Debug"
+      path_probes:
+        - path: "/admin"
+          expect_status: [200, 302]
+        - path: "/magento_version"
+          expect_status: [200]
+    confidence_required: 2
+
+  - name: Ghost
+    description: "Ghost blogging platform"
+    signals:
+      meta_generator:
+        - "Ghost"
+      header_patterns:
+        - "X-Powered-By: Ghost"
+      cookies:
+        - "ghost-admin-api-session"
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)Ghost\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+
+  - name: TYPO3
+    description: "TYPO3 CMS"
+    signals:
+      meta_generator:
+        - "TYPO3"
+      cookies:
+        - "fe_typo_user"
+        - "be_typo_user"
+      html_patterns:
+        - "(?i)typo3conf/"
+        - "(?i)typo3temp/"
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)TYPO3\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+
+  - name: SilverStripe
+    description: "SilverStripe CMS"
+    signals:
+      meta_generator:
+        - "SilverStripe"
+      header_patterns:
+        - "X-Powered-By: SilverStripe"
+      cookies:
+        - "ss_logged_in"
+    confidence_required: 2
+
+  - name: MediaWiki
+    description: "MediaWiki"
+    signals:
+      meta_generator:
+        - "MediaWiki"
+      html_patterns:
+        - "(?i)/skins/"
+        - "(?i)wgWikiID"
+      path_probes:
+        - path: "/wiki/Special:Version"
+          expect_status: [200]
+          expect_body_contains: ["MediaWiki"]
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)MediaWiki\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+
+  - name: phpBB
+    description: "phpBB forum"
+    signals:
+      meta_generator:
+        - "phpBB"
+      cookies:
+        - "phpbb3_*"
+      html_patterns:
+        - "(?i)phpBB"
+    confidence_required: 2
+    version_extract:
+      - regex: '(?i)phpBB\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: meta_generator
+
+  - name: SuiteCRM
+    description: "SuiteCRM"
+    signals:
+      cookies:
+        - "sugar_user_theme"
+      html_patterns:
+        - "(?i)SuiteCRM"
+        - "(?i)Sugar\\."
+    confidence_required: 2
+
+  - name: ManageEngine
+    description: "ManageEngine product family"
+    signals:
+      header_patterns:
+        - "X-Frame-Options.*ManageEngine"
+        - "Server: WebServer.*ManageEngine"
+      html_patterns:
+        - "(?i)ManageEngine"
+    confidence_required: 2

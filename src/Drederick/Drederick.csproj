@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Enrichment/FingerprintStack/Corpus/favicon-corpus.json" />
+    <EmbeddedResource Include="Recon/Resources/cms-fingerprints.yaml" />
   </ItemGroup>
 
   <ItemGroup>
