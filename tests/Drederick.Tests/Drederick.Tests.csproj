@@ -2,6 +2,14 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!--
+      CA1416: File.SetUnixFileMode is invoked from tests that already gate
+      on /bin/sleep existence (POSIX-only). Suppressing avoids forcing
+      OperatingSystem.IsWindows() noise in every fixture.
+      xUnit1031: blocking task ops in a couple of tests are intentional
+      where awaiting would mask the very deadlock the test asserts about.
+    -->
+    <NoWarn>$(NoWarn);CA1416;xUnit1031</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
