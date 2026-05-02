@@ -9,6 +9,7 @@ related:
   - docs/SELF_SUFFICIENCY.md
   - docs/PLUGIN_STRATEGY.md
   - docs/AUTOPILOT.md
+  - docs/FIGHTS.md
   - .github/fight-gaps.md
   - .github/fight-history/INDEX.md
 ---
@@ -21,6 +22,10 @@ related:
 > This doc describes the feedback loop architecture: what gets recorded,
 > where it's stored, how reviews work, and how learnings feed back into
 > tool selection, priorities, and even auto-generated tool scaffolds.
+>
+> **Looking for the fights themselves?** The tape room is surfaced in
+> [`FIGHTS.md`](FIGHTS.md) — chronological roll call, lessons learned,
+> and recurring patterns.
 
 ## TL;DR
 
