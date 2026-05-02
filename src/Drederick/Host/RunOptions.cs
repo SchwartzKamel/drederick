@@ -28,4 +28,5 @@ public sealed record RunOptions(
     bool FetchPocSource = true,
     bool VpnPreflight = true,
     bool RequireVpn = false,
-    bool EnableFuzz = false);
+    bool EnableFuzz = false,
+    bool EnableNseEnrichment = true);

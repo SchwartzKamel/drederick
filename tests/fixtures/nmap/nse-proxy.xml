@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="nmap -sV --script safe,default,discovery,version -p 22,80,443 10.10.10.5" version="7.94">
+<host>
+<address addr="10.10.10.5" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="22">
+<state state="open" reason="syn-ack"/>
+<service name="ssh" product="OpenSSH" version="8.2p1"/>
+<script id="ssh-hostkey" output="  2048 aa:bb:cc:dd RSA"/>
+<script id="ssh2-enum-algos" output="kex_algorithms: curve25519-sha256"/>
+</port>
+<port protocol="tcp" portid="80">
+<state state="open" reason="syn-ack"/>
+<service name="http" product="nginx" version="1.18.0"/>
+<script id="http-title" output="Welcome to nginx!"/>
+<script id="http-server-header" output="nginx/1.18.0"/>
+</port>
+<port protocol="tcp" portid="139">
+<state state="closed" reason="reset"/>
+<service name="netbios-ssn"/>
+<script id="smb-os-discovery" output="SHOULD NOT APPEAR — port is closed"/>
+</port>
+<port protocol="tcp" portid="443">
+<state state="filtered" reason="no-response"/>
+<service name="https"/>
+<script id="ssl-cert" output="SHOULD NOT APPEAR — port is filtered"/>
+</port>
+</ports>
+</host>
+</nmaprun>

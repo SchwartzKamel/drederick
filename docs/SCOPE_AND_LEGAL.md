@@ -3,7 +3,7 @@ title: Scope, authorized use, and exploitation posture
 audience: [humans, agents]
 primary: both
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ../README.md
   - ../AGENTS.md
@@ -50,6 +50,7 @@ what Drederick may do *inside* that boundary.
 | `@invariant-id:doctor-workstation-only` | Doctor modifies the operator workstation only; never re-execs as root; never contacts a target. Installing exploitation frameworks (Metasploit, impacket, nuclei) is workstation setup, not recon. | [What Drederick does](#what-drederick-does) |
 | `@invariant-id:thread-safety`          | `AuditLog` and `KnowledgeBase` are thread-safe; everything else is stateless after construction. No shared mutable state outside those two. | [What Drederick does](#what-drederick-does) |
 | `@invariant-id:no-scope-kill-switch`   | No flag, env var, debug build, CLI prompt, or LLM instruction disables the scope check. `--yolo`, `--no-scope`, `DREDERICK_DISABLE_SCOPE` etc. do not and must never exist. | [Authorization model](#authorization-model) |
+| `@invariant-id:scope-exclude-wins`     | Exclude rules are evaluated **before** include rules. A target that matches any `exclude:` entry throws `ScopeException` even if it also matches an `include:` rule. The `exclude:` list is sourced **only** from the scope file — never from CLI flags, env vars, or LLM input. Wildcards (`0.0.0.0/0` / `::/0`) are refused in `exclude:` as well as `include:`. | [Deny overlay](#deny-overlay) |
 
 The machine-readable mirror of this table is in
 [`../AGENTS.md#invariants`](../AGENTS.md#invariants).
@@ -252,6 +253,53 @@ conservative and every aggressive category is opt-in.
 `--allow-broad` is an orthogonal override that lifts the prefix cap
 entirely (but still refuses `/0`). Use it only when the authorized range
 is genuinely that large.
+
+<a id="deny-overlay"></a>
+## Deny overlay (`exclude:`)
+
+Scope files accept an optional YAML form with an `include:` allow-list
+and an `exclude:` deny-list. The deny-list carves holes out of broad
+include rules without forcing the operator to enumerate every allowed
+sub-range. Behaviour is anchored by
+[`@invariant-id:scope-exclude-wins`](#invariants):
+
+- **Deny wins.** `Scope.Require(target)` evaluates `Excludes` first.
+  A target matching any `exclude:` entry throws `ScopeException`
+  naming the rule that fired, even if it also matches `include:`.
+  See `src/Drederick/Scope/Scope.cs` (`Require` method).
+- **Scope-file only.** `exclude:` is parsed exclusively from the
+  scope file by `ScopeLoader.ReadList`. There is no CLI flag, env
+  var, or LLM-callable surface that adds, removes, or rewrites
+  exclude rules at runtime — the scope file is read-only from code
+  ([`@invariant-id:scope-file-read-only`](#invariants)).
+- **Wildcards still refused.** `0.0.0.0/0` and `::/0` are rejected
+  in `exclude:` as well as `include:`. Excluding "everything" is
+  ambiguous and meaningless.
+- **Prefix cap is one-sided.** Include rules are subject to the
+  lab/strict prefix cap (`/8` v4 / `/32` v6 lab; `/16` / `/48`
+  strict; `--allow-broad` lifts the cap but not the wildcard
+  refusal). Exclude rules are validated for shape only — a deny
+  rule covering a large CIDR is operationally useful and never
+  broadens authorization.
+- **Default-deny preserved.** If a target matches no include rule,
+  it is denied regardless of the exclude list. Adding an exclude
+  rule cannot accidentally authorise something.
+
+Example: an HTB lab range with two boxes carved out (lab DC nodes
+the operator has no engagement against):
+
+```yaml
+include:
+  - 10.10.0.0/16
+exclude:
+  - 10.10.10.5/32
+  - 10.10.10.6/32
+```
+
+The legacy line-based scope format remains supported (one CIDR / IP
+/ hostname / `#comment` per line) and is unchanged. Mixed format is
+not — a file is either YAML (auto-detected by an `include:` /
+`exclude:` / `allow_broad:` key at the start of a line) or legacy.
 
 <a id="accidental-out-of-scope-run"></a>
 ## Accidental out-of-scope run

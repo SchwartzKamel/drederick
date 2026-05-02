@@ -3,7 +3,7 @@ title: findings.db schema (machine-readable)
 audience: [agents]
 primary: agents
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - DATASETTE.md
   - EMPIRE.md

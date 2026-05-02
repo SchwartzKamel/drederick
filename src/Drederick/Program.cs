@@ -567,6 +567,38 @@ audit.Record("session.start", new Dictionary<string, object?>
     ["lab_mode"] = opts.LabMode,
 });
 
+// --- learning -----------------------------------------------------------
+// Read-only access to the operator-curated fight corpus
+// (~/HTB/fight-log.yaml). Discovery precedence: --fight-corpus > env
+// DREDERICK_FIGHT_CORPUS > ~/HTB/fight-log.yaml > graceful no-op.
+// Schema mismatch is fatal (exit code 4); a missing file is INFO-only.
+{
+    var fightCorpus = new Drederick.Learning.FightCorpus(opts.FightCorpusPath, audit);
+    try
+    {
+        var log = await fightCorpus.LoadAsync();
+        audit.Record("learning.fight_corpus.loaded", new Dictionary<string, object?>
+        {
+            ["path"] = fightCorpus.ResolvedPath,
+            ["fight_count"] = log.Fights.Count,
+            ["schema_version"] = log.SchemaVersion,
+        });
+    }
+    catch (Drederick.Learning.FightCorpusSchemaException ex)
+    {
+        audit.Record("learning.fight_corpus.error", new Dictionary<string, object?>
+        {
+            ["path"] = ex.CorpusPath,
+            ["found_version"] = ex.FoundVersion,
+            ["expected_version"] = ex.ExpectedVersion,
+            ["message"] = ex.Message,
+        });
+        Console.Error.WriteLine(ex.Message);
+        return 4;
+    }
+}
+// --- end learning -------------------------------------------------------
+
 Console.WriteLine(opts.LabMode
     ? "drederick: lab/CTF mode ENABLED (default). Authorized lab/CTF targets only."
     : "drederick: strict mode. Lab-mode affordances disabled.");
@@ -677,7 +709,9 @@ var permissions = new RunPermissions(
     allowPayloads: opts.AllowPayloads || opts.LabMode,
     allowDestructive: opts.AllowDestructive || opts.LabMode,
     allowDos: opts.AllowDos,
-    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk);
+    acknowledgeLockoutRisk: opts.AcknowledgeLockoutRisk,
+    allowPhishing: opts.AllowPhishing,
+    allowSmtpRelay: opts.AllowSmtpRelay);
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions);
 var http = new HttpProbeTool(scope, audit);
@@ -696,6 +730,39 @@ var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
 // --- recon tools ---
 var nativeScanner = new NativeScannerTool(scope, audit);
 var nativeDns = new NativeDnsTool(scope, audit);
+var fingerprintStack = new Drederick.Enrichment.FingerprintStack.FingerprintStackTool(scope, audit);
+var nseProxy = new NseProxy(scope, audit, labMode: opts.LabMode, permissions: permissions);
+
+// --- gap-029 budget construction ---
+// LLM-driven runs need substantially more headroom than deterministic
+// passes (R5 JobTwo loss: planner starved on http=3 / nmap=3 after 17
+// HTTP probes). Pick the mode-aware default, then apply per-flag CLI
+// overrides on top. The budget is a runaway-loop rate-limit; scope is
+// enforced inside every tool so adjusting caps does not weaken
+// authorization.
+var reconBudgetBase = opts.UseAgent
+    ? Drederick.Recon.ToolBudget.LlmDefault
+    : Drederick.Recon.ToolBudget.Default;
+var reconBudget = new Drederick.Recon.ToolBudget(
+    PerTargetPerTool: opts.BudgetPerTool ?? reconBudgetBase.PerTargetPerTool,
+    MaxTotalCalls: opts.BudgetGlobal ?? reconBudgetBase.MaxTotalCalls)
+{
+    PerToolOverrides = opts.BudgetPerToolOverrides.Count > 0
+        ? new Dictionary<string, int>(opts.BudgetPerToolOverrides)
+        : null,
+};
+audit.Record("budget.config", new Dictionary<string, object?>
+{
+    ["domain"] = "recon",
+    ["per_tool"] = reconBudget.PerTargetPerTool,
+    ["global"] = reconBudget.MaxTotalCalls,
+    ["overrides"] = opts.BudgetPerToolOverrides.Count > 0
+        ? (object)opts.BudgetPerToolOverrides
+        : null,
+    ["agent_mode"] = opts.UseAgent ? (opts.UseHybridAgent ? "hybrid" : "llm") : "adaptive",
+});
+// --- end gap-029 budget construction ---
+
 var toolbox = new ReconToolbox(
     new IReconTool[]
     {
@@ -703,8 +770,11 @@ var toolbox = new ReconToolbox(
         smb, ftp, ssh, snmp, ldap, rpc, kerberos,
         dnsAxfr, httpContentDiscovery, tlsCipherEnum,
         nativeScanner, nativeDns,
+        fingerprintStack,
+        nseProxy,
     },
-    audit);
+    audit,
+    reconBudget);
 toolbox.SeedFromKnowledgeBase(kb, targets);
 
 // --- empire c2 ---
@@ -721,16 +791,70 @@ var empireModuleLibrary = new EmpireModuleLibrary(audit);
 var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
 var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
 var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);
-var spray = new PasswordSprayTool(scope, audit, permissions, exploitRunner);
-var httpSpray = new NativeHttpSprayTool(scope, audit, permissions);
+var spray = new PasswordSprayTool(
+    scope, audit, permissions, exploitRunner,
+    timeoutSeconds: PasswordSprayTool.ResolveDefaultTimeoutSeconds(
+        labMode: opts.LabMode,
+        useAgent: opts.UseAgent,
+        explicitOverride: opts.CredSprayTimeoutSeconds));
+var httpSpray = new NativeHttpSprayTool(
+    scope, audit, permissions,
+    timeoutSeconds: PasswordSprayTool.ResolveDefaultTimeoutSeconds(
+        labMode: opts.LabMode,
+        useAgent: opts.UseAgent,
+        explicitOverride: opts.CredSprayTimeoutSeconds));
+
+// --- replay-timeout config (cross-protocol replay) ---
+// CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by
+// callers via CrossProtocolReplay.BuildDefault(...) — but we resolve the
+// mode-aware default and audit it so the operator can see the figure
+// that future replay calls will use, and so the --replay-timeout flag
+// has an observable effect even before replay is wired into the main
+// pipeline. Mirrors the cred-spray-timeout pattern from 95a328d.
+var replayTimeoutSeconds = Drederick.Exploit.Replay.CrossProtocolReplay.ResolveDefaultTimeoutSeconds(
+    labMode: opts.LabMode,
+    useAgent: opts.UseAgent,
+    explicitOverride: opts.ReplayTimeoutSeconds);
+audit.Record("replay.config", new Dictionary<string, object?>
+{
+    ["timeout_seconds"] = replayTimeoutSeconds,
+    ["explicit_override"] = opts.ReplayTimeoutSeconds,
+    ["mode"] = opts.UseAgent ? (opts.UseHybridAgent ? "hybrid" : "llm") : (opts.LabMode ? "lab" : "adaptive"),
+});
+// --- end replay-timeout config ---
 
 // Empire tools
 var empireStager = new EmpireAgentStager(scope, audit);
 var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary);
 
+var exploitBudgetBase = opts.UseAgent
+    ? Drederick.Exploit.ToolBudget.LlmDefault
+    : Drederick.Exploit.ToolBudget.Default;
+var exploitBudget = new Drederick.Exploit.ToolBudget(
+    PerTargetPerTool: opts.BudgetPerTool ?? exploitBudgetBase.PerTargetPerTool,
+    MaxTotalCalls: opts.BudgetGlobal ?? exploitBudgetBase.MaxTotalCalls)
+{
+    PerToolOverrides = opts.BudgetPerToolOverrides.Count > 0
+        ? new Dictionary<string, int>(opts.BudgetPerToolOverrides)
+        : null,
+};
 var exploitToolbox = new ExploitToolbox(
     new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor },
+    audit,
+    exploitBudget);
+
+// Phishing/macro subsystem (GAP-030). Master gate is --allow-phishing on
+// RunPermissions; SMTP relay is sub-gated on --allow-smtp-relay. The
+// toolbox is a registry, not the authorization boundary — every tool
+// re-checks scope + the phishing category on its own entry point.
+var phishingGenerator = new Drederick.Exploit.Phishing.MacroPayloadGenerator(
+    scope, audit, permissions, opts.OutputDir);
+var phishingDelivery = new Drederick.Exploit.Phishing.PhishingDelivery(
+    scope, audit, permissions);
+var phishingToolbox = new Drederick.Exploit.Phishing.PhishingToolbox(
+    new Drederick.Exploit.Phishing.IPhishingTool[] { phishingGenerator, phishingDelivery },
     audit);
+
 audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
 {
     ["tools"] = exploitToolbox.Tools.Select(t => t.Name).ToList(),
@@ -740,6 +864,9 @@ audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
     ["allow_destructive"] = permissions.AllowDestructive,
     ["allow_dos"] = permissions.AllowDos,
     ["acknowledge_lockout_risk"] = permissions.AcknowledgeLockoutRisk,
+    ["allow_phishing"] = permissions.AllowPhishing,
+    ["allow_smtp_relay"] = permissions.AllowSmtpRelay,
+    ["phishing_tools"] = phishingToolbox.Tools.Select(t => t.Name).ToList(),
 });
 // --- end exploit tools ---
 
@@ -801,7 +928,9 @@ var llmExploitTools = new LlmExploitTools(
     pivot: llmExploitPivot,
     sessions: sessionManager,
     flags: llmExploitFlags,
-    multiStage: multiStage);
+    multiStage: multiStage,
+    phishGen: phishingGenerator,
+    phishDeliver: phishingDelivery);
 audit.Record("llm.exploit_tools.ready", new Dictionary<string, object?>
 {
     ["count"] = llmExploitTools.BuildAiTools().Count,
@@ -868,6 +997,10 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
     }
     var adaptivePlanner = new ExploitationPlanner(audit, opts.OutputDir);
     var adaptiveFlags = new FlagExtractor(audit);
+    // GAP-033 — share an on-demand PoC fetcher with AdaptiveExploitRunner
+    // so cve-lead actions emitted by the deterministic path also route to
+    // the aggregator instead of dead-ending.
+    var adaptivePocAggregator = new Drederick.Enrichment.PocAggregator(audit: audit);
     runner = new AdaptiveExploitRunner(
         adaptive, audit, scope, permissions,
         adaptivePlanner, adaptiveCreds, adaptiveFlags,
@@ -875,6 +1008,8 @@ if (opts.UseAgent && opts.Autopilot && runner is AdaptiveRunner adaptive)
         nuclei: nuclei,
         spray: spray,
         multiStage: multiStage,
+        pocAggregator: adaptivePocAggregator,
+        fetchPoc: opts.FetchPoc,
         maxIterations: opts.AutopilotMaxIterations,
         maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
 }
@@ -985,7 +1120,7 @@ if (!string.Equals(Environment.GetEnvironmentVariable("DREDERICK_SKIP_CVE"), "1"
 // execute.
 try
 {
-    var pocAggregator = new PocAggregator();
+    var pocAggregator = new PocAggregator(audit: audit);
     var pocResult = await pocAggregator.AggregateAsync(allFindings, opts.OutputDir, opts.FetchPoc, cts.Token);
     audit.Record("poc.aggregate", new Dictionary<string, object?>
     {
@@ -1029,12 +1164,17 @@ if (opts.Autopilot)
 
         var planner = new ExploitationPlanner(audit, opts.OutputDir);
         var flagExtractor = new FlagExtractor(audit);
+        // GAP-033 — wire the on-demand PoC fetcher so cve-lead actions
+        // route to the aggregator when the recon-time cache was empty.
+        var autopilotPocAggregator = new PocAggregator(audit: audit);
         var autopilot = new AutopilotRunner(
             scope, audit, permissions, planner, credStore, flagExtractor,
              opts.OutputDir,
              nuclei: nuclei,
              spray: spray,
              msf: msf,
+             pocAggregator: autopilotPocAggregator,
+             fetchPoc: opts.FetchPoc,
              maxIterations: opts.AutopilotMaxIterations,
              maxActionsPerIteration: opts.AutopilotMaxActionsPerIteration);
 

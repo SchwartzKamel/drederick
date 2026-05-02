@@ -39,9 +39,18 @@ beyond the runtime. External tools are installed alongside and provide
 | Capability | Native implementation | External (optional enrichment) | Why kept external |
 | ---------- | --------------------- | ------------------------------ | ----------------- |
 | TCP port scan + banner | `NativeScannerTool` (57-port default, `TcpClient`, `SslStream`) | `NmapTool` | NSE scripts, deep version detection, service fingerprinting beyond banner |
+| TCP SYN (half-open) scan | `Drederick.Recon.Scanning.SynScanner` (raw socket, requires `CAP_NET_RAW`; `IsAvailable` false otherwise) | `nmap -sS` | Falls back to `NativeScannerTool` connect-scan when raw sockets unavailable |
+| Host discovery (`/N` knock sweep) | `HostDiscoveryTool` (parallel TCP-knock on curated noisy ports `80/443/22/445/3389/5985`) | `nmap -sn` / fping | Native sweep seeds downstream port-scan with responding ports |
 | DNS resolution (A/AAAA/MX/NS/TXT/SOA/PTR) | `NativeDnsTool` (`DnsClient.NET`) | — | Fully replaced |
 | DNS zone transfer (AXFR) | `DnsZoneTransferTool` (`DnsClient.NET` `QueryType.AXFR`) | — | Fully replaced; no longer needs `dig` |
 | SNMP walk | `SnmpTool` (`Lextm.SharpSnmpLib`, 7 communities, 3 OID subtrees) | — | Fully replaced; no longer needs `snmpwalk` |
+| OID → symbolic-name resolution | `Drederick.Recon.Snmp.MibIndex` (≥ 200 mappings embedded from RFCs + IANA PEN; optional `/usr/share/snmp/mibs` augmentation) | `snmptranslate` | Fully replaced; airgapped-friendly |
+| HTTP probes (title / headers / robots.txt / methods) | `Recon/Native/HttpTitleTool`, `HttpHeadersTool`, `HttpRobotsTool`, `HttpMethodsTool` (NSE-ports via shared `NativeHttpClientFactory`) | `nmap` `http-*` NSE | Fully replaced for the four ported scripts |
+| TLS certificate dump | `Recon/Native/SslCertTool` (NSE port of `ssl-cert`) | `nmap --script ssl-cert` | Fully replaced |
+| SSH host-key fingerprint enum | `Recon/Native/SshHostkeyTool` (NSE port of `ssh-hostkey`) | `nmap --script ssh-hostkey` | Fully replaced |
+| FTP anonymous probe | `Recon/Native/FtpAnonTool` (NSE port of `ftp-anon` with bounded `LIST`) | `nmap --script ftp-anon` | Fully replaced; PASV target re-validated through scope |
+| LDAP RootDSE | `Recon/Native/LdapRootDseTool` (NSE port of `ldap-rootdse`) | `nmap --script ldap-rootdse` | Fully replaced |
+| Magic-byte file-type detection | `Drederick.Recon.Binary.MagicSignatures` (curated, license-clean signature table) | `file(1)`, `MagikaDetector` | Fully replaced for class detection; `file` / `magika` remain Pattern-1 graceful enrichers |
 | Binary analysis (ELF/PE) | `ElfParser` / `PeParser` / `BinaryAnalyzer` (pure byte parsing) | `MagikaDetector` (ML file-type hints, optional) | Deep disassembly, decompilation (out of scope) |
 | HTTP credential spray | `NativeHttpSprayTool` (Basic, Digest, Tomcat, Jenkins, Grafana, WordPress, phpMyAdmin, OWA, WinRM, auto-detect) | `netexec` (SMB/RDP protocols) | SMB/RDP spray still needs external tooling |
 | Tool-presence checks | `PathResolver.Which()` (PATH scan, no subprocess) | — | Fully replaced; no longer needs `which` |

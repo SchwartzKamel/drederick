@@ -161,6 +161,38 @@ natively without `file`/`readelf`/`nm`. NuGet dependencies added:
 [`SELF_SUFFICIENCY.md`](./SELF_SUFFICIENCY.md) for the full native-vs-external
 table and zero-dep run instructions.
 
+**NSE-ported native scanners** live under `src/Drederick/Recon/Native/`:
+`HttpTitleTool`, `HttpHeadersTool`, `HttpRobotsTool`, `HttpMethodsTool`
+(GET/HEAD/OPTIONS probes via the shared `NativeHttpClientFactory`),
+`SslCertTool`, `SshHostkeyTool`, `FtpAnonTool`, and `LdapRootDseTool` —
+Pattern-3 ports of widely-used NSE scripts to native C#
+(see [`PLUGIN_STRATEGY.md`](./PLUGIN_STRATEGY.md) and
+[`MODULES.md#scanner-native-nse-ports`](./MODULES.md#scanner-native-nse-ports)).
+Each tool credits the original NSE author in its file header. The
+`HostDiscoveryTool` (`src/Drederick/Recon/HostDiscoveryTool.cs`) provides a
+fast first-pass `/N`-scope TCP-knock sweep that seeds downstream port
+scanners with alive hosts and their responding ports. Raw-socket SYN
+scanning is available via `Drederick.Recon.Scanning.SynScanner` (requires
+`CAP_NET_RAW` on Linux; `IsAvailable` returns false on platforms without
+raw sockets so the caller can fall back to connect-scan). The SNMP layer
+ships an embedded `Drederick.Recon.Snmp.MibIndex` (≥ 200 OID → symbolic
+mappings sourced from public IETF RFCs and the IANA PEN registry, with
+optional additive load from `/usr/share/snmp/mibs`).
+
+**Unified port-harvest contract.**
+`ExploitationPlanner.HarvestPortsFromAllSignals(HostFinding)` is the
+single source of truth that downstream offensive logic uses to enumerate
+the open ports of a target. Real `NmapTool` output always wins on
+collision; `NativeScannerTool` results fill gaps; native protocol probes
+(`Http`/`HttpTitle`/`HttpHeaders`/`HttpRobots`/`HttpMethods`/
+`HttpContentDiscovery`/`Tls`/`TlsCipherEnum`/`SslCert`/`Ftp`/`FtpAnon`/
+`Ssh`/`SshHostkey`/`Snmp`/`Smb`/`Ldap`/`LdapRootDse`/`Rpc`/`Kerberos`) are
+each treated as positive evidence the port is open even when the scanner
+phase missed it. The harvester is pure (no scope calls, no I/O), so it is
+safe to invoke from `AdaptiveRunner`, `MicrosoftAgentRunner`,
+`ChainReasoner`, and `ArchetypeClassifier` alike. Full table in
+[`MODULES.md#unified-port-harvest`](./MODULES.md#unified-port-harvest).
+
 ### `Drederick.Agent` — orchestration + worker pool {#layer-agent}
 
 - `AdaptiveRunner` — deterministic, rule-driven planner. Runs `dns` + `nmap`

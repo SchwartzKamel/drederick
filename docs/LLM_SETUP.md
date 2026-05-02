@@ -3,7 +3,7 @@ title: LLM setup — giving Drederick the unfair advantage
 audience: [humans]
 primary: humans
 stability: evolving
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - README.md
   - JEOPARDY.md
@@ -593,7 +593,23 @@ What to watch for:
   to ≤64 KB with full-size + SHA-256 recorded alongside.
 
 Recon system prompt: [`MicrosoftAgentRunner.BuildSystemPrompt()`](../src/Drederick/Agent/MicrosoftAgentRunner.cs).
+User message assembly (per-target prior digests from `KnowledgeBase`):
+[`MicrosoftAgentRunner.BuildUserMessage()`](../src/Drederick/Agent/MicrosoftAgentRunner.cs).
 Jeopardy per-category fragments: [`PromptLibrary.cs`](../src/Drederick/Jeopardy/Prompts/PromptLibrary.cs).
+
+> **Forcing function (GAP-025).** `BuildSystemPrompt` now flags
+> recon-only outcomes as **losses**. The system prompt explicitly
+> demands that, before producing a final summary, the agent must
+> either (1) call `exploit_plan` and act on every action whose
+> required permission flag is set, (2) call `execute_cred_spray`
+> for at least one auth-bearing service it observed, (3) drive
+> `run_post_ex_*` + `extract_flags_from_dir` on any session it
+> opened, or (4) explicitly name the missing permission flag in
+> the summary — the only acceptable "recon-only" exit. Native
+> HTTP/TLS probe hits are now treated as proof a port is open
+> even when nmap returns `[]` (the JobTwo r4 lesson; see
+> [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md)). Operators
+> overriding the prompt should preserve this contract.
 
 <a id="safety"></a>
 ## Safety — what the LLM cannot do

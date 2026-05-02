@@ -3,7 +3,7 @@ title: Web UI — browser-based operator pane
 audience: [humans, operators]
 primary: humans
 stability: evolving
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - ARCHITECTURE.md
   - UI.md

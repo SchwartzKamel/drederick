@@ -3,7 +3,7 @@ title: Fuzzing Subsystem
 audience: [humans, agents]
 primary: humans
 stability: experimental
-last_audited: 2026-04
+last_audited: 2026-05
 related: [SCOPE_AND_LEGAL.md, ARCHITECTURE.md, MODULES.md, POST_EXPLOITATION.md, DEVELOPING.md]
 ---
 
@@ -103,10 +103,11 @@ every HTTP service.
 
 ### `protocol-fuzz` (destructive — opt-in)
 
-Drives `boofuzz` against a target service. **Requires
-`RunPermissions.AllowDestructive = true`** (CLI: `--allow-destructive`).
-The tool refuses to spawn a subprocess otherwise. Recommended only
-inside lab / CTF networks where target downtime is acceptable.
+Drives `boofuzz` against a target service. **Requires BOTH
+`RunPermissions.AllowDestructive` AND `RunPermissions.AllowDos`**
+(CLI: `--allow-destructive --allow-dos`). The tool refuses to spawn a
+subprocess if either gate is missing. Recommended only inside lab /
+CTF networks where target downtime is acceptable.
 
 ### `file-format-fuzz`
 

@@ -3,7 +3,7 @@ title: Code of Conduct
 audience: [humans]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - CONTRIBUTING.md
   - SECURITY.md

@@ -94,14 +94,20 @@ For the top community scripts whose logic is small enough to translate (most NSE
 **Contract**: each ported script becomes an `IReconTool` with the standard scope/audit invariants. The file header credits the original NSE / CME author and links to the original source.
 
 **Examples** (top 20–30 NSE scripts to port — `nse-port-top` task):
-- `http-title`, `http-headers`, `http-robots`, `http-methods`, `http-enum` → `NativeHttpReconTool` family
-- `ssl-cert`, `ssl-enum-ciphers` → `NativeTlsReconTool`
-- `smb-os-discovery`, `smb-enum-shares` → `NativeSmbReconTool` (extends existing `SmbTool`)
-- `ssh-hostkey`, `ssh-auth-methods` → `NativeSshReconTool`
-- `ftp-anon`, `ftp-syst` → `NativeFtpReconTool`
-- `mysql-info`, `ms-sql-info` → `NativeDatabaseReconTool` family
-- `ldap-rootdse`, `ldap-search` → `NativeLdapReconTool`
-- `rpcinfo` → `NativeRpcInfoTool` (extends existing `RpcTool`)
+- `http-title`, `http-headers`, `http-robots`, `http-methods` →
+  `Recon/Native/HttpTitleTool`, `HttpHeadersTool`, `HttpRobotsTool`,
+  `HttpMethodsTool` ✅ shipped
+- `ssl-cert` → `Recon/Native/SslCertTool` ✅ shipped
+- `ssh-hostkey` → `Recon/Native/SshHostkeyTool` ✅ shipped
+- `ftp-anon` → `Recon/Native/FtpAnonTool` ✅ shipped
+- `ldap-rootdse` → `Recon/Native/LdapRootDseTool` ✅ shipped
+- `http-enum` → `NativeHttpReconTool` family (planned)
+- `ssl-enum-ciphers` → already covered by `TlsCipherEnumTool` (Pattern-1
+  proxy via nmap); planned native port pending Tier 3
+- `smb-os-discovery`, `smb-enum-shares` → `NativeSmbReconTool` (extends
+  existing `SmbTool`) (planned)
+- `mysql-info`, `ms-sql-info` → `NativeDatabaseReconTool` family (planned)
+- `rpcinfo` → `NativeRpcInfoTool` (extends existing `RpcTool`) (planned)
 - `banner` → already covered by `NativeScannerTool` banner-grab phase
 
 **File-header convention**:
@@ -131,10 +137,42 @@ The heavyweight signature: capabilities we design that no existing tool does cle
 
 **Examples** (Tier 4 roadmap):
 
-- **`xprotocol-replay`** — Take credentials/hashes/tickets captured from one protocol and replay them in parallel across every other protocol on every in-scope host (SMB → WinRM → MSSQL → LDAP → SSH → HTTP → RDP). CrackMapExec/NetExec does this for SMB. We do it across the full surface, scope-checked, deduplicated, lockout-aware.
-- **`fingerprint-stack`** — Multi-signal host fingerprinter combining port + banner + TLS cert subject/SAN + HTTP headers + favicon SHA-256 + JA3/JA4 → ranked CPE → CVE matches with confidence. Goes beyond product-token matching in `ExploitationPlanner`.
-- **`lockout-scheduler`** — Global lockout-aware spray scheduler shared across all spray tools. Tracks 401/403/locked signals per (domain, account, protocol) globally; backoff per-account; honors `--acknowledge-lockout-risk`. Replaces per-tool throttling with centralized AD-policy-aware throttling.
-- **`chain-reasoner`** — Multi-stage attack chain proposer. Reads current findings + captured creds + open sessions, proposes ranked attack chains with explainability ("anon SMB read → grep creds in share → SMB exec → loot SAM → AD privesc").
+- **`xprotocol-replay`** ✅ shipped — `src/Drederick/Exploit/Replay/`. Take
+  credentials/hashes/tickets captured from one protocol and replay them in
+  parallel across every other protocol on every in-scope host (SMB → WinRM
+  → MSSQL → LDAP → SSH → HTTP → RDP). CrackMapExec/NetExec does this for
+  SMB; we cover the full surface, scope-checked, deduplicated,
+  lockout-aware. See [`MODULES.md#exploit-replay`](MODULES.md#exploit-replay).
+- **`fingerprint-stack`** ✅ shipped — `src/Drederick/Enrichment/FingerprintStack/`.
+  Multi-signal host fingerprinter combining port + banner + TLS cert
+  subject/SAN + HTTP headers + favicon SHA-256 + JA3/JA4 → ranked CPE →
+  CVE matches with confidence. Goes beyond product-token matching in
+  `ExploitationPlanner`. **Cross-run learning** is owned by the companion
+  `LearnedFingerprintStore`
+  (`Enrichment/FingerprintStack/LearnedFingerprintStore.cs`) — every fight
+  promotes observed `(signal_kind, signal_value) → (vendor, product,
+  version, port)` tuples into `memory/learned-fingerprints.json` (versioned
+  envelope). Re-observation increments `Hits` and merges contributing
+  fight ids; the store is loaded on the next run so the FingerprintStack
+  auto-extends from past fights without redistributing vendor MIB content
+  or proprietary banner corpora — only the (signal → product) tuples we
+  observed ourselves.
+- **`lockout-scheduler`** — Global lockout-aware spray scheduler shared
+  across all spray tools. Tracks 401/403/locked signals per (domain,
+  account, protocol) globally; backoff per-account; honors
+  `--acknowledge-lockout-risk`. Replaces per-tool throttling with
+  centralized AD-policy-aware throttling. Consumed by `CrossProtocolReplay`
+  via `IReplayLockoutScheduler`.
+- **`chain-reasoner`** ✅ shipped — `src/Drederick/Autopilot/ChainReasoner/`.
+  Multi-stage attack-chain proposer. Reads `ChainFacts` (current findings +
+  captured creds + open sessions), instantiates every `ChainTemplate` whose
+  `Requires` predicates are satisfied, scores by `likelihood × impact −
+  cost`, and returns ranked `AttackChain[]` with explainability ("anon SMB
+  read → grep creds in share → SMB exec → loot SAM → AD privesc"). LLM
+  augmentation is optional via `IChainAugmenter`; the reasoner itself does
+  not call `Scope.Require` because it manipulates pure data — every tool
+  the chain dispatches to re-checks scope on entry. See
+  [`MODULES.md#chain-reasoner`](MODULES.md#chain-reasoner).
 
 **Why it works**:
 - The toolchain matures past being a wrapper over Kali.

@@ -15,7 +15,7 @@ namespace Drederick.Recon;
 ///   • Lab mode OR <see cref="ExploitCategory.CredAttacks"/> opted in:
 ///     adds <c>auth</c>.
 ///   • <see cref="ExploitCategory.ExecPocs"/> opted in: adds
-///     <c>intrusive,vuln,exploit</c>.
+///     <c>intrusive,vuln</c> (exploit category excluded — too slow, GAP-022).
 ///   • <see cref="ExploitCategory.Dos"/> opted in: adds <c>dos,malware</c>.
 ///
 /// Scope is re-checked on entry; the target argument is validated through
@@ -51,10 +51,12 @@ public sealed class NmapTool : IReconTool
     // -sV -sC       : service/version + default NSE scripts
     // --script      : restrict to enumeration categories only (lab vs strict)
     // --top-ports   : sensible default when the agent hasn't asked for -p-
+    // --host-timeout: cap per-host runtime to prevent NSE script stalls (GAP-022)
     private static readonly string[] BaseArgsCommon =
     [
         "-Pn", "-sV", "-sC",
         "-T4", "--min-rate", "1000",
+        "--host-timeout", "300",
     ];
 
     public NmapTool(
@@ -87,15 +89,16 @@ public sealed class NmapTool : IReconTool
             AddIfMissing(cats, "auth");
         }
 
-        // ExecPocs → unlock the aggressive enumeration + exploit NSE set.
+        // ExecPocs → unlock the aggressive enumeration NSE set.
         // intrusive : scripts that may be detected/logged by the target
         // vuln      : vulnerability detection scripts
-        // exploit   : active exploitation scripts
+        // NOTE: 'exploit' category deliberately excluded — exploit NSE scripts
+        // run 30-60+ min on Windows hosts with many ports (GAP-022). Actual
+        // exploitation is handled by nuclei/msf-rc/manual tools, not nmap NSE.
         if (permissions.AllowExecPocs)
         {
             AddIfMissing(cats, "intrusive");
             AddIfMissing(cats, "vuln");
-            AddIfMissing(cats, "exploit");
         }
 
         // Dos → unlock denial-of-service and malware-hunting scripts.

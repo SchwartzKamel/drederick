@@ -3,7 +3,7 @@ title: UI guide
 audience: [humans]
 primary: humans
 stability: evolving
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - UI.md
   - DATASETTE.md

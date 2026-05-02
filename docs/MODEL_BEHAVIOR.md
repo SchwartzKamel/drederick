@@ -3,7 +3,7 @@ title: Model behavior fight notes
 audience: [humans, agents]
 primary: agents
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - README.md
   - LLM_SETUP.md
@@ -37,6 +37,7 @@ fight-history note.
 - [Coding-agent checklist](#coding-agent-checklist)
 - [Data collection fields](#data-collection)
 - [Safe reporting rules](#safe-reporting)
+- [Archetype-aware prompt routing](#archetype-routing)
 
 <a id="purpose"></a>
 ## Purpose and ringside card
@@ -279,3 +280,34 @@ Recommended derived metrics:
 - If a report includes remediation, keep it as a final operator summary;
   do not let remediation wording replace the offensive planning mission
   for authorized in-scope work.
+
+<a id="archetype-routing"></a>
+## Archetype-aware prompt routing
+
+`Drederick.Learning.ArchetypeClassifier`
+(`src/Drederick/Learning/ArchetypeClassifier.cs`) is the pure, stateless
+classifier that maps an already-collected `HostFinding` to a
+`TargetArchetype` (e.g. `htb-linux-easy`, `htb-windows-ad`,
+`ctf-jeopardy-*`) plus a runner-up and a `Confidence ∈ [0, 0.95]`. The
+classifier consumes the unified port-harvest contract
+(`ExploitationPlanner.HarvestPortsFromAllSignals`) so every recon signal —
+nmap, native scanner, native HTTP/TLS/SSH/SMB/FTP/SNMP/LDAP/RPC/Kerberos
+probes — feeds the routing decision.
+
+For LLM agents, the archetype is a **prompt-routing knob**, not a security
+boundary:
+
+- It selects which prompt template / system message variant the runner
+  loads (Linux-easy, Windows-AD, Jeopardy crypto, etc.).
+- It biases tool ordering — e.g. Windows-AD archetypes prefer
+  `KerberosTool` + `LdapTool` + `SmbTool` early; Linux-easy archetypes
+  prefer `HttpProbeTool` + `HttpContentDiscoveryTool` early.
+- It does **not** widen scope, lift permission gates, or change argv
+  validation. Compliance checks, scope `Require`, `RunPermissions`
+  category gates, and the audit log are unchanged regardless of archetype.
+
+When changing prompt templates, archetype playbooks, or routing rules,
+preserve every contract from [`#compliance`](#compliance): Copilot SDK
+checks `/models`, default `claude-haiku-4.5` remains the preferred
+compliant model, non-compliant Copilot model refusals propagate even under
+hybrid, and hybrid falls back only on operational/provider failures.

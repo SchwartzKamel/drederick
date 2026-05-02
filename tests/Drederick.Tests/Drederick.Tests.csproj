@@ -13,6 +13,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Drederick\Drederick.csproj" />
+    <ProjectReference Include="..\..\bench\Drederick.Bench\Drederick.Bench.csproj" />
+  </ItemGroup>
+
+  <!-- Exclude work-in-progress test files placed by parallel agents under
+       a *.skip/ subdirectory until their backing types land. -->
+  <ItemGroup>
+    <Compile Remove="**/*.skip/**/*.cs" />
   </ItemGroup>
 
   <!-- Copy fuzz fixtures into the test output dir so tests that load them

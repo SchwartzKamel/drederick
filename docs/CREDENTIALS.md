@@ -3,7 +3,7 @@ title: Credential Storage & Management
 audience: [humans, agents]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related: [SCOPE_AND_LEGAL.md, POST_EXPLOITATION.md, LLM_SETUP.md, DEVELOPING.md, ../SECURITY.md, ../README.md]
 ---
 
@@ -307,11 +307,19 @@ Two distinct categories live in this document's orbit:
   `~/.drederick/config.json` with `chmod 600`.
 - **Captured credentials** — material Drederick obtains during a run
   (cracked hashes, captured tickets, successful spray results). These
-  land in `out/` (see `loot` / `exploit_runs` / `sessions` tables in
-  `findings.db`) and are never exfiltrated to a third party. Plaintext
-  passwords attempted during credential attacks are **never** logged —
-  `audit.jsonl` records a SHA-256 of the attempted secret so the
-  operator can correlate without leaking wordlists.
+  flow through
+  [`CredentialStore`](../src/Drederick/Autopilot/CredentialStore.cs)
+  (in-process index for the `AutopilotRunner`) and the credential-attack
+  tools in [`src/Drederick/Exploit/`](../src/Drederick/Exploit/) (e.g.
+  [`PasswordSprayTool`](../src/Drederick/Exploit/PasswordSprayTool.cs),
+  [`NativeHttpSprayTool`](../src/Drederick/Exploit/NativeHttpSprayTool.cs)),
+  and land in `out/` (see `loot` / `exploit_runs` / `sessions` tables
+  in `findings.db`). They are never exfiltrated to a third party.
+  Plaintext passwords attempted during credential attacks are **never**
+  logged — `audit.jsonl` records a SHA-256 of the attempted secret so
+  the operator can correlate without leaking wordlists. This is the
+  [`@invariant-id:audit-everything`](../AGENTS.md#invariants) contract
+  and there is no flag, env var, or prompt that disables it.
 
 ### Always Respect Scope Boundaries
 

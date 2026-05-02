@@ -359,9 +359,10 @@ a generic `nmap --script safe,default,discovery,version` suggestion.
 
 ### `SqliteReport`
 
-Writes `out/findings.db` — ten tables (`hosts`, `services`, `findings`,
+Writes `out/findings.db` — eleven tables (`hosts`, `services`, `findings`,
 `cves`, `poc_refs`, `poc_sources`, `tooling`, `exploit_runs`, `sessions`,
-`loot`). Authoritative DDL in `SqliteReport.EnsureSchema`; doc mirror in
+`loot`, plus `notes` whose DDL ships from `NotesSchema.GetCreateTableDdl()`).
+Authoritative DDL in `SqliteReport.EnsureSchema`; doc mirror in
 [`DB_SCHEMA.md`](./DB_SCHEMA.md). Browsed via Datasette
 ([`DATASETTE.md`](./DATASETTE.md)).
 
@@ -407,6 +408,8 @@ gate. Summary:
 | `MultiStageExploitRunner` | `--allow-exec-pocs` + `--allow-payloads` |
 | `EmpireAgentStager` (agent payload generation) | `--allow-payloads` |
 | `EmpireModuleExecutor` (privesc/lateral movement) | `--allow-payloads` (+ `--allow-cred-attacks` for credential reuse) |
+| `MacroPayloadGenerator` (VBA / HTA / LNK / ISO macro lures) | `--allow-phishing` |
+| `PhishingDelivery` (SMB drop / WebDAV PUT / one-shot HTTP stager) | `--allow-phishing` (SMTP relay additionally requires `--allow-smtp-relay`; Phase 2) |
 | `PostExLinux` / `PostExWindows` | (via session opened by exploit tools) |
 | `SessionPivotProber` | (post-ex; pivot CIDRs re-checked per-IP) |
 
@@ -434,3 +437,143 @@ shares `Scope`, `AuditLog`, and `KnowledgeBase`. See
   if (nmapPath is not null)
       // enrich with nmap NSE; else use NativeScannerTool result only
   ```
+
+## NSE-ported native scanners (`src/Drederick/Recon/Native/`) {#scanner-native-nse-ports}
+
+Pattern-3 ports of widely-used NSE scripts to native C# (see
+[`PLUGIN_STRATEGY.md#pattern-3-ported-community-logic`](PLUGIN_STRATEGY.md#pattern-3-ported-community-logic)).
+Every tool is an `IReconTool`, calls `_scope.Require(target)` as its first
+statement, brackets work with `audit.Record(...)`, and never shells out.
+HTTP-bearing tools share `NativeHttpClientFactory` (no auto-redirect, lax
+TLS validation for fingerprinting only).
+
+| Class | NSE script | Result on `HostFinding` | Notes |
+| ----- | ---------- | ----------------------- | ----- |
+| `HttpTitleTool` | `http-title` | `HttpTitle[]` | GET `/` and extract `<title>` (256 KiB body cap). |
+| `HttpHeadersTool` | `http-headers` | `HttpHeaders[]` | HEAD/GET, captures full response header set. |
+| `HttpRobotsTool` | `http-robots` | `HttpRobots[]` | GET `/robots.txt`, parses `User-agent`/`Disallow`. |
+| `HttpMethodsTool` | `http-methods` | `HttpMethods[]` | OPTIONS probe; flags risky verbs (`PUT`/`DELETE`/`TRACE`). |
+| `SslCertTool` | `ssl-cert` | `SslCert[]` | Certificate chain dump (subject/SAN/issuer/validity). Complements `TlsProbeTool`. |
+| `SshHostkeyTool` | `ssh-hostkey` | `SshHostkey[]` | Per-key-type fingerprint enumeration (SHA-256 / MD5). |
+| `FtpAnonTool` | `ftp-anon` | `FtpAnon[]` | Anonymous login + bounded `LIST` (200 lines / 64 KiB). PASV target re-validated through scope before opening data channel. |
+| `LdapRootDseTool` | `ldap-rootdse` | `LdapRootDse[]` | Anonymous bind + RootDSE attribute dump. |
+
+`NativeHttpClientFactory` (`Recon/Native/NativeHttpClientFactory.cs`) is the
+shared `HttpClient` factory — `AllowAutoRedirect = false`, `ConnectTimeout =
+8s`, custom `User-Agent: Drederick/1.0 (+recon)`, default 15s overall
+timeout.
+
+## `HostDiscoveryTool` {#scanner-host-discovery}
+
+- **Class:** `HostDiscoveryTool` (`src/Drederick/Recon/HostDiscoveryTool.cs`)
+- **Purpose:** Fast first-pass TCP-knock sweep across a `/N` scope. Probes
+  a small curated set of "known-noisy" ports (`80, 443, 22, 445, 3389, 5985`
+  by default) per target in parallel; the first successful connect marks a
+  host alive and seeds downstream port scanners with the responding ports.
+  Designed for HTB Pro Labs / OSCP-style ranges where deep-scanning every
+  /16 IP is wasteful.
+- **Subprocess:** none — `TcpClient` with `SemaphoreSlim`-bounded
+  concurrency.
+- **Scope check:** `_scope.Require(target)` re-checked **per target** before
+  any socket is opened.
+- **External dependency:** none (native).
+- **Result:** `HostDiscoveryResult { Address, Alive, RespondingPorts[],
+  Latency }`.
+- **Dispatch trigger:** explicit (called by orchestration when the scope
+  contains a `/N` block); not auto-invoked per-host like phase-1 scanners.
+
+## Unified port-harvest contract {#unified-port-harvest}
+
+`ExploitationPlanner.HarvestPortsFromAllSignals(HostFinding)` is the single
+source of truth that downstream offensive logic uses to enumerate the open
+ports of a target. It folds **every** positive recon signal into a single
+`Dictionary<int, NmapPort>` keyed by port. The contract:
+
+1. **Real `NmapTool` output wins on collision.** `host.Nmap.OpenPorts` is
+   seeded first; later signals never overwrite a port already present.
+2. **`NativeScanResult` ports fill gaps.** When nmap is absent or missed a
+   port, `host.NativeScan.OpenPorts` is folded in.
+3. **Native protocol probes are positive evidence the port is open** even
+   when neither nmap nor `NativeScannerTool` reported it. The harvester
+   walks every signal sibling and seeds with a service hint.
+
+| Signal source on `HostFinding` | Seeded service hint |
+| ------------------------------ | ------------------- |
+| `Nmap.OpenPorts` (authoritative) | as reported |
+| `NativeScan.OpenPorts` | as reported |
+| `Http`, `HttpTitle`, `HttpHeaders`, `HttpRobots`, `HttpMethods`, `HttpContentDiscovery` | `http` |
+| `Tls`, `TlsCipherEnum`, `SslCert` | `https` |
+| `Ftp`, `FtpAnon` | `ftp` |
+| `Ssh`, `SshHostkey` | `ssh` |
+| `Snmp` | `snmp` |
+| `Smb` | `microsoft-ds` |
+| `Ldap`, `LdapRootDse` | `ldap` |
+| `Rpc` | `msrpc` |
+| `Kerberos` | `kerberos` |
+
+URL-bearing signals (`Http*`) extract the port via `PortFromUrl` (defaults
+to 80/443 by scheme when no explicit port is present). The harvester is
+pure — no scope calls, no I/O — so it is safe to invoke from the
+deterministic runner, the LLM runner, `ChainReasoner`, and
+`ArchetypeClassifier` alike. Reference:
+`src/Drederick/Autopilot/ExploitationPlanner.cs` lines 448-513.
+
+## ChainReasoner — multi-step exploitation chain planner {#chain-reasoner}
+
+- **Path:** `src/Drederick/Autopilot/ChainReasoner/`
+  (`ChainReasoner.cs`, `ChainTemplate.cs`, `ChainFacts.cs`, `ChainCommand.cs`,
+  `AttackChain.cs`).
+- **Role:** deterministic chain proposer. Reads predicates from
+  `ChainFacts` (synthesized from `KnowledgeBase` + `HostFinding` +
+  `CredentialStore`), instantiates every `ChainTemplate` whose `Requires`
+  list is satisfied, computes `score = likelihood × impact − cost`, and
+  returns the top-N ranked `AttackChain[]` with explainability fields.
+- **LLM augmentation:** optional `IChainAugmenter`. Default
+  `NoOpChainAugmenter` is used when `--agent` is not set; an LLM-backed
+  augmenter may add candidates derived from the same `ChainFacts`. Failures
+  are recorded as `chain.augmenter.error` audit events and the reasoner
+  falls back to deterministic output.
+- **Scope posture:** `ChainReasoner` itself does **not** call
+  `Scope.Require` and does not touch the network — it manipulates pure
+  data. Tools that later execute the steps re-check scope as their first
+  statement (`@invariant-id:scope-in-every-tool`).
+- **Example chain:** `anon-smb-read → grep-creds-in-share → smb-exec →
+  loot-sam → ad-privesc`. Each `ChainCommand` is keyed to a concrete
+  `IExploitTool` invocation downstream.
+
+## Cross-protocol credential replay (`xprotocol-replay`) {#exploit-replay}
+
+- **Path:** `src/Drederick/Exploit/Replay/` (14 files: 6 core + 8 protocol
+  adapters under `Protocols/`).
+- **Role:** Pattern-4 original Drederick tooling — take one captured
+  credential triplet (`CredentialTriplet { Username, Domain, SecretKind,
+  SecretSha256, … }`) and replay it in parallel across every in-scope host
+  on every supported protocol. Where NetExec replays SMB only, this covers
+  the full surface.
+- **Adapters (`Protocols/`):** `SmbReplayAdapter`, `WinRmReplayAdapter`,
+  `MssqlReplayAdapter`, `LdapReplayAdapter`, `SshReplayAdapter`,
+  `HttpReplayAdapter`, `RdpReplayAdapter`, plus the
+  `NetexecReplayAdapterBase` shared base for adapters that wrap an external
+  netexec invocation. Each adapter implements `IReplayProtocolAdapter` and
+  must:
+  1. Call `_scope.Require(target)` as the first statement of `ReplayAsync`.
+  2. Re-check `RunPermissions.AllowCredAttacks` **and**
+     `RunPermissions.AcknowledgeLockoutRisk`; on miss, emit
+     `ReplayOutcome.Skipped` with `error_reason = permission_refused` /
+     `lockout_risk_refused` (do not throw — let the matrix complete
+     partially).
+  3. Skip with `credential_kind_unsupported` when the triplet's `SecretKind`
+     is unsupported by this protocol (e.g. SSH + NTLM hash).
+  4. Validate every argv field for shell metacharacters; skip with
+     `argv_refused` on miss.
+  5. Never log plaintext or NTLM material — audit events carry
+     `SecretSha256` only.
+- **Coordination:** `CrossProtocolReplay` owns the host × protocol matrix,
+  bounds parallelism via `SemaphoreSlim`, and consumes an
+  `IReplayLockoutScheduler` for global AD-policy-aware throttling.
+- **Result:** `CrossProtocolReplayReport { Successes[], Skipped[],
+  Failures[] }`. Replay is a **pure tool** — it does not write to
+  `KnowledgeBase` / `CredentialStore` / `findings.db` directly; the runner
+  that owns the credential is responsible for feeding successes back into
+  those stores (avoids a dependency cycle through `Drederick.Autopilot`).
+- **Gates:** `--allow-cred-attacks` + `--acknowledge-lockout-risk`.

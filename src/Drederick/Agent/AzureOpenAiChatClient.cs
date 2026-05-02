@@ -34,6 +34,8 @@ public sealed class AzureOpenAiChatClient : IChatClient
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
     private readonly string _modelId;
+    private readonly bool _copilotMode;
+    private readonly string? _copilotIntegrationId;
 
     /// <summary>The logical model ID this client will use.</summary>
     public string ModelId => _modelId;
@@ -45,7 +47,9 @@ public sealed class AzureOpenAiChatClient : IChatClient
         string modelId,
         IReadOnlyDictionary<string, string>? deploymentMap = null,
         string apiVersion = DefaultApiVersion,
-        HttpClient? http = null)
+        HttpClient? http = null,
+        bool copilotMode = false,
+        string? copilotIntegrationId = null)
     {
         if (string.IsNullOrWhiteSpace(endpoint)) throw new ArgumentException("endpoint required", nameof(endpoint));
         if (!Uri.TryCreate(endpoint.TrimEnd('/'), UriKind.Absolute, out var parsed))
@@ -57,6 +61,8 @@ public sealed class AzureOpenAiChatClient : IChatClient
         _modelId = modelId;
         _deploymentMap = deploymentMap ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _apiVersion = string.IsNullOrWhiteSpace(apiVersion) ? DefaultApiVersion : apiVersion;
+        _copilotMode = copilotMode;
+        _copilotIntegrationId = copilotIntegrationId ?? "drederick-cli";
 
         if (http is null)
         {
@@ -150,7 +156,7 @@ public sealed class AzureOpenAiChatClient : IChatClient
         });
 
         // Azure takes deployment from URL; omit "model" from body.
-        var body = BuildRequestBody(messageList, toolsFromOptions, includeModel: false);
+        var body = BuildRequestBody(messageList, toolsFromOptions, includeModel: _copilotMode);
         var url = BuildChatUrl(deployment);
 
         var sw = Stopwatch.StartNew();
@@ -275,7 +281,26 @@ public sealed class AzureOpenAiChatClient : IChatClient
         var msgArr = new JsonArray();
         foreach (var msg in messages)
         {
-            msgArr.Add(SerializeMessage(msg));
+            // A single ChatMessage may contain multiple FunctionResultContent items
+            // (one per tool call). OpenAI/Copilot API expects each as a separate
+            // "role":"tool" message, so we expand them here.
+            var functionResults = msg.Contents.OfType<FunctionResultContent>().ToList();
+            if (functionResults.Count > 1)
+            {
+                foreach (var result in functionResults)
+                {
+                    msgArr.Add(new JsonObject
+                    {
+                        ["role"] = "tool",
+                        ["tool_call_id"] = result.CallId,
+                        ["content"] = result.Result?.ToString() ?? "",
+                    });
+                }
+            }
+            else
+            {
+                msgArr.Add(SerializeMessage(msg));
+            }
         }
 
         var obj = new JsonObject
@@ -402,60 +427,67 @@ public sealed class AzureOpenAiChatClient : IChatClient
         if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
             && choices.GetArrayLength() > 0)
         {
-            var c0 = choices[0];
-            if (c0.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String)
+            // Copilot API returns tool calls in SEPARATE choices (one per tool_call),
+            // unlike standard OpenAI which puts all tool_calls in choices[0].
+            // Iterate ALL choices to collect text + tool calls into one message.
+            foreach (var choice in choices.EnumerateArray())
             {
-                var frStr = fr.GetString();
-                finishReason = frStr switch
+                if (choice.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String)
                 {
-                    "stop" => ChatFinishReason.Stop,
-                    "tool_calls" => ChatFinishReason.ToolCalls,
-                    "length" => ChatFinishReason.Length,
-                    "content_filter" => ChatFinishReason.ContentFilter,
-                    _ => null,
-                };
-            }
-
-            if (c0.TryGetProperty("message", out var msg))
-            {
-                if (msg.TryGetProperty("content", out var ce) && ce.ValueKind == JsonValueKind.String)
-                {
-                    var contentStr = ce.GetString();
-                    if (!string.IsNullOrEmpty(contentStr))
-                        responseMessage.Contents.Add(new TextContent(contentStr));
+                    var frStr = fr.GetString();
+                    var parsed_fr = frStr switch
+                    {
+                        "stop" => ChatFinishReason.Stop,
+                        "tool_calls" => ChatFinishReason.ToolCalls,
+                        "length" => ChatFinishReason.Length,
+                        "content_filter" => ChatFinishReason.ContentFilter,
+                        _ => (ChatFinishReason?)null,
+                    };
+                    if (parsed_fr == ChatFinishReason.ToolCalls || finishReason is null)
+                        finishReason = parsed_fr;
                 }
 
-                if (msg.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == JsonValueKind.Array)
+                if (choice.TryGetProperty("message", out var msg))
                 {
-                    foreach (var tc in tcs.EnumerateArray())
+                    if (msg.TryGetProperty("content", out var ce) && ce.ValueKind == JsonValueKind.String)
                     {
-                        var callId = tc.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
-                            ? idEl.GetString() ?? Guid.NewGuid().ToString("N")
-                            : Guid.NewGuid().ToString("N");
+                        var contentStr = ce.GetString();
+                        if (!string.IsNullOrEmpty(contentStr))
+                            responseMessage.Contents.Add(new TextContent(contentStr));
+                    }
 
-                        string name = "";
-                        string argsJson = "{}";
-                        if (tc.TryGetProperty("function", out var fn))
+                    if (msg.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var tc in tcs.EnumerateArray())
                         {
-                            if (fn.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
-                                name = n.GetString() ?? "";
-                            if (fn.TryGetProperty("arguments", out var a))
-                                argsJson = a.ValueKind == JsonValueKind.String
-                                    ? a.GetString() ?? "{}"
-                                    : a.GetRawText();
-                        }
+                            var callId = tc.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                                ? idEl.GetString() ?? Guid.NewGuid().ToString("N")
+                                : Guid.NewGuid().ToString("N");
 
-                        IDictionary<string, object?>? args = null;
-                        try
-                        {
-                            args = JsonSerializer.Deserialize<Dictionary<string, object?>>(argsJson, Json);
-                        }
-                        catch
-                        {
-                            args = new Dictionary<string, object?> { ["_raw"] = argsJson };
-                        }
+                            string name = "";
+                            string argsJson = "{}";
+                            if (tc.TryGetProperty("function", out var fn))
+                            {
+                                if (fn.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
+                                    name = n.GetString() ?? "";
+                                if (fn.TryGetProperty("arguments", out var a))
+                                    argsJson = a.ValueKind == JsonValueKind.String
+                                        ? a.GetString() ?? "{}"
+                                        : a.GetRawText();
+                            }
 
-                        responseMessage.Contents.Add(new FunctionCallContent(callId, name, args));
+                            IDictionary<string, object?>? args = null;
+                            try
+                            {
+                                args = JsonSerializer.Deserialize<Dictionary<string, object?>>(argsJson, Json);
+                            }
+                            catch
+                            {
+                                args = new Dictionary<string, object?> { ["_raw"] = argsJson };
+                            }
+
+                            responseMessage.Contents.Add(new FunctionCallContent(callId, name, args));
+                        }
                     }
                 }
             }
@@ -488,6 +520,8 @@ public sealed class AzureOpenAiChatClient : IChatClient
     internal Uri BuildChatUrl(string deployment)
     {
         var b = _endpoint.ToString().TrimEnd('/');
+        if (_copilotMode)
+            return new Uri($"{b}/chat/completions");
         var path = $"{b}/openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={Uri.EscapeDataString(_apiVersion)}";
         return new Uri(path);
     }
@@ -505,6 +539,8 @@ public sealed class AzureOpenAiChatClient : IChatClient
         }
         if (!req.Headers.Contains("Accept"))
             req.Headers.Add("Accept", "application/json");
+        if (_copilotMode && !string.IsNullOrEmpty(_copilotIntegrationId))
+            req.Headers.TryAddWithoutValidation("Copilot-Integration-Id", _copilotIntegrationId);
     }
 
     private static async Task BackoffAsync(int attempt, CancellationToken ct)

@@ -1,3 +1,4 @@
+using Drederick.Audit;
 using Drederick.Reporting;
 
 namespace Drederick.Enrichment;
@@ -22,11 +23,12 @@ public sealed record PocRef(
 /// </summary>
 public sealed class PocQueryContext
 {
-    public PocQueryContext(string cacheRoot, bool fetchPoc, SqliteReport report)
+    public PocQueryContext(string cacheRoot, bool fetchPoc, SqliteReport report, AuditLog? audit = null)
     {
         CacheRoot = cacheRoot ?? throw new ArgumentNullException(nameof(cacheRoot));
         FetchPoc = fetchPoc;
         Report = report ?? throw new ArgumentNullException(nameof(report));
+        Audit = audit;
     }
 
     /// <summary>Absolute path to the poc_cache root (e.g. out/poc_cache).</summary>
@@ -37,6 +39,10 @@ public sealed class PocQueryContext
 
     /// <summary>Report used to record cached artefacts (sha256, path).</summary>
     public SqliteReport Report { get; }
+
+    /// <summary>Audit log for <c>poc.fetch</c> events. Optional — sources
+    /// that cache MUST emit one event per cached artefact when present.</summary>
+    public AuditLog? Audit { get; }
 }
 
 /// <summary>

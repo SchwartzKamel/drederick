@@ -4,6 +4,9 @@
     <Project Path="src/Drederick.UI/Drederick.UI.csproj" />
     <Project Path="src/Drederick.Web/Drederick.Web.csproj" />
   </Folder>
+  <Folder Name="/bench/">
+    <Project Path="bench/Drederick.Bench/Drederick.Bench.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Drederick.Tests/Drederick.Tests.csproj" />
     <Project Path="tests/Drederick.UI.Tests/Drederick.UI.Tests.csproj" />
