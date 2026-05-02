@@ -17,6 +17,8 @@
 | [jobtwo-2026-05-02-r5](jobtwo-2026-05-02-r5.md) | JobTwo | 2026-05-02 | Hard | ❌ Loss (r5) — 30 sprays, 0 connects | GAP-029,030,031 (GAP-025 partial) | ⏳ Pending |
 | [facts-2026-05-02 (R1)](facts-2026-05-02.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R1) — cleanest tape, 6 min, 0 errors, 0 denials | GAP-032 | ⏳ Same-day rematch (R2) |
 | [facts-2026-05-02 (R2)](facts-2026-05-02.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R2) — 1611 events / 6 min, 31 CVEs, 1271 cve-leads slipped | GAP-032,033 (GAP-025 resolved) | ⏳ Pending |
+| [facts-2026-05-02 (R3)](facts-2026-05-02-r3-r4.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R3) — vhost fix firing, `http_probe` 35 calls, 640/640 cve-lead unfetchable | GAP-034, GAP-035 (GAP-032 ✅, GAP-033 ⚠️) | ⏳ Pending |
+| [facts-2026-05-02 (R4)](facts-2026-05-02-r3-r4.md) | Facts | 2026-05-02 | Easy | ❌ Loss (R4) — 42 LLM calls / 1785 events (densest ever); operator caught flag manually off-harness | GAP-034, GAP-035 | ⏳ Pending |
 
 ---
 
