@@ -127,13 +127,30 @@ public sealed class ReconToolbox
     {
         var count = _calls.AddOrUpdate((target, tool), 1, (_, c) => c + 1);
         Interlocked.Increment(ref _toolCallsTotal);
-        if (count > Budget.PerTargetPerTool)
+        var perToolCap = Budget.CapFor(tool);
+        if (count > perToolCap)
         {
+            _audit.Record("budget.deny", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["tool"] = tool,
+                ["count"] = count,
+                ["cap"] = perToolCap,
+                ["scope"] = "per-tool",
+            });
             throw new InvalidOperationException(
-                $"Budget exceeded: {tool} called {count} times on {target} (cap {Budget.PerTargetPerTool}).");
+                $"Budget exceeded: {tool} called {count} times on {target} (cap {perToolCap}).");
         }
         if (_toolCallsTotal > Budget.MaxTotalCalls)
         {
+            _audit.Record("budget.deny", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["tool"] = tool,
+                ["count"] = _toolCallsTotal,
+                ["cap"] = Budget.MaxTotalCalls,
+                ["scope"] = "global",
+            });
             throw new InvalidOperationException(
                 $"Total tool-call budget exceeded: {_toolCallsTotal} > {Budget.MaxTotalCalls}.");
         }
@@ -467,7 +484,45 @@ public sealed class ReconToolbox
     }
 }
 
+/// <summary>
+/// Per-target-per-tool and global call caps for <see cref="ReconToolbox"/>.
+/// The budget is a runaway-loop rate-limit, not a security boundary: scope
+/// is enforced inside every tool, so weakening these caps does not weaken
+/// authorization. <see cref="Default"/> (3/200) is calibrated for short
+/// deterministic <c>AdaptiveRunner</c> passes; LLM-driven runs
+/// (<c>--agent</c>, <c>--agent=hybrid</c>) need substantially more headroom
+/// to iterate through service variants and PoCs without starving — see
+/// <see cref="LlmDefault"/> (10/500). Per-tool overrides
+/// (<see cref="PerToolOverrides"/>) let the operator raise specific tools
+/// (e.g. <c>http</c>) further without lifting the global default.
+/// A cap of 0 is "deny-all" (the first call exceeds it). Negative caps
+/// are rejected by <see cref="CommandLineOptions"/> parsing.
+/// </summary>
 public sealed record ToolBudget(int PerTargetPerTool, int MaxTotalCalls)
 {
+    /// <summary>Optional per-tool overrides keyed by <see cref="IReconTool.Name"/>
+    /// (e.g. <c>"http"</c>, <c>"nmap"</c>). When set, the override replaces
+    /// <see cref="PerTargetPerTool"/> for that tool. Other tools fall back to
+    /// the global cap.</summary>
+    public IReadOnlyDictionary<string, int>? PerToolOverrides { get; init; }
+
+    /// <summary>Default budget for deterministic / no-LLM runs. Calibrated for
+    /// short adaptive passes — bumping these values without raising
+    /// <see cref="LlmDefault"/> will not affect LLM-driven planning.</summary>
     public static ToolBudget Default { get; } = new(PerTargetPerTool: 3, MaxTotalCalls: 200);
+
+    /// <summary>Default budget for LLM-driven runs (<c>--agent</c>,
+    /// <c>--agent=hybrid</c>, <c>--agent=llm</c>). The LLM planner needs
+    /// many more iterations than the deterministic runner — R5 JobTwo
+    /// starved on http=3 / nmap=3 after 17 LLM-issued HTTP probes
+    /// (GAP-029). 10 per tool / 500 global is enough for a realistic
+    /// hard-box fight while still capping runaway loops.</summary>
+    public static ToolBudget LlmDefault { get; } = new(PerTargetPerTool: 10, MaxTotalCalls: 500);
+
+    /// <summary>Resolve the effective per-target cap for <paramref name="tool"/>:
+    /// override if present, else global <see cref="PerTargetPerTool"/>.</summary>
+    public int CapFor(string tool) =>
+        PerToolOverrides is not null && PerToolOverrides.TryGetValue(tool, out var cap)
+            ? cap
+            : PerTargetPerTool;
 }
