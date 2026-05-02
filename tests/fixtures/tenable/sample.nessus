@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<NessusClientData_v2>
+  <Report name="Lab Scan">
+    <ReportHost name="10.10.10.5">
+      <HostProperties>
+        <tag name="host-ip">10.10.10.5</tag>
+        <tag name="host-fqdn">target.htb</tag>
+        <tag name="operating-system">Linux Kernel 4.15.0-20-generic</tag>
+      </HostProperties>
+      <ReportItem port="22" svc_name="ssh" protocol="tcp" severity="0" pluginID="10267" pluginName="SSH Server Type and Version Information" pluginFamily="Service detection">
+        <plugin_output>Remote SSH server version: OpenSSH_7.9p1</plugin_output>
+      </ReportItem>
+      <ReportItem port="80" svc_name="www" protocol="tcp" severity="1" pluginID="11219" pluginName="Nessus SYN scanner" pluginFamily="Port scanners">
+      </ReportItem>
+      <ReportItem port="443" svc_name="https" protocol="tcp" severity="3" pluginID="51192" pluginName="SSL Certificate Cannot Be Trusted" pluginFamily="General">
+        <cve>CVE-2021-1234</cve>
+        <cve>CVE-2021-5678</cve>
+      </ReportItem>
+    </ReportHost>
+    <ReportHost name="10.10.10.6">
+      <HostProperties>
+        <tag name="host-ip">10.10.10.6</tag>
+      </HostProperties>
+      <ReportItem port="445" svc_name="microsoft-ds" protocol="tcp" severity="2" pluginID="57608" pluginName="SMB Signing Disabled" pluginFamily="Misc.">
+      </ReportItem>
+    </ReportHost>
+    <ReportHost name="notanip.local">
+      <HostProperties>
+      </HostProperties>
+      <ReportItem port="80" svc_name="www" protocol="tcp" severity="0" pluginID="10267" pluginName="HTTP Info" pluginFamily="Service detection">
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>

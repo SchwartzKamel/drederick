@@ -1,0 +1,5 @@
+Plugin ID,CVE,CVSS v2.0 Base Score,Risk,Host,Protocol,Port,Name,Synopsis,Description,Solution,See Also,Plugin Output
+10267,,0.0,None,10.10.10.5,tcp,22,SSH Server Type and Version Information,SSH info,Desc,N/A,,OpenSSH_7.9p1
+11219,,0.0,Low,10.10.10.5,tcp,80,Nessus SYN scanner,Port open,Desc,N/A,,Port 80 is open
+51192,CVE-2021-1234,5.8,Medium,10.10.10.5,tcp,443,SSL Certificate Cannot Be Trusted,SSL info,Desc,Update,,cert info
+57608,,4.3,Medium,10.10.10.6,tcp,445,SMB Signing Disabled,SMB info,Desc,Enable signing,,

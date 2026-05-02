@@ -374,6 +374,159 @@ catch (ScopeException ex)
     return 2;
 }
 
+// --- tenable-api-pull ---
+// "Smart" Tenable API pulling against any of three backends: Tenable.io
+// (cloud), Nessus Professional (on-prem, same wire protocol), or Tenable.sc /
+// SecurityCenter (REST /rest/scanResult). Picks the right client from
+// --tenable-backend, authenticates, selects the scan, polls until ready,
+// caches the bytes under <out>/tenable_cache/, and feeds the path into the
+// existing file-based ingest path below.
+if (string.IsNullOrEmpty(opts.TenableImportPath) &&
+    (opts.TenableScanId.HasValue || !string.IsNullOrEmpty(opts.TenableScanName) || opts.TenableLatest))
+{
+    var backend = (opts.TenableBackend ?? "io").ToLowerInvariant();
+    var defaultUrl = backend switch
+    {
+        "nessus" => "https://localhost:8834",
+        "sc" => "https://localhost",
+        _ => "https://cloud.tenable.com",
+    };
+    var apiUrl = opts.TenableApiUrl
+        ?? Environment.GetEnvironmentVariable("TENABLE_URL")
+        ?? defaultUrl;
+    var accessKey = opts.TenableAccessKey ?? Environment.GetEnvironmentVariable("TENABLE_ACCESS_KEY");
+    var secretKey = opts.TenableSecretKey ?? Environment.GetEnvironmentVariable("TENABLE_SECRET_KEY");
+    var username = opts.TenableUsername ?? Environment.GetEnvironmentVariable("TENABLE_USERNAME");
+    var password = opts.TenablePassword ?? Environment.GetEnvironmentVariable("TENABLE_PASSWORD");
+
+    // Default-on insecure TLS for on-prem backends (self-signed certs); off for cloud.
+    var insecure = opts.TenableInsecureTls ?? (backend == "nessus" || backend == "sc");
+
+    Directory.CreateDirectory(opts.OutputDir);
+    var pullAuditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
+    using var pullAudit = new AuditLog(pullAuditPath);
+
+    var selector = new Drederick.Ops.Tenable.TenableScanSelector
+    {
+        ScanId = opts.TenableScanId,
+        ScanName = opts.TenableScanName,
+        Latest = opts.TenableLatest,
+    };
+    var pullOpts = new Drederick.Ops.Tenable.TenableApiPullOptions
+    {
+        Format = opts.TenableFormat,
+        CacheRoot = Path.Combine(opts.OutputDir, "tenable_cache"),
+        NoCache = opts.TenableNoCache,
+    };
+
+    try
+    {
+        Drederick.Ops.Tenable.ITenableExportBackend client;
+        switch (backend)
+        {
+            case "io":
+                if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
+                {
+                    Console.Error.WriteLine(
+                        "tenable-api (io): --tenable-access-key and --tenable-secret-key " +
+                        "(or $TENABLE_ACCESS_KEY / $TENABLE_SECRET_KEY) are required.");
+                    return 2;
+                }
+                client = new Drederick.Ops.Tenable.TenableApiClient(
+                    apiUrl, accessKey, secretKey, insecureTls: insecure);
+                break;
+            case "nessus":
+                if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
+                {
+                    Console.Error.WriteLine(
+                        "tenable-api (nessus): --tenable-access-key and --tenable-secret-key " +
+                        "(or $TENABLE_ACCESS_KEY / $TENABLE_SECRET_KEY) are required. " +
+                        "Generate them in the Nessus UI under Settings → My Account → API Keys.");
+                    return 2;
+                }
+                client = Drederick.Ops.Tenable.TenableApiClient.ForNessusProfessional(
+                    apiUrl, accessKey, secretKey, insecureTls: insecure);
+                break;
+            case "sc":
+                if (!string.IsNullOrEmpty(accessKey) && !string.IsNullOrEmpty(secretKey))
+                {
+                    client = Drederick.Ops.Tenable.TenableScClient.WithApiKey(
+                        apiUrl, accessKey, secretKey, insecureTls: insecure);
+                }
+                else if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+                {
+                    client = Drederick.Ops.Tenable.TenableScClient.WithUserPass(
+                        apiUrl, username, password, insecureTls: insecure);
+                }
+                else
+                {
+                    Console.Error.WriteLine(
+                        "tenable-api (sc): provide either --tenable-access-key + --tenable-secret-key " +
+                        "or --tenable-username + --tenable-password (env: $TENABLE_ACCESS_KEY/$TENABLE_SECRET_KEY " +
+                        "or $TENABLE_USERNAME/$TENABLE_PASSWORD).");
+                    return 2;
+                }
+                break;
+            default:
+                Console.Error.WriteLine($"tenable-api: unknown backend '{backend}'.");
+                return 2;
+        }
+
+        using (client)
+        {
+            var puller = new Drederick.Ops.Tenable.TenableApiPuller(client, pullAudit);
+            var pullResult = await puller.PullAsync(selector, pullOpts);
+            Console.WriteLine(
+                $"tenable-api ({client.BackendName}): pulled scan {pullResult.ScanId} " +
+                $"('{pullResult.ScanName}') format={pullResult.Format} " +
+                $"from-cache={pullResult.FromCache} → {pullResult.CachedPath}");
+            opts.TenableImportPath = pullResult.CachedPath;
+        }
+    }
+    catch (Drederick.Ops.Tenable.TenableApiException ex)
+    {
+        Console.Error.WriteLine($"tenable-api: {ex.Message}");
+        return 2;
+    }
+    catch (HttpRequestException ex)
+    {
+        Console.Error.WriteLine($"tenable-api: network error: {ex.Message}");
+        return 2;
+    }
+}
+// --- end tenable-api-pull ---
+
+// --- tenable-import-prefill ---
+// Parse the Tenable export early so its IPs can flow into the targets block
+// below. Out-of-scope hosts are collected for later audit/warning output.
+TenableImportResult? tenableResult = null;
+var tenableOutOfScope = new List<string>();
+if (!string.IsNullOrEmpty(opts.TenableImportPath))
+{
+    try
+    {
+        tenableResult = TenableScanImporter.Parse(opts.TenableImportPath);
+        foreach (var ip in tenableResult.Hosts)
+        {
+            if (scope.Contains(ip))
+            {
+                if (!opts.Targets.Contains(ip, StringComparer.OrdinalIgnoreCase))
+                    opts.Targets.Add(ip);
+            }
+            else
+            {
+                tenableOutOfScope.Add(ip);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"tenable-import: failed to parse '{opts.TenableImportPath}': {ex.Message}");
+        return 2;
+    }
+}
+// --- end tenable-import-prefill ---
+
 List<string> targets;
 if (opts.Targets.Count > 0)
 {
@@ -468,6 +621,34 @@ Console.WriteLine(opts.LabMode
 }
 
 var kb = KnowledgeBase.Load(opts.MemoryPath);
+
+// --- tenable-import-wiring ---
+// Log the import outcome and seed the knowledge base with service data so the
+// adaptive runner can treat Tenable-known ports as pre-discovered rather than
+// re-scanning them from scratch on the first pass.
+if (tenableResult is not null)
+{
+    int inScopeCount = tenableResult.Hosts.Count - tenableOutOfScope.Count;
+    audit.Record("tenable.import", new Dictionary<string, object?>
+    {
+        ["source"] = opts.TenableImportPath,
+        ["format"] = tenableResult.Format,
+        ["host_count"] = tenableResult.Hosts.Count,
+        ["in_scope_count"] = inScopeCount,
+        ["skipped_count"] = tenableOutOfScope.Count,
+    });
+    foreach (var ip in tenableOutOfScope)
+    {
+        Console.Error.WriteLine($"tenable-import: {ip} is not in scope — skipping.");
+        audit.Record("tenable.import.out_of_scope", new Dictionary<string, object?> { ["ip"] = ip });
+    }
+    Console.WriteLine(
+        $"tenable-import: {tenableResult.Hosts.Count} host(s) in '{opts.TenableImportPath}' " +
+        $"— {inScopeCount} in scope, {tenableOutOfScope.Count} skipped.");
+    var tenableFindings = TenableScanImporter.ToHostFindings(tenableResult);
+    kb.Merge(tenableFindings);
+}
+// --- end tenable-import-wiring ---
 
 // ANCHOR: vpn-preflight (owned by vpn-htb-ergonomics task)
 // Before queueing any scan jobs: resolve --htb-host aliases via /etc/hosts,

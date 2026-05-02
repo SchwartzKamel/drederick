@@ -116,6 +116,53 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool LabMode { get; set; } = true;
 
+    // --- tenable-import options ---
+    /// <summary>
+    /// Path to a Tenable scan export file (Nessus XML <c>.nessus</c> or Tenable
+    /// CSV). When set, the importer extracts all host IPs and adds any that are
+    /// inside the scope as additional targets, then pre-seeds the
+    /// <c>KnowledgeBase</c> with service data from the scan so the adaptive runner
+    /// can focus on unexplored surface rather than re-discovering known ports.
+    /// IPs from the Tenable file that fall outside the scope are logged and skipped.
+    /// </summary>
+    public string? TenableImportPath { get; set; }
+
+    /// <summary>Tenable.io API base URL (default <c>https://cloud.tenable.com</c>). Falls back to <c>$TENABLE_URL</c>.</summary>
+    public string? TenableApiUrl { get; set; }
+    /// <summary>Tenable.io access key. Falls back to <c>$TENABLE_ACCESS_KEY</c>.</summary>
+    public string? TenableAccessKey { get; set; }
+    /// <summary>Tenable.io secret key. Falls back to <c>$TENABLE_SECRET_KEY</c>.</summary>
+    public string? TenableSecretKey { get; set; }
+    /// <summary>Specific scan id to pull via <c>--tenable-scan-id</c>.</summary>
+    public int? TenableScanId { get; set; }
+    /// <summary>Scan name (most recent completed match wins) via <c>--tenable-scan-name</c>.</summary>
+    public string? TenableScanName { get; set; }
+    /// <summary>Pull the most recently completed scan visible to the API key.</summary>
+    public bool TenableLatest { get; set; }
+    /// <summary>Export format requested from the API. Default <c>nessus</c>; <c>csv</c> also accepted.</summary>
+    public string TenableFormat { get; set; } = "nessus";
+    /// <summary>When true, ignore the on-disk export cache and force a fresh export.</summary>
+    public bool TenableNoCache { get; set; }
+
+    /// <summary>
+    /// Backend dialect: <c>io</c> (Tenable.io, default), <c>nessus</c>
+    /// (Nessus Professional on-prem), or <c>sc</c> (Tenable.sc / SecurityCenter).
+    /// </summary>
+    public string TenableBackend { get; set; } = "io";
+
+    /// <summary>SC/Nessus username (SC only requires this when API keys are not set).</summary>
+    public string? TenableUsername { get; set; }
+    /// <summary>SC/Nessus password (paired with <see cref="TenableUsername"/>).</summary>
+    public string? TenablePassword { get; set; }
+
+    /// <summary>
+    /// Skip TLS server certificate validation. Default <c>false</c> for Tenable.io,
+    /// auto-on for the <c>nessus</c> and <c>sc</c> backends because both ship with
+    /// self-signed certs out of the box. Set explicitly to override.
+    /// </summary>
+    public bool? TenableInsecureTls { get; set; }
+    // --- end tenable-import options ---
+
     // ANCHOR: vpn-preflight-options (owned by vpn-htb-ergonomics task)
     /// <summary>Abort the run if an HTB CIDR target is passed but no tun*/tap* VPN interface is up.</summary>
     public bool RequireVpn { get; set; }
@@ -747,6 +794,50 @@ public sealed class CommandLineOptions
                 case "--cred":
                     o.AutopilotCreds.Add(RequireNext(args, ref i, a)); break;
                 // --- end autopilot flag parse ---
+                case "--tenable-import":
+                    o.TenableImportPath = RequireNext(args, ref i, a); break;
+                case "--tenable-api-url":
+                    o.TenableApiUrl = RequireNext(args, ref i, a); break;
+                case "--tenable-access-key":
+                    o.TenableAccessKey = RequireNext(args, ref i, a); break;
+                case "--tenable-secret-key":
+                    o.TenableSecretKey = RequireNext(args, ref i, a); break;
+                case "--tenable-scan-id":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1)
+                            throw new ArgumentException($"--tenable-scan-id must be a positive integer, got '{v}'.");
+                        o.TenableScanId = n; break;
+                    }
+                case "--tenable-scan-name":
+                    o.TenableScanName = RequireNext(args, ref i, a); break;
+                case "--tenable-latest":
+                    o.TenableLatest = true; break;
+                case "--tenable-format":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!string.Equals(v, "nessus", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(v, "csv", StringComparison.OrdinalIgnoreCase))
+                            throw new ArgumentException($"--tenable-format must be 'nessus' or 'csv', got '{v}'.");
+                        o.TenableFormat = v.ToLowerInvariant(); break;
+                    }
+                case "--tenable-no-cache":
+                    o.TenableNoCache = true; break;
+                case "--tenable-backend":
+                    {
+                        var v = RequireNext(args, ref i, a).ToLowerInvariant();
+                        if (v != "io" && v != "nessus" && v != "sc")
+                            throw new ArgumentException($"--tenable-backend must be 'io', 'nessus', or 'sc'; got '{v}'.");
+                        o.TenableBackend = v; break;
+                    }
+                case "--tenable-username":
+                    o.TenableUsername = RequireNext(args, ref i, a); break;
+                case "--tenable-password":
+                    o.TenablePassword = RequireNext(args, ref i, a); break;
+                case "--tenable-insecure":
+                    o.TenableInsecureTls = true; break;
+                case "--tenable-secure":
+                    o.TenableInsecureTls = false; break;
                 // --- gap-029 budget tuning flag parse ---
                 case "--budget-per-tool":
                     {
@@ -1311,6 +1402,48 @@ public sealed class CommandLineOptions
           -t, --target <ip>    Add a target (repeatable). If omitted and --expand
                                is set, the full scope is enumerated.
           --expand             Enumerate all hosts in the scope file.
+          --tenable-import <file>
+                               Path to a Tenable scan export (Nessus XML .nessus or
+                               Tenable CSV). All host IPs found in the file that are
+                               inside the scope are added as targets automatically.
+                               Service data is pre-seeded into the cross-run knowledge
+                               base so the adaptive runner focuses on unexplored surface.
+                               IPs outside the scope are logged and skipped.
+          --tenable-backend <io|nessus|sc>
+                                      Tenable backend dialect. Default 'io'
+                                      (Tenable.io cloud). 'nessus' = Nessus
+                                      Professional on-prem (same wire protocol
+                                      as Tenable.io, default URL
+                                      https://localhost:8834, self-signed TLS
+                                      tolerated by default). 'sc' = Tenable.sc
+                                      / SecurityCenter (REST /rest/scanResult,
+                                      ZIP-of-.nessus download, supports either
+                                      API-key auth or username+password).
+          --tenable-api-url <url>     Tenable management plane URL.
+                                      Default https://cloud.tenable.com (io),
+                                      https://localhost:8834 (nessus), or
+                                      $TENABLE_URL.
+          --tenable-access-key <key>  API access key. Env: $TENABLE_ACCESS_KEY.
+          --tenable-secret-key <key>  API secret key. Env: $TENABLE_SECRET_KEY.
+          --tenable-username <user>   SC username (when API keys are not set).
+                                      Env: $TENABLE_USERNAME.
+          --tenable-password <pw>     SC password. Env: $TENABLE_PASSWORD.
+          --tenable-insecure          Skip TLS server-certificate validation.
+                                      Default off for io, on for nessus and sc.
+          --tenable-secure            Force TLS verification on (overrides the
+                                      default-on behavior for nessus / sc).
+          --tenable-scan-id <n>       Pull the export for scan id <n>.
+          --tenable-scan-name <name>  Pull the most recently completed scan whose name
+                                      matches (case-insensitive).
+          --tenable-latest            Pull the most recently completed scan visible
+                                      to the API key.
+          --tenable-format <fmt>      Export format: nessus (default) or csv.
+                                      SC backend supports nessus only.
+          --tenable-no-cache          Force a fresh export, bypassing
+                                      <out>/tenable_cache/. Cached exports are
+                                      keyed by scan id + last_modification_date,
+                                      so they automatically refresh when Tenable
+                                      reruns the scan.
 
         RUNNER:
           -a, --agent          Use Microsoft Agent Framework runner (needs
