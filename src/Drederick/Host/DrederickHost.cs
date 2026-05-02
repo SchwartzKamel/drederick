@@ -292,7 +292,7 @@ public sealed class DrederickHost
         {
             try
             {
-                var pocAggregator = new PocAggregator();
+                var pocAggregator = new PocAggregator(audit: audit);
                 var pocResult = await pocAggregator
                     .AggregateAsync(allFindings, options.OutputDir, options.FetchPocSource, ct)
                     .ConfigureAwait(false);

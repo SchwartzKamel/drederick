@@ -623,6 +623,25 @@ var httpSpray = new NativeHttpSprayTool(
         useAgent: opts.UseAgent,
         explicitOverride: opts.CredSprayTimeoutSeconds));
 
+// --- replay-timeout config (cross-protocol replay) ---
+// CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by
+// callers via CrossProtocolReplay.BuildDefault(...) — but we resolve the
+// mode-aware default and audit it so the operator can see the figure
+// that future replay calls will use, and so the --replay-timeout flag
+// has an observable effect even before replay is wired into the main
+// pipeline. Mirrors the cred-spray-timeout pattern from 95a328d.
+var replayTimeoutSeconds = Drederick.Exploit.Replay.CrossProtocolReplay.ResolveDefaultTimeoutSeconds(
+    labMode: opts.LabMode,
+    useAgent: opts.UseAgent,
+    explicitOverride: opts.ReplayTimeoutSeconds);
+audit.Record("replay.config", new Dictionary<string, object?>
+{
+    ["timeout_seconds"] = replayTimeoutSeconds,
+    ["explicit_override"] = opts.ReplayTimeoutSeconds,
+    ["mode"] = opts.UseAgent ? (opts.UseHybridAgent ? "hybrid" : "llm") : (opts.LabMode ? "lab" : "adaptive"),
+});
+// --- end replay-timeout config ---
+
 // Empire tools
 var empireStager = new EmpireAgentStager(scope, audit);
 var empireExecutor = new EmpireModuleExecutor(scope, audit, empireModuleLibrary);
@@ -914,7 +933,7 @@ if (!string.Equals(Environment.GetEnvironmentVariable("DREDERICK_SKIP_CVE"), "1"
 // execute.
 try
 {
-    var pocAggregator = new PocAggregator();
+    var pocAggregator = new PocAggregator(audit: audit);
     var pocResult = await pocAggregator.AggregateAsync(allFindings, opts.OutputDir, opts.FetchPoc, cts.Token);
     audit.Record("poc.aggregate", new Dictionary<string, object?>
     {

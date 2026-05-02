@@ -1,4 +1,5 @@
 using System.Globalization;
+using Drederick.Audit;
 using Drederick.Reporting;
 using Microsoft.Data.Sqlite;
 
@@ -20,10 +21,12 @@ namespace Drederick.Enrichment;
 public sealed class PocAggregator
 {
     private readonly IReadOnlyList<IPocSource> _sources;
+    private readonly AuditLog? _audit;
 
-    public PocAggregator(IEnumerable<IPocSource>? sources = null)
+    public PocAggregator(IEnumerable<IPocSource>? sources = null, AuditLog? audit = null)
     {
         _sources = (sources ?? DefaultSources()).ToArray();
+        _audit = audit;
     }
 
     public static IEnumerable<IPocSource> DefaultSources() => new IPocSource[]
@@ -52,7 +55,7 @@ public sealed class PocAggregator
 
         var cacheRoot = Path.Combine(outputDir, "poc_cache");
         if (fetchPoc) Directory.CreateDirectory(cacheRoot);
-        var ctx = new PocQueryContext(cacheRoot, fetchPoc, report);
+        var ctx = new PocQueryContext(cacheRoot, fetchPoc, report, _audit);
         var now = DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
         int refCount = 0;
