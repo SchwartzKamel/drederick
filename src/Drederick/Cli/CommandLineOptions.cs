@@ -340,6 +340,22 @@ public sealed class CommandLineOptions
     /// <summary>Write results to file (default: stdout).</summary>
     public string? AnalyzeOutput { get; set; }
     // --- end binary-analyzer subcommand ----------------------------------------
+
+    // --- windows-vulns subcommand --------------------------------------------
+    /// <summary>Windows-vulns subcommand selected (first positional arg "windows-vulns").
+    /// Lists the bundled MSRC corpus or analyses a captured PostExWindowsResult JSON
+    /// against it. Read-only, offline, no network.</summary>
+    public bool WindowsVulnsSubcommand { get; set; }
+    /// <summary>--list: print every CVE in the bundled MSRC corpus and exit.</summary>
+    public bool WindowsVulnsList { get; set; }
+    /// <summary>--analyze: run the matcher against a PostExWindowsResult JSON file.</summary>
+    public bool WindowsVulnsAnalyze { get; set; }
+    /// <summary>--postex-json &lt;path&gt;: PostExWindowsResult JSON to feed the matcher.</summary>
+    public string? WindowsVulnsPostExJson { get; set; }
+    /// <summary>--json: emit machine-readable output (matches AnalyzeJson convention).</summary>
+    public bool WindowsVulnsJson { get; set; }
+    // --- end windows-vulns subcommand ----------------------------------------
+
     /// <summary>Bind host for `drederick serve`. Default 127.0.0.1.</summary>
     public string ServeHost { get; set; } = "127.0.0.1";
     /// <summary>Bind port for `drederick serve`. Default 8001.</summary>
@@ -489,6 +505,13 @@ public sealed class CommandLineOptions
             }
         }
         // --- end binary-analyzer subcommand ---------
+        // --- windows-vulns subcommand dispatch -----
+        else if (args.Length > 0 && args[0] == "windows-vulns")
+        {
+            o.WindowsVulnsSubcommand = true;
+            start = 1;
+        }
+        // --- end windows-vulns subcommand ---
         // ANCHOR: note-subcommand-dispatch
         else if (args.Length > 0 && args[0] == "note")
         {
@@ -1006,6 +1029,10 @@ public sealed class CommandLineOptions
                     {
                         o.AnalyzeJson = true;
                     }
+                    else if (o.WindowsVulnsSubcommand)
+                    {
+                        o.WindowsVulnsJson = true;
+                    }
                     else if (o.NoteSubcommand != null)
                     {
                         o.NoteJson = true;
@@ -1030,6 +1057,23 @@ public sealed class CommandLineOptions
                     o.AnalyzeOutput = RequireNext(args, ref i, a);
                     break;
                 // --- end binary-analyzer subcommand flags -------
+                // --- windows-vulns subcommand flags -----------
+                case "--list":
+                    if (!o.WindowsVulnsSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.WindowsVulnsList = true;
+                    break;
+                case "--analyze":
+                    if (!o.WindowsVulnsSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.WindowsVulnsAnalyze = true;
+                    break;
+                case "--postex-json":
+                    if (!o.WindowsVulnsSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.WindowsVulnsPostExJson = RequireNext(args, ref i, a);
+                    break;
+                // --- end windows-vulns subcommand flags ---------
                 // ANCHOR: note-subcommand-flags
                 case "--title":
                     if (o.NoteSubcommand != "add")
@@ -1364,6 +1408,8 @@ public sealed class CommandLineOptions
                           [--datasette-path <path>] [--no-auto-install] [-y|--yes]
           drederick init [--skip-creds] [--skip-scope] [-y|--yes]
           drederick analyze <binary-path> [--json] [--verbose] [--output <file>] [-s <scope>]
+          drederick windows-vulns --list [--json]
+          drederick windows-vulns --analyze --postex-json <file> [--json]
           drederick web [--web-bind <host>] [--web-port <n>] [--web-token <tok>] [-o <dir>]
 
         SUBCOMMANDS:
@@ -1389,6 +1435,14 @@ public sealed class CommandLineOptions
                                --json: machine-readable output. --verbose: include
                                detailed strings and dependencies. --output: write
                                results to file (default: stdout).
+          windows-vulns        Moriarty-style Windows privesc triage against the
+                               bundled offline MSRC corpus (33 entries: EternalBlue,
+                               ZeroLogon, PrintNightmare, HiveNightmare, SMBGhost,
+                               ProxyLogon, Log4Shell, Spring4Shell, AFD.sys, CLFS,
+                               …). --list prints every CVE; --analyze --postex-json
+                               <file> reads a captured PostExWindowsResult JSON
+                               and prints prioritised candidates. Read-only,
+                               offline, no scope, no subprocess.
           note <op>            Manage operator notes in findings.db
                                (CTF flags, creds, screenshots, observations).
                                Ops: add, list, view, search, flags, archive,

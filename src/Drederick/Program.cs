@@ -221,6 +221,14 @@ if (opts.AnalyzeSubcommand)
 }
 // --- end binary-analyzer-wiring -----------------------------------------------
 
+// --- windows-vulns subcommand wiring ------------------------------------------
+if (opts.WindowsVulnsSubcommand)
+{
+    var winVulnsCmd = new WindowsVulnsCommand(Console.Out, Console.Error);
+    return await winVulnsCmd.ExecuteAsync(opts);
+}
+// --- end windows-vulns subcommand wiring --------------------------------------
+
 // ANCHOR: note-subcommand-wiring
 if (!string.IsNullOrEmpty(opts.NoteSubcommand))
 {
