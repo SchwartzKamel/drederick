@@ -32,6 +32,7 @@ public sealed class ReconToolbox
     private readonly Drederick.Enrichment.FingerprintStack.FingerprintStackTool? _fingerprintStack;
     private readonly S3MinioProbeTool? _s3;
     private readonly CmsFingerprintTool? _cmsFingerprint;
+    private readonly Drederick.Recon.Ad.SmbNullSessionTool? _smbNullSession;
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -78,6 +79,7 @@ public sealed class ReconToolbox
         _fingerprintStack = materialized.OfType<Drederick.Enrichment.FingerprintStack.FingerprintStackTool>().SingleOrDefault();
         _s3 = materialized.OfType<S3MinioProbeTool>().SingleOrDefault();
         _cmsFingerprint = materialized.OfType<CmsFingerprintTool>().SingleOrDefault();
+        _smbNullSession = materialized.OfType<Drederick.Recon.Ad.SmbNullSessionTool>().SingleOrDefault();
 
         _tools = materialized;
         _audit = audit;
@@ -242,6 +244,26 @@ public sealed class ReconToolbox
         Charge(target, "cms-fingerprint");
         var r = await _cmsFingerprint.FingerprintAsync(target, port, tls, hostname, ct).ConfigureAwait(false);
         GetOrCreate(target).CmsFingerprint.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+
+    [Description("Anonymous SMB + LDAP enumeration against an AD-shaped target. Probes 445 for SMB2 " +
+                 "negotiate, attempts a null-session IPC$ tree-connect, enumerates shares (skipping " +
+                 "ADMIN$/IPC$/C$ unless includeAdminShares is true), RID-cycles 500-1100 by default, " +
+                 "runs SAMR EnumDomainUsers, and pulls naming contexts + a (samAccountName=*) user list " +
+                 "via anonymous LDAP bind on 389. Credential-free; run first on any AD-shaped box " +
+                 "(445/389/88 open) — output feeds AS-REP roasting, kerberoasting, and password spray.")]
+    public async Task<string> SmbNullSessionAsync(
+        [Description("Target IP or hostname (must resolve to an in-scope IP).")] string target,
+        [Description("RID cycle start (default 500).")] int ridStart = 500,
+        [Description("RID cycle end (default 1100, hard-capped at start+1000).")] int ridEnd = 1100,
+        [Description("Include ADMIN$/IPC$/C$ in the share list (default false).")] bool includeAdminShares = false,
+        CancellationToken ct = default)
+    {
+        if (_smbNullSession is null) throw new InvalidOperationException("SmbNullSessionTool not registered.");
+        Charge(target, "smb-null-session");
+        var r = await _smbNullSession.EnumerateAsync(target, ridStart, ridEnd, includeAdminShares, ct).ConfigureAwait(false);
+        GetOrCreate(target).SmbNullSession.Add(r);
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
 

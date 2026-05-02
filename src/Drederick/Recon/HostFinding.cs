@@ -39,6 +39,8 @@ public sealed class HostFinding
     [JsonPropertyName("s3")] public List<S3Finding> S3 { get; set; } = new();
     // --- cms fingerprint --- (GAP-036)
     [JsonPropertyName("cms_fingerprint")] public List<CmsFinding> CmsFingerprint { get; set; } = new();
+    // --- ad --- (GAP-042)
+    [JsonPropertyName("smb_null_session")] public List<SmbNullSessionFinding> SmbNullSession { get; set; } = new();
 }
 
 /// <summary>
@@ -397,3 +399,45 @@ public sealed record CmsMatch(
     [property: JsonPropertyName("version")] string? Version,
     [property: JsonPropertyName("confidence")] int Confidence,
     [property: JsonPropertyName("signals_matched")] IReadOnlyList<string> SignalsMatched);
+
+// --- GAP-042 SMB null-session + anonymous LDAP enumeration result records ---
+
+/// <summary>
+/// GAP-042: SMB null-session + anonymous LDAP enumeration result. Populated
+/// by <see cref="Drederick.Recon.Ad.SmbNullSessionTool"/>. Captures SMB2
+/// negotiate metadata, share list, RID-cycled / SAMR-enumerated users, and
+/// AD naming-context details obtained via anonymous LDAP bind. All steps are
+/// credential-free (anonymous IPC$ tree connect; LDAP bind with empty DN +
+/// empty password). Authoritative result for the &quot;is this an AD-shaped
+/// box and what can we see without creds?&quot; question.
+/// </summary>
+public sealed record SmbNullSessionFinding
+{
+    [JsonPropertyName("target")] public required string Target { get; init; }
+    [JsonPropertyName("null_session_open")] public bool NullSessionOpen { get; init; }
+    [JsonPropertyName("smb2_dialect")] public string? Smb2Dialect { get; init; }
+    [JsonPropertyName("signing_required")] public bool SigningRequired { get; init; }
+    [JsonPropertyName("server_guid")] public string? ServerGuid { get; init; }
+    [JsonPropertyName("domain_name")] public string? DomainName { get; init; }
+    [JsonPropertyName("domain_sid")] public string? DomainSid { get; init; }
+    [JsonPropertyName("dns_domain")] public string? DnsDomain { get; init; }
+    [JsonPropertyName("default_naming_context")] public string? DefaultNamingContext { get; init; }
+    [JsonPropertyName("root_naming_context")] public string? RootDomainNamingContext { get; init; }
+    [JsonPropertyName("ldap_anon_bind_ok")] public bool LdapAnonBindOk { get; init; }
+    [JsonPropertyName("shares")] public IReadOnlyList<SmbShare> Shares { get; init; } = [];
+    [JsonPropertyName("users")] public IReadOnlyList<DomainUser> Users { get; init; } = [];
+    [JsonPropertyName("supported_sasl_mechanisms")] public IReadOnlyList<string> SupportedSaslMechanisms { get; init; } = [];
+    [JsonPropertyName("error")] public string? Error { get; init; }
+}
+
+public sealed record SmbShare(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("comment")] string? Comment,
+    [property: JsonPropertyName("readable_anonymously")] bool ReadableAnonymously);
+
+public sealed record DomainUser(
+    [property: JsonPropertyName("sam_account_name")] string SamAccountName,
+    [property: JsonPropertyName("rid")] int? Rid,
+    [property: JsonPropertyName("user_account_control")] string? UserAccountControl,
+    [property: JsonPropertyName("member_of")] IReadOnlyList<string> MemberOf);
