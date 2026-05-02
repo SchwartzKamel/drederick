@@ -22,6 +22,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
     private readonly string _modelId;
     private readonly bool _modelWasExplicit;
     private readonly LlmExploitTools? _exploitTools;
+    private readonly LlmNotebookTool? _notebook;
 
     public string ModelId => _modelId;
 
@@ -30,7 +31,8 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         string githubToken,
         string modelId,
         LlmExploitTools? exploitTools = null,
-        bool modelWasExplicit = true)
+        bool modelWasExplicit = true,
+        LlmNotebookTool? notebook = null)
     {
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentException.ThrowIfNullOrWhiteSpace(githubToken);
@@ -41,16 +43,21 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         _modelId = modelId;
         _modelWasExplicit = modelWasExplicit;
         _exploitTools = exploitTools;
+        _notebook = notebook;
     }
 
     public CopilotSdkAgentRunner WithExploitTools(LlmExploitTools exploitTools) =>
-        new(_audit, _githubToken, _modelId, exploitTools, _modelWasExplicit);
+        new(_audit, _githubToken, _modelId, exploitTools, _modelWasExplicit, _notebook);
+
+    public CopilotSdkAgentRunner WithNotebook(LlmNotebookTool notebook) =>
+        new(_audit, _githubToken, _modelId, _exploitTools, _modelWasExplicit, notebook);
 
     public static CopilotSdkAgentRunner? TryCreateFromEnvironment(
         AuditLog audit,
         string? modelId = null,
         LlmExploitTools? exploitTools = null,
-        bool allowGitHubCliAuth = true)
+        bool allowGitHubCliAuth = true,
+        LlmNotebookTool? notebook = null)
     {
         ArgumentNullException.ThrowIfNull(audit);
 
@@ -64,7 +71,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
 
         var explicitModel = !string.IsNullOrWhiteSpace(modelId);
         modelId = explicitModel ? modelId!.Trim() : DefaultModelId;
-        return new CopilotSdkAgentRunner(audit, token, modelId, exploitTools, explicitModel);
+        return new CopilotSdkAgentRunner(audit, token, modelId, exploitTools, explicitModel, notebook);
     }
 
     public async Task RunAsync(
@@ -73,7 +80,7 @@ public sealed class CopilotSdkAgentRunner : IReconAgentRunner
         KnowledgeBase prior,
         CancellationToken ct)
     {
-        var aiTools = LlmToolCatalog.BuildAiFunctions(tools, _exploitTools);
+        var aiTools = LlmToolCatalog.BuildAiFunctions(tools, _exploitTools, _notebook);
 
         await using var client = CreateClient();
         try
