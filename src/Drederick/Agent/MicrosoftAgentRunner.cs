@@ -233,6 +233,31 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         exploit → post-ex → pivot → repeat. When finished, respond with a
         factual summary: open ports, service versions, captured creds
         (by SHA-256 only), opened sessions, and any flags extracted.
+
+        Forcing function — DO NOT stop after recon. A fight that ends
+        with only enumeration is a loss. Before you respond with a final
+        summary, you MUST do at least ONE of the following:
+          1. Call exploit_plan for each target and act on every action it
+             returns whose required permission flag is enabled. If
+             exploit_plan returns zero actions, that is a signal to widen
+             recon (e.g., http_content_discovery, tls_cipher_enum,
+             additional protocol probes) and try again — not to stop.
+          2. For every auth-bearing service you observed (ssh, ftp,
+             smb/microsoft-ds, winrm/5985, rdp/3389, mssql/1433, mysql,
+             postgres, ldap, http with login forms) call
+             execute_cred_spray with at least one (user, password) pair
+             — lab defaults if --allow-cred-attacks is set, captured
+             creds otherwise.
+          3. For any session you opened, call run_post_ex_linux or
+             run_post_ex_windows and extract_flags_from_dir.
+          4. If permission flags forbid every offensive action, say so
+             explicitly in the summary and name the missing flag — that
+             is the only acceptable "recon-only" outcome.
+        Native HTTP/TLS probes that succeeded are PROOF a port is open
+        even when nmap reports nothing — treat them as targets, not
+        artifacts. JobTwo r4 lost because nmap returned [] and the
+        runner stopped; the planner now harvests ports from every
+        signal, and so should you.
         """;
 
     internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)
@@ -245,8 +270,11 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             sb.Append("   [prior: ").Append(prior.Digest(t)).AppendLine("]");
         }
         sb.AppendLine();
-        sb.AppendLine("Goal: enumerate services on each target, identify notable findings, ");
-        sb.AppendLine("and write a remediation-focused summary. Use the tools; do not guess.");
+        sb.AppendLine("Goal: COMPROMISE each target. Enumerate widely, then exploit. ");
+        sb.AppendLine("A fight that stops at enumeration is a loss — see the forcing");
+        sb.AppendLine("function in your system instructions. Use the tools; do not guess.");
+        sb.AppendLine("Capture flags, open sessions, escalate where you can, and report");
+        sb.AppendLine("punches thrown — not just punches considered.");
         return sb.ToString();
     }
 }
