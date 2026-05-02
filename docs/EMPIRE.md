@@ -51,6 +51,119 @@ Empire integration follows a three-stage payload chain:
      `linux/lateral/ssh_add_authorized_keys`
    - **Enumeration**: `windows/enum/enum_services`, `linux/enum/enum_network`
 
+<a id="malleable-c2-profiles"></a>
+## Malleable C2 Profiles
+
+> **Overview.** Drederick integrates the [BC-SECURITY/Malleable-C2-Profiles](https://github.com/BC-SECURITY/Malleable-C2-Profiles)
+> repository to provide traffic obfuscation and operational security. Malleable C2
+> profiles allow Empire agents to mimic legitimate network traffic patterns (Amazon,
+> Office365, APT actors) to evade detection.
+
+### Profile Categories
+
+| Category | Purpose | Example Profiles | Use Case |
+| -------- | ------- | ---------------- | -------- |
+| **Normal** | Mimic legitimate services | `amazon`, `office365_calendar`, `stackoverflow`, `microsoftupdate` | Stealth operations, blend with corporate traffic |
+| **APT** | Mimic nation-state actors | `apt29_dukes`, `sofacy`, `apt10_chches` | Red team APT simulation, threat intel validation |
+| **Crimeware** | Mimic malware campaigns | `emotet`, `trickbot`, `bazarloader`, `qakbot` | Purple team exercises, defensive tuning |
+
+### Profile Selection
+
+**Automatic (Recommended):**
+```csharp
+// Drederick selects optimal profile based on operational context
+var stager = new EmpireAgentStager(scope, audit);
+var result = await stager.GenerateAsync(target, platform: "windows");
+// Auto-selects stealth profile (e.g., amazon.profile)
+```
+
+**Manual (Explicit):**
+```csharp
+// Operator chooses specific profile
+var stager = new EmpireAgentStager(scope, audit);
+var result = await stager.GenerateAsync(
+    target: "192.168.1.100",
+    platform: "windows",
+    profileName: "office365_calendar");
+```
+
+**List Available Profiles:**
+```csharp
+var stager = new EmpireAgentStager(scope, audit);
+var profiles = stager.ListAvailableProfiles();
+foreach (var profile in profiles)
+{
+    Console.WriteLine($"{profile.Name} ({profile.Category}): {profile.Description}");
+}
+// Output:
+// amazon (Normal): Amazon browsing traffic profile
+// apt29_dukes (APT): APT29/Dukes actor traffic profile
+// emotet (Crimeware): Emotet malware campaign profile
+```
+
+### Operational Contexts
+
+Drederick provides smart profile selection based on operational context:
+
+```csharp
+public enum OperationalContext
+{
+    Stealth,        // Max stealth → amazon.profile
+    APTSimulation,  // APT actor → apt29_dukes.profile
+    RedTeam,        // Red team → office365_calendar.profile
+    Testing         // Lab → randomized.profile
+}
+```
+
+### Profile Integration with Empire API
+
+**Loading a Profile:**
+```csharp
+var apiClient = new EmpireApiClient("https://empire-server:1337", authToken);
+var profileLibrary = new MalleableProfileLibrary();
+var profile = profileLibrary.GetProfile("amazon");
+var profileContent = await profileLibrary.ReadProfileContentAsync(profile);
+
+var result = await apiClient.LoadMalleableProfileAsync(profileContent, "amazon");
+// Empire now has the profile loaded for listener creation
+```
+
+**Creating a Listener with Profile:**
+```csharp
+var listener = await apiClient.CreateListenerWithProfileAsync(
+    listenerName: "http-amazon",
+    listenerType: "http",
+    host: "192.168.1.50",
+    port: 8080,
+    profileName: "amazon");
+// Listener mimics Amazon browsing traffic
+```
+
+### Recommended Profiles by Scenario
+
+| Scenario | Recommended Profile | Rationale |
+| -------- | ------------------- | --------- |
+| Corporate network pentest | `office365_calendar` | Office365 is ubiquitous, low suspicion |
+| E-commerce target | `amazon` | Legitimate shopping traffic |
+| Healthcare target | `mayoclinic` | Health info lookups are common |
+| APT simulation (Russia) | `apt29_dukes` | Mimics known Russian APT tradecraft |
+| APT simulation (China) | `apt10_chches` | Mimics known Chinese APT tradecraft |
+| Purple team (ransomware) | `emotet` or `trickbot` | Test defenses against known malware C2 |
+| Lab/CTF | `randomized` | No specific OPSEC requirement |
+
+### Profile Submodule Maintenance
+
+The Malleable-C2-Profiles are included as a git submodule:
+
+```bash
+# Update to latest profiles
+cd src/Drederick/Exploit/Empire/profiles
+git pull origin master
+
+# Add new profiles manually (if needed)
+cp my-custom.profile src/Drederick/Exploit/Empire/profiles/Normal/
+```
+
 <a id="agent-types"></a>
 ## Agent Types
 
