@@ -256,9 +256,17 @@ public sealed class AutopilotRunner
     {
         if (_asrep is null) return Skip(action, "asrep-roast tool not registered", sw);
         if (string.IsNullOrEmpty(action.Realm)) return Skip(action, "missing realm", sw);
+        if (action.Cred is null) return Skip(action, "missing credential ref for authenticated asrep-roast", sw);
 
-        // Unauthenticated mode when no cred — still useful for bulk AS-REQ scan.
-        var result = await _asrep.RunAsync(action.Target, action.Realm!, ct: ct)
+        var secret = _creds.TryGetSecret(action.Cred);
+        if (secret is null) return Skip(action, "credential not in store", sw);
+
+        var result = await _asrep.RunAsync(
+            action.Target,
+            action.Realm!,
+            authUser: action.Cred.User,
+            authPassword: secret,
+            ct: ct)
             .ConfigureAwait(false);
         sw.Stop();
         return new ExploitActionResult
