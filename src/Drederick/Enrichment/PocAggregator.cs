@@ -36,6 +36,12 @@ public sealed class PocAggregator
         new GhsaSource(),
         new MetasploitSource(),
         new NucleiSource(),
+        // GAP-031b-2 — git-clone sources so on-demand fetch returns artifacts
+        // even when the operator's box has no msf-framework / nuclei-templates
+        // installed. URLs are hard-coded in GitPocAllowlist.
+        new MetasploitGitSource(),
+        new NucleiTemplatesGitSource(),
+        new PocInGitHubSource(),
     };
 
     public sealed record AggregationResult(int CveCount, int RefCount, int CachedCount);
