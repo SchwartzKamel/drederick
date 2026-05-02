@@ -856,10 +856,27 @@ var sudoGtfoBins = new Drederick.Exploit.PostEx.SudoGtfoBinsTool(
 // ExploitCategory.ExecPocs (--allow-exec-pocs); CredAttacks is
 // intentionally NOT required because we authenticate once with
 // known-good material rather than spraying. v1 transport is the
-// subprocess-wrap path via the default EvilWinrmExecutor; production
-// operators inject a wired-up IWinRmExecutor at construction time.
+// subprocess-wrap path via EvilWinrmSubprocessExecutor (Auto: probes
+// evil-winrm first for PtH support, falls back to pwsh Invoke-Command
+// for password-only credentials). KRB5/SSH/SUDO env vars are stripped
+// from the spawned subprocess; argv assembled via ArgumentList (no
+// shell); per-command timeout 60s with process-tree kill on cancel.
+var winrmExecutor = new Drederick.Exploit.PostEx.EvilWinrmSubprocessExecutor(
+    Drederick.Exploit.PostEx.EvilWinrmSubprocessExecutor.BackendStrategy.Auto,
+    workdirRoot: opts.OutputDir);
 var winrmPostEx = new Drederick.Exploit.PostEx.WinRmPostExTool(
-    scope, audit, permissions);
+    scope, audit, permissions, winrmExecutor);
+
+// GAP-041: HTTP form-brute primitive that drives the cms_chain
+// cred_runner action (default-creds against WP/Drupal/Joomla/etc).
+// Master gate: ExploitCategory.CredAttacks; AcknowledgeLockoutRisk
+// required when users*passwords > 50. CredentialStore is wired up
+// later (autopilot constructs it); the toolbox surface here registers
+// without one and the autopilot/CmsChainExecutor path re-instantiates
+// with the live store.
+var httpFormBrute = new Drederick.Exploit.Web.HttpFormBruteTool(
+    scope, audit, permissions, credentialStore: null);
+_ = httpFormBrute; // exposed via CmsChainExecutor; LLM surface lands in a follow-up.
 
 // --- replay-timeout config (cross-protocol replay) ---
 // CrossProtocolReplay isn't constructed here yet — it's built ad-hoc by

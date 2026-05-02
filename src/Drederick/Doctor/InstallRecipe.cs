@@ -250,6 +250,33 @@ public static class InstallRecipes
                 return new InstallRecipe(tool, "gem install evil-winrm", NeedsSudo: false,
                     "evil-winrm via RubyGems (no system package on this distro; requires Ruby).");
 
+            case "pwsh":
+                // PowerShell Core — drives the Invoke-Command fallback path
+                // in EvilWinrmSubprocessExecutor when evil-winrm is missing
+                // and credential is password-only.
+                return pm switch
+                {
+                    PackageManager.Apt => new InstallRecipe(tool,
+                        "apt-get install -y powershell", true,
+                        "PowerShell Core (pwsh) via apt; needs Microsoft repo on stock Debian/Ubuntu.",
+                        FallbackCommand: "snap install powershell --classic",
+                        FallbackNeedsSudo: true,
+                        FallbackRationale: "snap fallback when the apt repo isn't configured."),
+                    PackageManager.Dnf => new InstallRecipe(tool,
+                        "dnf install -y powershell", true,
+                        "PowerShell Core via dnf (needs Microsoft repo)."),
+                    PackageManager.Pacman => new InstallRecipe(tool,
+                        "pacman -S --noconfirm powershell-bin", true,
+                        "PowerShell Core via pacman (AUR / extra)."),
+                    PackageManager.Zypper => new InstallRecipe(tool,
+                        "zypper install -y powershell", true,
+                        "PowerShell Core via zypper (needs Microsoft repo)."),
+                    PackageManager.Brew => new InstallRecipe(tool,
+                        "brew install --cask powershell", false,
+                        "PowerShell Core via Homebrew cask."),
+                    _ => null,
+                };
+
             case "enum4linux-ng":
                 if (hasPipx)
                     return new InstallRecipe(tool, "pipx install enum4linux-ng", false,
