@@ -4,7 +4,7 @@ title: drederick — scope-enforced full-auto pentest harness
 audience: [humans, agents]
 primary: humans
 stability: stable
-last_audited: 2026-04
+last_audited: 2026-05
 related:
   - AGENTS.md
   - docs/README.md
@@ -189,6 +189,23 @@ triage workflow.
   (default 8, max 64). Per-service probes fan out in parallel per host.
 - **Cross-run memory.** Every run updates `memory/findings.json`; the next
   run starts with the prior map so repeat passes converge on deltas.
+  The fingerprint stack is paired with `LearnedFingerprintStore` +
+  `FingerprintLearner`, which auto-grow from each engagement and persist
+  at `out/memory/learned-fingerprints.json` — between bouts the champ
+  studies the tape, and the corpus widens automatically.
+- **Adaptive target archetypes.** `ArchetypeClassifier` + `TargetArchetype`
+  classify each host (web, AD, file-share, …) so the planner biases
+  enumeration depth and exploit selection per fight rather than treating
+  every target identically.
+- **Fast host discovery for /N scopes.** `HostDiscoveryTool` runs a native
+  TCP-knock sweep before per-host fan-out so the worker pool starts on
+  confirmed-live hosts. Useful any time the scope is broader than a handful
+  of IPs.
+- **Unified port-truth across recon signals.** Port presence is the union of
+  nmap, the native TCP scanner, HTTP probes, TLS probes, and any other tool
+  that confirms a live port — never nmap alone. The autopilot planner reads
+  through `ExploitationPlanner.HarvestPortsFromAllSignals` so a port
+  confirmed by a non-nmap signal still drives exploit selection.
 - **Doctor preflight.** `drederick doctor` detects required and recommended
   operator tools and, with `--install`, picks `apt`/`dnf`/`pacman`/
   `zypper`/`brew` and falls back to `pipx`/`uv`/`go install`/`gem install

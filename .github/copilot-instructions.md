@@ -163,7 +163,42 @@ impact faster:
 - **Cross-run convergence.** `memory/findings.json` is the weapon
   that makes repeat runs fast — every scanner and exploit module
   should write structured findings (services, CVEs, credentials
-  captured, sessions opened) so the next run diffs cleanly.
+  captured, sessions opened) so the next run diffs cleanly. The
+  fingerprint stack now ships a parallel learning layer:
+  `LearnedFingerprintStore` + `FingerprintLearner`
+  (`src/Drederick/Enrichment/FingerprintStack/`) auto-grow from each
+  fight and persist at `out/memory/learned-fingerprints.json`.
+  Between bouts the champ studies the tape; the corpus widens
+  automatically.
+- **Unified port-truth across recon signals.** Port presence is the
+  union of nmap, the native TCP scanner, HTTP probes, TLS probes, and
+  any other tool that confirms a live port — never nmap alone. The
+  autopilot planner reads through
+  `ExploitationPlanner.HarvestPortsFromAllSignals` so a port confirmed
+  by a non-nmap signal still drives exploit selection. New scanners
+  must publish their port observations into the same shared shape.
+- **Fast host discovery for /N scopes.** `HostDiscoveryTool`
+  (`src/Drederick/Recon/HostDiscoveryTool.cs`) does a native TCP-knock
+  sweep before per-host fan-out, so the worker pool starts on
+  confirmed-live hosts instead of burning cycles on dead address
+  space. Use it as the prelude when the scope is broader than a
+  handful of IPs.
+- **Adaptive planning by archetype.** `ArchetypeClassifier` +
+  `TargetArchetype` (`src/Drederick/Learning/`) classify each target
+  (web, AD, file-share, …) so the runner biases enumeration depth and
+  exploit selection per fight. New tools that benefit from
+  archetype-aware dispatch should consume the classifier rather than
+  hard-coding service-name heuristics.
+- **No "recon-only" outcomes.** `MicrosoftAgentRunner.BuildSystemPrompt`
+  and `BuildUserMessage` enforce a forcing function: the planner is
+  expected to commit to an exploitation step whenever one is reachable
+  inside scope. Do not soften that prompt; if the LLM has enough
+  signal to act, it must act.
+- **TLS validation callback — single source.** When wiring
+  `SslStream`, set `RemoteCertificateValidationCallback` exactly once
+  (the constructor or the property — not both). Double-set silently
+  overrides the first callback and was the root cause of GAP-027.
+  Examples in code or docs must follow the single-source pattern.
 - **Environment doctor / auto-provisioner.** Ship `drederick doctor`
   (and an implicit preflight before `run`) that detects required and
   recommended tooling on the host and offers to install what's
