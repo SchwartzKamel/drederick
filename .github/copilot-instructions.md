@@ -410,6 +410,46 @@ duration_ms, output_digest). No plaintext secrets are logged; SHA-256 digests on
 Reference: [`docs/EMPIRE.md`](../docs/EMPIRE.md) (operational guide),
 [`docs/C2_INTEGRATION.md`](../docs/C2_INTEGRATION.md) (architecture/extension).
 
+## v0.4.0 subsystems (LLM fight notebook, Windows MSRC, scaffolding, ZeroLogon, KB substitutions, Malleable C2)
+
+The v0.4.0 cycle landed several subsystems Copilot sessions should know
+about before editing related code paths:
+
+- **LLM fight notebook** — `src/Drederick/Learning/FightNotebook.cs`,
+  `FightNote.cs`, `FightCorpus.cs`, `FightLogSchema.cs`. The planner can
+  call `LlmNotebookTool` (`src/Drederick/Agent/LlmNotebookTool.cs`,
+  `take_note`) mid-round to record observations; entries land in
+  `out/fight-notes.jsonl` (per-run) and `~/.drederick/fight-notebook.jsonl`
+  (aggregate). The `drederick notebook {list,tail,show}` subcommand
+  (`src/Drederick/Learning/Cli/`) is the operator browse surface. JSONL
+  is append-only; do not rewrite past entries.
+- **Windows MSRC corpus + `windows-vulns` subcommand** —
+  `src/Drederick/Cli/WindowsVulnsCommand.cs` plus the embedded MSRC
+  corpus under `src/Drederick/Exploit/Windows/`. `drederick windows-vulns
+  list` enumerates known Windows vulns; `analyze --post-ex-json <path>`
+  ingests a post-ex JSON snapshot (kernel build, hotfixes, running
+  services) and surfaces matching CVEs with privesc paths.
+- **Native ZeroLogon (CVE-2020-1472)** — `src/Drederick/Exploit/ZeroLogonTool.cs`
+  is a pure-C# Netlogon RPC implementation; no external deps. Like every
+  other exploit tool it re-checks scope on entry, requires
+  `--allow-exec-pocs`, and audits start/finish events.
+- **In-fight scaffolding loader (Tier 0+1+2)** —
+  `src/Drederick/Scaffolding/` (`AttackGraph`, `AttackGraphLoader`,
+  `BriefingDocument`, `BriefingLoader`, `ScaffoldingContext`,
+  `ScaffoldingDiscovery`). Bootstraps the planner with prior-fight tapes,
+  attack-graph hints, and pre-loaded briefings before the first probe so
+  the LLM is not starting from a cold prompt.
+- **`KbSubstitutionResolver`** — `src/Drederick/Exploit/Web/KbSubstitutionResolver.cs`.
+  Resolves `{{kb.fingerprint.*}}` / `{{kb.cred.*}}` placeholders inside
+  `CmsChainExecutor` steps from the live `KnowledgeBase`, so a chain
+  template can reference earlier-fight findings without hard-coding them.
+- **Malleable C2 profiles** — `src/Drederick/Exploit/Empire/MalleableProfileLibrary.cs`
+  + bundled `.profile` corpus under `src/Drederick/Exploit/Empire/profiles/`,
+  ported from BC-SECURITY/Malleable-C2-Profiles. `EmpireAgentStager`
+  selects a profile per stage to obfuscate beacon traffic. New profiles
+  go alongside the existing corpus; do not modify upstream profiles in
+  place.
+
 ## Fight history and learning loop
 
 Drederick is tested against real HTB machines. Every engagement — win or

@@ -83,7 +83,7 @@ drederick init          # verifies tools, offers credential + scope setup
 drederick init --yes    # non-interactive; accepts defaults
 ```
 
-`--skip-creds` and `--skip-scope` opt out of individual steps. See `drederick --help` for the full subcommand list (`doctor`, `init`, `serve`, `analyze`, `note`, `web`, `ctf-solve`, `ctf-msg`).
+`--skip-creds` and `--skip-scope` opt out of individual steps. See `drederick --help` for the full subcommand list (`doctor`, `init`, `serve`, `analyze`, `note`, `notebook`, `windows-vulns`, `web`, `ctf-solve`, `ctf-msg`).
 
 ### Why Each Tool?
 
@@ -309,3 +309,33 @@ If something goes wrong, see [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) for:
 **Questions?** Open an issue on [GitHub](https://github.com/SchwartzKamel/drederick/issues).
 
 **Ready to test?** Head to [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) for real-world examples or run `drederick doctor` to verify your setup.
+
+## What's new in v0.4.0
+
+If you're upgrading from v0.3.x, the headline additions for operators:
+
+- **LLM fight notebook.** The `--agent` planner can call a `take_note`
+  tool mid-round to dictate observations to an append-only JSONL
+  (`out/fight-notes.jsonl` + global `~/.drederick/fight-notebook.jsonl`).
+  Browse from the CLI:
+
+  ```bash
+  drederick notebook list                     # last 50 notes
+  drederick notebook tail --category gap      # filter
+  drederick notebook show <id>                # full note
+  ```
+
+  Wired in [LLM_SETUP.md](LLM_SETUP.md#take-note-tool).
+- **Windows vuln triage corpus.** `drederick windows-vulns list` queries
+  the embedded MSRC corpus; `drederick windows-vulns analyze
+  --post-ex-json out/<host>/post-ex.json` matches captured kernel
+  build / hotfix / service signal against known CVEs (Moriarty-style).
+- **In-fight scaffolding.** Prior-fight tapes, attack-graph hints, and
+  pre-loaded briefings under `out/scaffolding/` bootstrap the planner so
+  the bell rings with prep already in the corner.
+- **Native ZeroLogon (CVE-2020-1472).** Pure-managed C# implementation
+  of the Netlogon RPC primitive; no external `mimikatz` / `impacket`
+  hand-off required when an in-scope DC is present.
+- **CI format gate fix.** `dotnet format --verify-no-changes` no longer
+  exits 2 on the test project's intentional CA1416 / xUnit1031 patterns
+  ([troubleshooting](TROUBLESHOOTING.md#format-gate)).

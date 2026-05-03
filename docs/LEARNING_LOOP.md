@@ -8,7 +8,7 @@ last_audited: 2026-05
 related:
   - docs/SELF_SUFFICIENCY.md
   - docs/PLUGIN_STRATEGY.md
-  - docs/AUTOPILOT.md
+  - docs/ARCHITECTURE.md
   - docs/FIGHTS.md
   - .github/fight-gaps.md
   - .github/fight-history/INDEX.md
@@ -188,6 +188,131 @@ When the same banner+port consistently maps to the same product+version in winni
 
 Operator review: `drederick review` flags new fingerprint candidates with their confidence; operator can accept individually or `--apply --fingerprints`.
 
+<a id="fight-notebook"></a>
+## The fight notebook — append-only LLM journal
+
+> **Status: live as of v0.4.0 (PR #13).** The notebook is the long-term
+> *narrative* memory that complements the structured stores above. Where
+> `findings.json` and `learned-fingerprints.json` capture *what was true
+> on the wire*, the notebook captures *what the planner thought, what
+> worked, what didn't, and what to try next time* — in operator-readable
+> English.
+
+### The pieces
+
+| Piece | Path | Role |
+|---|---|---|
+| [`FightNote`](../src/Drederick/Learning/FightNote.cs) | record type | Typed note: `timestamp`, `fight_id`, `category`, `body`, `body_sha256`, `tags[]`, `target_host`, `target_archetype`, `source`. |
+| [`FightNotebook`](../src/Drederick/Learning/FightNotebook.cs) | append-only writer | JSONL writer with secret redaction + `/24` host reduction; `SemaphoreSlim`-serialized writes, concurrent reads. |
+| [`LlmNotebookTool`](../src/Drederick/Agent/LlmNotebookTool.cs) | `AIFunction` | Exposes `take_note` to the LLM via `LlmToolCatalog` → `MicrosoftAgentRunner` + `CopilotSdkAgentRunner`. |
+| [`NotebookCommand`](../src/Drederick/Learning/Cli/NotebookCommand.cs) | operator reader | `drederick notebook [list\|tail\|show\|help]` — newest-first table or JSON dump. |
+
+### Two sinks per note (both append-only)
+
+- **`out/fight-notes.jsonl`** — per-fight notes alongside `report.json` /
+  `audit.jsonl`. Scoped to the current run.
+- **`~/.drederick/fight-notebook.jsonl`** — cross-fight aggregate. The
+  operator's `drederick notebook list` reads both by default; pass
+  `--notebook-no-aggregate` to scope to the current run only.
+
+Neither file is ever rewritten. The notebook **survives across runs** so
+reviews, replays, and fleet-wide learning can pull recent lessons
+regardless of which engagement produced them.
+
+### Categories (canonical, in `FightNoteCategory`)
+
+`observation`, `tactic`, `gap`, `mistake`, `winning_move`, `lesson`,
+`general`. Free-form strings accepted; unknown values are coerced to
+`general`.
+
+### Redaction policy — invariants
+
+The notebook mirrors the same rules as `audit.jsonl`/`telemetry.db`. See
+`FightNotebook.RedactSecrets`:
+
+- **No plaintext secrets on disk.** Bodies are passed through a
+  conservative regex stack before write — passwords, hashes, NT/LM
+  pairs, PEM private keys, bearer tokens, JWTs, Basic-auth URLs, and
+  high-entropy hex blobs (≥40 chars) are replaced with
+  `[REDACTED:<kind>]` markers.
+- **Host redaction.** `target_host` is reduced to `/24` (v4) or `/48`
+  (v6) for RFC1918 / loopback / link-local — same path as
+  `TelemetryRecorder.RedactHost`.
+- **Audit shape.** Every `take_note` writes a `notebook.take_note` row
+  to `audit.jsonl` carrying `body_sha256` only — never the body. The
+  SHA-256 is computed against the *redacted* body so it correlates
+  cleanly across runs.
+- **The model should not paste secrets in the first place.** The
+  `take_note` tool description tells it so. Redaction is a backstop, not
+  an excuse.
+
+### Operator review — `drederick notebook`
+
+```bash
+# Newest 50 notes from per-run + cross-fight aggregate.
+drederick notebook list
+
+# Filter by category.
+drederick notebook list --notebook-category lesson
+drederick notebook list --notebook-category mistake
+drederick notebook list --notebook-category winning_move
+
+# Filter by tag (repeatable; any-match).
+drederick notebook list --notebook-tag smb --notebook-tag GAP-046
+
+# Just the current run (no aggregate).
+drederick notebook tail
+
+# Skip the cross-fight file even on `list`.
+drederick notebook list --notebook-no-aggregate
+
+# Bump the result cap (default 50).
+drederick notebook list --notebook-limit 200
+
+# JSON dump — pipe into review tooling.
+drederick notebook show --notebook-category gap | jq '.[] | {ts: .timestamp, body}'
+```
+
+Render shape (newest-first):
+
+```text
+- [2026-05-12T14:22:01] mistake  (10.10.11.0/24)  [smb, GAP-046]
+    Tried evil-winrm before confirming RID brute had landed. Wasted budget;
+    next time gate WinRM auth on a known-valid (user, hash) tuple.
+```
+
+### How notes feed forward
+
+> **Today (v0.4.0):** notes are persisted, redacted, and reviewable via
+> `drederick notebook`. They are wired into the LLM agents through
+> `LlmNotebookTool` so the model can **write** notes mid-fight.
+>
+> **TODO — replay into next-fight prompts.** Wiring the notebook *back*
+> into the system prompt of subsequent runs (so the LLM reads recent
+> `lesson` / `winning_move` / `mistake` entries before planning) is on
+> the roadmap but not yet shipped. Tracked alongside `planner-self-tune`
+> and the archetype-playbook overlay. Until then the operator is the
+> replay channel: read with `drederick notebook list --notebook-category
+> lesson` between fights and feed the relevant lessons forward by hand or
+> via `--prompt-prefix`.
+
+The downstream consumers in scope when that lands:
+
+1. `MicrosoftAgentRunner` / `CopilotSdkAgentRunner` system prompt — load
+   the most recent N notes for the matching `target_archetype` /
+   matching tag set.
+2. `drederick review` — group notes by category, surface recurring
+   `mistake` patterns next to the technique-success-rate tables.
+3. `tool-forge` — `gap`-category notes are first-class signal for new
+   tool scaffolds.
+
+### See also
+
+- [`FIGHTS.md` § post-fight notebook review](FIGHTS.md#fight-notebook) —
+  what to look for between bouts.
+- [`MODEL_BEHAVIOR.md` § take_note prompt guidance](MODEL_BEHAVIOR.md#take-note) —
+  when the model should commit a note.
+
 <a id="archetype-playbooks"></a>
 ## Archetype playbooks
 
@@ -295,6 +420,7 @@ Each match leaves Drederick stronger.
 - **Never auto-apply priority changes in strict mode**: `--learn` flag is opt-in; strict-mode runs use baseline priorities.
 - **Never elevate budget without operator consent**: `archetype-playbook` budgets are an upper bound, not a starting bid.
 - **Never log plaintext secrets in telemetry**: same rule as `audit.jsonl` — SHA-256 of credential pairs only.
+- **Never log plaintext secrets in the fight notebook**: bodies are run through `FightNotebook.RedactSecrets` before disk; the `take_note` tool description forbids pasting credentials in the first place. Audit records carry `body_sha256` only.
 - **Never drift schema silently**: `fight-log.yaml` schema version is checked on load; mismatches fail with a clear migration message.
 
 <a id="see-also"></a>
@@ -302,6 +428,6 @@ Each match leaves Drederick stronger.
 
 - [SELF_SUFFICIENCY.md](SELF_SUFFICIENCY.md)
 - [PLUGIN_STRATEGY.md](PLUGIN_STRATEGY.md) — patterns 1–4
-- [AUTOPILOT.md](AUTOPILOT.md) — the autopilot runner that consumes the learned priorities
+- [ARCHITECTURE.md](ARCHITECTURE.md) — `AutopilotRunner` is the autopilot loop that consumes the learned priorities
 - [.github/fight-gaps.md](../.github/fight-gaps.md) — canonical GAP registry
 - [.github/fight-history/INDEX.md](../.github/fight-history/INDEX.md) — chronological fight index

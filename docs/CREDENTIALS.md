@@ -339,3 +339,35 @@ After a competition or engagement:
 ---
 
 **Questions?** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) or open an issue on [GitHub](https://github.com/SchwartzKamel/drederick/issues).
+
+---
+
+### Credential-attack tool inventory
+
+The full credential-attack surface lives across `src/Drederick/Exploit/`
+and `src/Drederick/Exploit/PostEx/`. Every entry below validates scope
+on entry, gates on `--allow-cred-attacks` (and `--acknowledge-lockout-risk`
+for spray flows), records argv digest + secret SHA-256 to `audit.jsonl`,
+and never logs plaintext credentials.
+
+| Tool | File | Purpose | Extra gates |
+| ---- | ---- | ------- | ----------- |
+| `PasswordSprayTool` | [`Exploit/PasswordSprayTool.cs`](../src/Drederick/Exploit/PasswordSprayTool.cs) | Multi-protocol password spray (SMB, LDAP, WinRM, etc.) with realm-aware username derivation. Lockout-aware throttling default-on. | `--acknowledge-lockout-risk` |
+| `NativeHttpSprayTool` | [`Exploit/NativeHttpSprayTool.cs`](../src/Drederick/Exploit/NativeHttpSprayTool.cs) | In-process HTTP basic/NTLM spray (no subprocess). | `--acknowledge-lockout-risk` |
+| `HttpFormBruteTool` | [`Exploit/Web/HttpFormBruteTool.cs`](../src/Drederick/Exploit/Web/HttpFormBruteTool.cs) | Targeted HTTP login-form brute (CSRF token prefetch, cookie chain). | `--acknowledge-lockout-risk` |
+| `AsRepRoastTool` | [`Exploit/Ad/AsRepRoastTool.cs`](../src/Drederick/Exploit/Ad/AsRepRoastTool.cs) | AS-REP roasting against accounts with pre-auth disabled — yields hashes for offline crack. Native Kerberos transport via `KdcTransport`. | none beyond `--allow-cred-attacks` (no online lockout risk) |
+| `KerberoastTool` | [`Exploit/Ad/KerberoastTool.cs`](../src/Drederick/Exploit/Ad/KerberoastTool.cs) | Kerberoast SPN tickets via `KerberosNetKerberoastEngine` for offline crack. | requires authenticated Kerberos session |
+| `SshKeyBruteTool` | [`Exploit/PostEx/SshKeyBruteTool.cs`](../src/Drederick/Exploit/PostEx/SshKeyBruteTool.cs) | SSH key/password brute against scope-resolved hosts. | `--acknowledge-lockout-risk` |
+| `SshKeyPassphraseBruteTool` | [`Exploit/PostEx/SshKeyPassphraseBruteTool.cs`](../src/Drederick/Exploit/PostEx/SshKeyPassphraseBruteTool.cs) | Offline brute of an encrypted SSH private key passphrase. No network → no lockout, but still gated on `--allow-cred-attacks` for audit consistency. | none beyond `--allow-cred-attacks` |
+| `WinRmAuthTool` | [`Exploit/PostEx/Windows/WinRmAuthTool.cs`](../src/Drederick/Exploit/PostEx/Windows/WinRmAuthTool.cs) | GAP-046 credential spray over evil-winrm with **adaptive timeout backoff** (per-host RTT-aware) and lockout-aware throttling. | `--acknowledge-lockout-risk` |
+| `NtdsSamDumpTool` | [`Exploit/PostEx/Windows/NtdsSamDumpTool.cs`](../src/Drederick/Exploit/PostEx/Windows/NtdsSamDumpTool.cs) | GAP-047 SAM/LSA/NTDS dump via `impacket-secretsdump`. Three modes (Remote, RemoteDcSync, LocalHives). Captured hashes are deposited into `CredentialStore`. | `RemoteDcSync` mode additionally requires `--allow-destructive` |
+| `ZeroLogonTool` | [`Exploit/ZeroLogonTool.cs`](../src/Drederick/Exploit/ZeroLogonTool.cs) | Native C# CVE-2020-1472 — sets DC machine account password to empty, then optionally chains into `secretsdump` for full domain compromise. | requires both `--allow-cred-attacks` AND `--allow-destructive` |
+
+**Lockout discipline.** Spray flows (`PasswordSprayTool`,
+`NativeHttpSprayTool`, `HttpFormBruteTool`, `WinRmAuthTool`) consult
+[`LockoutScheduler`](../src/Drederick/Exploit/Spray/LockoutScheduler.cs)
+to space attempts across the configured realm-policy window.
+`--acknowledge-lockout-risk` is the operator's positive attestation
+that they understand the consequences if the policy estimate is wrong;
+without it, every spray refuses cleanly at the tool layer (not the
+toolbox — see [`POST_EXPLOITATION.md#safety-model`](POST_EXPLOITATION.md#safety-model)).

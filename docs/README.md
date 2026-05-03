@@ -27,6 +27,12 @@ related:
   - GETTING_STARTED.md
   - TROUBLESHOOTING.md
   - COMPARISON.md
+  - MAGIKA.md
+  - FUZZING.md
+  - WEB_UI.md
+  - PLUGIN_STRATEGY.md
+  - LEARNING_LOOP.md
+  - FIGHTS.md
 ---
 
 # drederick documentation index
@@ -86,6 +92,7 @@ related:
 | [`PLUGIN_STRATEGY.md`](PLUGIN_STRATEGY.md) | contributors + agents | Patterns 1–4 of the self-sufficiency strategy: graceful enrichment, embedded community data, ported community logic, original Drederick tooling. | both |
 | [`LEARNING_LOOP.md`](LEARNING_LOOP.md) | contributors + agents | Pattern 5 — self-improving feedback loop: fight telemetry, corpus, archetypes, planner self-tune, tool-forge. | both |
 | [`FIGHTS.md`](FIGHTS.md) | humans + agents | The tape room, surfaced — chronological roll call of every fight, what each tape taught us, recurring patterns, and how to add a new tape. | both |
+| [`MAGIKA.md`](MAGIKA.md) | operators + agents | Magika file-classification integration: when content sniffing kicks in (forensics CTFs, looted blobs, mystery downloads), provider wiring, and triage workflow. | both |
 
 <a id="by-role"></a>
 ## By role

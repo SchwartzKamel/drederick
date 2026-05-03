@@ -42,6 +42,7 @@ model.
 - [`drederick doctor` — LLM checks](#doctor)
 - [Cost, rate limits, budgets](#cost)
 - [Prompt hygiene and what the model sees](#prompt-hygiene)
+- [`take_note` — fight notebook tool](#take-note-tool)
 - [Safety — what the LLM cannot do](#safety)
 - [Troubleshooting](#troubleshooting)
 
@@ -610,6 +611,42 @@ Jeopardy per-category fragments: [`PromptLibrary.cs`](../src/Drederick/Jeopardy/
 > even when nmap returns `[]` (the JobTwo r4 lesson; see
 > [`POST_EXPLOITATION.md`](POST_EXPLOITATION.md)). Operators
 > overriding the prompt should preserve this contract.
+
+<a id="take-note-tool"></a>
+## `take_note` — fight notebook tool
+
+The `--agent` runner exposes a `take_note` `AIFunction`
+([`LlmNotebookTool.cs`](../src/Drederick/Agent/LlmNotebookTool.cs)) so
+the planner can dictate observations to an append-only JSONL between
+tool calls — a per-fight learning loop that survives the run.
+
+Each note carries a `category`
+(`observation` / `tactic` / `gap` / `mistake` / `winning_move` /
+`lesson` / `general`), free-form `body`, optional `tags`, and is written
+to two sinks:
+
+- **Per-run** — `out/fight-notes.jsonl` (next to `findings.db` /
+  `audit.jsonl`).
+- **Cross-fight aggregate** — `~/.drederick/fight-notebook.jsonl`, so
+  the next run starts with the previous tape on tap.
+
+Browse from the CLI ([`NotebookCommand`](../src/Drederick/Learning/Cli/NotebookCommand.cs)):
+
+```bash
+drederick notebook list                       # last 50 notes (default)
+drederick notebook list --category gap        # only gaps
+drederick notebook list --tag htb --tag adcs  # tag-filter (any-match)
+drederick notebook list --no-aggregate        # current run only
+drederick notebook tail --limit 10            # newest 10
+drederick notebook show <id>                  # full body of one note
+```
+
+Like `audit.jsonl`, the notebook is **append-only**. The runner cannot
+rewrite or delete entries; the CLI viewer is read-only. Plaintext
+secrets must not appear in note bodies — the model is prompted to
+record digests / IDs only, and the same redaction posture as
+`audit.jsonl` applies. See [`AGENTS.md#file-concept-map`](../AGENTS.md#file-concept-map)
+for the source layout.
 
 <a id="safety"></a>
 ## Safety — what the LLM cannot do

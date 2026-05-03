@@ -50,6 +50,10 @@ Peers: [AutoRecon](https://github.com/Tib3rius/AutoRecon),
 | Recovers when nmap reports zero ports       | **yes — planner harvests ports from native HTTP/TLS/banner signals (post-JobTwo r4 / GAP-026/027/028)** | no | no | no |
 | Bounded worker pool                         | **yes (`Channel<T>`)** | yes (asyncio) | no | limited |
 | Cross-run knowledge base                    | **yes (`memory/findings.json`)** | no | no | no |
+| Cross-fight learned-fingerprint memory      | **yes (`LearnedFingerprintStore` / `FingerprintLearner` → `out/memory/learned-fingerprints.json`)** | no | no | no |
+| In-fight LLM **fight notebook** (replayable) | **yes (`take_note` tool → `out/fight-notes.jsonl` + `~/.drederick/fight-notebook.jsonl`; `drederick notebook {list,tail,show}`)** | no | no | no |
+| Scaffolding loader (Tier 0+1+2 priors)      | **yes (`AttackGraph` + `BriefingDocument` + `ScaffoldingDiscovery` boot the planner with prior-fight tapes before the first probe)** | no | no | no |
+| Tatum-voiced LLM planner persona            | **yes (system prompt + Jeopardy category prompts)** | no | no | no |
 | Per-host working dir + notes                | yes | yes | yes | yes |
 | Manual-commands cheatsheet                  | **yes (lab mode)** | yes | partial | yes |
 | CVE annotation (offline NVD feed)           | **yes** | no | no | no |

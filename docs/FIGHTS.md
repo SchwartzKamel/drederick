@@ -176,7 +176,82 @@ you're picking up a contribution and don't know where to start, start here:
 
 ---
 
-## Adding a tape
+<a id="fight-notebook"></a>
+## The fight notebook — mid-fight + post-fight
+
+> **Shipped in v0.4.0 (PR #13).** Architecture lives in
+> [`LEARNING_LOOP.md` § fight-notebook](LEARNING_LOOP.md#fight-notebook).
+> This section is the **fight-side** view: what the LLM should write
+> *during* a bout, and what the operator reads *after* the bell.
+
+### Mid-fight — the LLM calls `take_note`
+
+The agent runners (`MicrosoftAgentRunner`, `CopilotSdkAgentRunner`)
+expose a `take_note` AIFunction wired through `LlmToolCatalog`. The
+model can — and should — drop a structured note any time the fight
+state changes in a way a human reviewer would care about:
+
+| Trigger | Category | Example body |
+|---|---|---|
+| A working assumption just got disproved. | `mistake` | "Assumed Apache 2.4.49 → CVE-2021-41773 path traversal would fire; banner was spoofed and 404s were uniform. Need a fingerprint diff before chaining." |
+| A chain step landed and explains *why* the fight is winnable. | `winning_move` | "MinIO console at :9001 accepted the SQLite-mined S3 key; bucket `backups` had an ed25519 SSH key. Same shape as Facts R5." |
+| An unexpected defender behavior showed up. | `observation` | "Lockout-aware throttle tripped after 3 sprays / 30min on `Administrator`; box is enforcing AD account-lockout, not local. Switch to AS-REP roast first next time." |
+| A tool gap was hit that costs the round. | `gap` | "`http-content-discovery` returned 0 entries on a known-CMS host because the wordlist was generic. Need a CMS-aware wordlist branch (proposed GAP-036)." |
+| A reusable technique pattern crystallised. | `tactic` | "When SQLite drops out of post-ex pillage, always grep `cama_metas` / `wp_options` / `auth_user` before pivoting. 3/3 fights so far." |
+| A durable rule of thumb. | `lesson` | "Never spray before vhost-aware HTTP probing has confirmed at least one 200 with the right Host header." |
+
+The model should keep bodies short (1–5 sentences), reference services /
+GAP-IDs / archetypes explicitly in `tags`, and **never paste plaintext
+credentials** — `FightNotebook.RedactSecrets` is a backstop, not a
+permission slip. Plaintext flags, captured creds, hashes, PEM keys, JWTs
+and bearer tokens are masked to `[REDACTED:<kind>]` markers; only
+SHA-256 of the redacted body reaches `audit.jsonl`.
+
+Notes land in **two** append-only sinks:
+
+- `out/fight-notes.jsonl` — this fight only.
+- `~/.drederick/fight-notebook.jsonl` — cross-fight aggregate.
+
+### Post-fight — the operator reads the notebook
+
+Add `drederick notebook` to the post-fight review pass alongside
+`drederick review`:
+
+```bash
+# Read everything the model jotted down this run + recent cross-fight aggregate.
+drederick notebook list
+
+# What did the model think went wrong?
+drederick notebook list --notebook-category mistake
+
+# What landed?
+drederick notebook list --notebook-category winning_move
+
+# Lessons that should feed the next bout.
+drederick notebook list --notebook-category lesson
+
+# Just this run (skip cross-fight aggregate).
+drederick notebook tail
+
+# Pipe into review tooling.
+drederick notebook show --notebook-category gap | jq '.'
+```
+
+The notebook is one of the inputs to fight tape authoring — the model's
+own `mistake` / `winning_move` / `lesson` notes often surface phrasings
+worth quoting in the Tatum-voiced writeup, and `gap`-category notes are
+first-class candidates for new `GAP-NNN` entries in
+[`fight-gaps.md`](../.github/fight-gaps.md).
+
+> **Replay into the next fight is a TODO.** As of v0.4.0 the notebook
+> survives across runs but the LLM does not yet read prior notes back
+> into its system prompt. Until that lands, the operator is the replay
+> channel — skim `drederick notebook list --notebook-category lesson`
+> before the next bout and feed the relevant ones forward by hand.
+
+---
+
+
 
 The full procedure lives in [`LEARNING_LOOP.md`](LEARNING_LOOP.md).
 Quick version:
