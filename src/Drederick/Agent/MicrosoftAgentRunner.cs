@@ -25,12 +25,14 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     private readonly IChatClient _chatClient;
     private readonly string _modelId;
     private readonly LlmExploitTools? _exploitTools;
+    private readonly LlmNotebookTool? _notebook;
 
     public MicrosoftAgentRunner(
         AuditLog audit,
         IChatClient chatClient,
         string modelId,
-        LlmExploitTools? exploitTools = null)
+        LlmExploitTools? exploitTools = null,
+        LlmNotebookTool? notebook = null)
     {
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(chatClient);
@@ -39,11 +41,16 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         _chatClient = chatClient;
         _modelId = modelId;
         _exploitTools = exploitTools;
+        _notebook = notebook;
     }
 
     /// <summary>Attach / replace the offensive-tool bundle exposed to the LLM.</summary>
     public MicrosoftAgentRunner WithExploitTools(LlmExploitTools exploitTools) =>
-        new(_audit, _chatClient, _modelId, exploitTools);
+        new(_audit, _chatClient, _modelId, exploitTools, _notebook);
+
+    /// <summary>Attach / replace the LLM fight notebook tool.</summary>
+    public MicrosoftAgentRunner WithNotebook(LlmNotebookTool notebook) =>
+        new(_audit, _chatClient, _modelId, _exploitTools, notebook);
 
     /// <summary>
     /// Factory: build a runner from the selected LLM provider. Supports the
@@ -55,7 +62,8 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         IReadOnlyDictionary<string, string>? azureDeploymentMap,
         AuditLog audit,
         LlmExploitTools? exploitTools = null,
-        bool allowGitHubCliAuth = true)
+        bool allowGitHubCliAuth = true,
+        LlmNotebookTool? notebook = null)
     {
         ArgumentNullException.ThrowIfNull(audit);
         provider = LlmProviderFactory.Resolve(provider, audit, allowGitHubCliAuth);
@@ -70,13 +78,14 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
                     audit,
                     model,
                     exploitTools,
-                    allowGitHubCliAuth);
+                    allowGitHubCliAuth,
+                    notebook);
 
             case LlmProvider.Azure:
                 {
                     var azure = AzureOpenAiChatClient.TryCreateFromEnvironment(audit, azureDeploymentMap, model);
                     if (azure is null) return null;
-                    return new MicrosoftAgentRunner(audit, azure, azure.ModelId, exploitTools);
+                    return new MicrosoftAgentRunner(audit, azure, azure.ModelId, exploitTools, notebook);
                 }
 
             case LlmProvider.LlamaCpp:
@@ -93,7 +102,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
                     model ??= "gpt-4o-mini";
                     var openAi = new OpenAIClient(apiKey);
                     var chat = openAi.GetChatClient(model);
-                    return new MicrosoftAgentRunner(audit, chat.AsIChatClient(), model, exploitTools);
+                    return new MicrosoftAgentRunner(audit, chat.AsIChatClient(), model, exploitTools, notebook);
                 }
         }
     }
@@ -186,7 +195,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             ["targets"] = targets,
         });
 
-        IList<AITool> aiTools = LlmToolCatalog.BuildAiTools(tools, _exploitTools);
+        IList<AITool> aiTools = LlmToolCatalog.BuildAiTools(tools, _exploitTools, _notebook);
 
         // Wrap the chat client with FunctionInvokingChatClient.
         // NOTE: AllowConcurrentInvocation disabled — Claude via Copilot API

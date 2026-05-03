@@ -365,6 +365,19 @@ public sealed class CommandLineOptions
     // ANCHOR: note-subcommand-options
     /// <summary>Note subcommand: add, list, view, archive, delete, flags, search</summary>
     public string? NoteSubcommand { get; set; }
+
+    /// <summary>LLM fight notebook subcommand: <c>list</c> | <c>tail</c> | <c>show</c>.
+    /// Browses the JSONL produced by <see cref="Drederick.Learning.FightNotebook"/>
+    /// (per-run + cross-fight aggregate). Distinct from <see cref="NoteSubcommand"/>.</summary>
+    public string? NotebookSubcommand { get; set; }
+    /// <summary>Filter <c>notebook list</c> output to a single category.</summary>
+    public string? NotebookCategory { get; set; }
+    /// <summary>Filter <c>notebook list</c> output by tag (any-match).</summary>
+    public List<string> NotebookTags { get; set; } = new();
+    /// <summary>Maximum notes returned by <c>notebook list</c>. Default 50.</summary>
+    public int NotebookLimit { get; set; } = 50;
+    /// <summary>When false, <c>notebook list</c> reads only the per-run file.</summary>
+    public bool NotebookIncludeAggregate { get; set; } = true;
     /// <summary>Note ID for view/archive/delete operations</summary>
     public string? NoteId { get; set; }
     /// <summary>Title for new note</summary>
@@ -518,6 +531,16 @@ public sealed class CommandLineOptions
         }
         // END ANCHOR: note-subcommand-dispatch
         // --- end note-subcommand ---
+        // --- llm-fight-notebook-subcommand-dispatch ---
+        // Browse / tail the LLM fight notebook (out/fight-notes.jsonl +
+        // ~/.drederick/fight-notebook.jsonl). Distinct from `note` above,
+        // which is the per-finding annotation table in findings.db.
+        else if (args.Length > 0 && args[0] == "notebook")
+        {
+            o.NotebookSubcommand = args.Length > 1 && !args[1].StartsWith("-") ? args[1] : "list";
+            start = o.NotebookSubcommand == "list" && (args.Length == 1 || args[1].StartsWith("-")) ? 1 : 2;
+        }
+        // --- end llm-fight-notebook-subcommand-dispatch ---
         // --- jeopardy-cli-subcommand-dispatch ---
         else if (args.Length > 0 && args[0] == "ctf-solve")
         {
@@ -699,6 +722,14 @@ public sealed class CommandLineOptions
                 // --- learning flag parse ---
                 case "--fight-corpus":
                     o.FightCorpusPath = RequireNext(args, ref i, a); break;
+                case "--notebook-category":
+                    o.NotebookCategory = RequireNext(args, ref i, a); break;
+                case "--notebook-tag":
+                    o.NotebookTags.Add(RequireNext(args, ref i, a)); break;
+                case "--notebook-limit":
+                    o.NotebookLimit = int.Parse(RequireNext(args, ref i, a)); break;
+                case "--notebook-no-aggregate":
+                    o.NotebookIncludeAggregate = false; break;
                 // --- end learning flag parse ---
                 // --- telemetry flag parse ---
                 case "--telemetry":
