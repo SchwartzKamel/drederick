@@ -177,9 +177,11 @@ useful per-tool parameters. `ReconToolbox` dispatches by concrete type
 ## Adding an exploit / credential / payload tool
 
 Offensive tools live under `src/Drederick/Exploit/` and implement
-[`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs),
-[`ICredTool`](../src/Drederick/Exploit/ICredTool.cs), or
-[`IPayloadTool`](../src/Drederick/Exploit/IPayloadTool.cs). Payload
+[`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs) or
+[`IPayloadTool`](../src/Drederick/Exploit/IPayloadTool.cs)
+(credential-attack tools — password spray, Kerberoast, AS-REP roast —
+also implement `IExploitTool` today; a dedicated `ICredTool` marker is
+not yet split out). Payload
 tools (like `EmpireAgentStager`) generate raw bytecode or scripts for
 delivery; exploit and cred tools execute actions. Unlike recon (which is
 read-only and scope-gated only), these tools are gated by **two**
@@ -323,7 +325,7 @@ SHA-256 pipeline that `exploit_runs` depends on.
       scope-bypass argv is rejected at build time.
     - **Parser:** recorded fixture under
       [`tests/fixtures/`](../tests/fixtures/) (and a fake subprocess
-      binary under [`tests/fixtures/bin/`](../tests/fixtures/bin/) for
+      binary under `tests/fixtures/bin/` for
       replay — never spawn a real exploit against a real service in
       tests).
     - **No plaintext secrets leaked:** use a canary string
