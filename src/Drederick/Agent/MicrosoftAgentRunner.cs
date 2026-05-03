@@ -3,6 +3,7 @@ using Drederick.Audit;
 using Drederick.Jeopardy.Llm;
 using Drederick.Memory;
 using Drederick.Recon;
+using Drederick.Scaffolding;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAI;
@@ -44,6 +45,14 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     /// <summary>Attach / replace the offensive-tool bundle exposed to the LLM.</summary>
     public MicrosoftAgentRunner WithExploitTools(LlmExploitTools exploitTools) =>
         new(_audit, _chatClient, _modelId, exploitTools);
+
+    /// <summary>
+    /// In-fight scaffolding (briefing.md + attack-graph.yaml). When set,
+    /// activation events are emitted at run start and the user message
+    /// is augmented with a summary of assumed-breach material, priority
+    /// hints, and anti-goals. See LOADER_SPEC §4.
+    /// </summary>
+    public ScaffoldingContext? Scaffolding { get; set; }
 
     /// <summary>
     /// Factory: build a runner from the selected LLM provider. Supports the
@@ -200,7 +209,8 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             tools: aiTools);
 
         var session = await agent.CreateSessionAsync(ct).ConfigureAwait(false);
-        var userMessage = BuildUserMessage(targets, prior);
+        Scaffolding?.ActivateKnownNodes();
+        var userMessage = BuildUserMessage(targets, prior, Scaffolding);
 
         AgentResponse response;
         try
@@ -333,9 +343,30 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         extract_flags_from_dir.refused, code=path_outside_out). When in
         doubt, use the absolute `out_root` value to avoid path_outside_out
         rejections that waste planner turns.
+
+        In-fight scaffolding (LOADER_SPEC). If the user message contains
+        an "In-fight scaffolding" block, the operator has supplied
+        briefing.md and/or attack-graph.yaml. Treat it as authoritative
+        intel for THIS fight. Specifically: (a) every assumed-breach
+        artifact listed MUST be consumed by at least one tool call, or
+        you must explicitly state the tool is unavailable — silently
+        ignoring it is a contract violation; (b) priority hints are
+        ordered tie-breakers, prefer the named method when two actions
+        are otherwise equal; (c) anti-goals are HARD blockers, never
+        schedule an action that matches one; (d) briefing-derived
+        known nodes activate first — bias your first 5 actions toward
+        consuming the assumed-breach artifact (cf. PingPong's
+        c.roberts.pfx directive). If scaffolding is absent, behave as
+        before.
         """;
 
     internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)
+        => BuildUserMessage(targets, prior, null);
+
+    internal static string BuildUserMessage(
+        IReadOnlyList<string> targets,
+        KnowledgeBase prior,
+        ScaffoldingContext? scaffolding)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Targets (all inside authorized scope):");
@@ -350,6 +381,10 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         sb.AppendLine("function in your system instructions. Use the tools; do not guess.");
         sb.AppendLine("Capture flags, open sessions, escalate where you can, and report");
         sb.AppendLine("punches thrown — not just punches considered.");
+        if (scaffolding is { IsActive: true })
+        {
+            sb.Append(scaffolding.BuildPriorContext());
+        }
         return sb.ToString();
     }
 }
