@@ -191,59 +191,59 @@ public sealed class CveLeadLlmAuthor
         switch (decision)
         {
             case CveLeadLlmDecision.ShellAuthored sa:
-            {
-                _audit.Record("cve.lead.llm_author.shell_authored", new Dictionary<string, object?>
                 {
-                    ["cve"] = cve,
-                    ["target"] = target,
-                    ["argv_digest"] = sa.Result.ArgvDigest,
-                });
-                _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
-                {
-                    ["cve"] = cve,
-                    ["target"] = target,
-                    ["outcome"] = "shell_authored",
-                    ["exit_code"] = sa.Result.ExitCode,
-                });
-                return new CveLeadLlmAuthorResult(
-                    Outcome: CveLeadLlmAuthorOutcome.ShellAuthored,
-                    Reason: $"shell authored (exit={sa.Result.ExitCode})",
-                    ShellResult: sa.Result);
-            }
+                    _audit.Record("cve.lead.llm_author.shell_authored", new Dictionary<string, object?>
+                    {
+                        ["cve"] = cve,
+                        ["target"] = target,
+                        ["argv_digest"] = sa.Result.ArgvDigest,
+                    });
+                    _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
+                    {
+                        ["cve"] = cve,
+                        ["target"] = target,
+                        ["outcome"] = "shell_authored",
+                        ["exit_code"] = sa.Result.ExitCode,
+                    });
+                    return new CveLeadLlmAuthorResult(
+                        Outcome: CveLeadLlmAuthorOutcome.ShellAuthored,
+                        Reason: $"shell authored (exit={sa.Result.ExitCode})",
+                        ShellResult: sa.Result);
+                }
 
             case CveLeadLlmDecision.Skip s:
-            {
-                _audit.Record("cve.lead.llm_author.skip", new Dictionary<string, object?>
                 {
-                    ["cve"] = cve,
-                    ["target"] = target,
-                    ["reason"] = s.Reason,
-                });
-                _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
-                {
-                    ["cve"] = cve,
-                    ["target"] = target,
-                    ["outcome"] = "llm_skipped",
-                });
-                return CveLeadLlmAuthorResult.Skipped(CveLeadLlmAuthorOutcome.LlmSkipped, s.Reason);
-            }
+                    _audit.Record("cve.lead.llm_author.skip", new Dictionary<string, object?>
+                    {
+                        ["cve"] = cve,
+                        ["target"] = target,
+                        ["reason"] = s.Reason,
+                    });
+                    _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
+                    {
+                        ["cve"] = cve,
+                        ["target"] = target,
+                        ["outcome"] = "llm_skipped",
+                    });
+                    return CveLeadLlmAuthorResult.Skipped(CveLeadLlmAuthorOutcome.LlmSkipped, s.Reason);
+                }
 
             case CveLeadLlmDecision.Error e:
-            {
-                _audit.Record("cve.lead.llm_author.skip", new Dictionary<string, object?>
                 {
-                    ["cve"] = cve,
-                    ["target"] = target,
-                    ["reason"] = $"llm_error: {e.Message}",
-                });
-                _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
-                {
-                    ["cve"] = cve,
-                    ["target"] = target,
-                    ["outcome"] = "llm_error",
-                });
-                return CveLeadLlmAuthorResult.Errored(e.Message);
-            }
+                    _audit.Record("cve.lead.llm_author.skip", new Dictionary<string, object?>
+                    {
+                        ["cve"] = cve,
+                        ["target"] = target,
+                        ["reason"] = $"llm_error: {e.Message}",
+                    });
+                    _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
+                    {
+                        ["cve"] = cve,
+                        ["target"] = target,
+                        ["outcome"] = "llm_error",
+                    });
+                    return CveLeadLlmAuthorResult.Errored(e.Message);
+                }
 
             default:
                 _audit.Record("cve.lead.llm_author.finish", new Dictionary<string, object?>
