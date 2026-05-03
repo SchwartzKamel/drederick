@@ -78,7 +78,7 @@ flowchart TD
     Doctor["Doctor (preflight)<br/>optional; drederick doctor [--install]<br/>detects / installs operator tooling"]
     Toolbox["ReconToolbox<br/>Audit (JSONL) · Budget · IReadOnlyList&lt;IReconTool&gt;<br/>─────<br/>NativeScannerTool (native) · NmapTool (optional NSE)<br/>NativeDnsTool (native) · DnsProbeTool<br/>HttpProbeTool · TlsProbeTool<br/>SmbTool · FtpTool · SshTool<br/>SnmpTool (native) · LdapTool · RpcTool<br/>KerberosTool (SPN listing only)<br/>DnsZoneTransferTool (native AXFR)<br/>HttpContentDiscoveryTool (path-only)<br/>TlsCipherEnumTool · BinaryAnalyzer"]
     Pool["HostWorkerPool<br/>bounded Channel&lt;…&gt;<br/>--host-concurrency<br/>--service-concurrency"]
-    Runner["Runner<br/>AdaptiveRunner (deterministic)<br/>MicrosoftAgentRunner (LLM)"]
+    Runner["Runner<br/>AdaptiveRunner (deterministic)<br/>MicrosoftAgentRunner (Azure/OpenAI LLM)<br/>CopilotSdkAgentRunner (Copilot LLM)<br/>HybridAgentRunner (LLM-first + fallback)<br/>AutopilotRunner (recon→exploit→loot loop)"]
     Enrich["Enrichment<br/>CveAnnotator (NVD 2.0)<br/>PocAggregator (Searchsploit / GHSA / Metasploit / Nuclei)<br/>cached verbatim to out/poc_cache/"]
     Exploit["ExploitToolbox<br/>ExploitRunner · MsfRcRunner · NucleiRunner<br/>NativeHttpSprayTool · PasswordSprayTool<br/>MultiStageExploitRunner · ZeroLogonTool<br/>KerberoastTool · AsRepRoastTool<br/>CmsChainExecutor (KbSubstitutionResolver)<br/>Empire C2 (Stager · ModuleExecutor · MalleableProfileLibrary)<br/>(scope-gated, per-category opt-in)"]
     PostEx["Post-ex<br/>SessionManager · SessionPivotProber<br/>PostExLinux · PostExWindows · FlagExtractor"]
