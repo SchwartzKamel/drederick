@@ -51,6 +51,14 @@ public sealed class KnowledgeBase
     /// </summary>
     [JsonPropertyName("bloodhound")]
     public BloodhoundFindings? Bloodhound { get; set; }
+    /// Cross-host engagement-wide facts. Used by chain-template
+    /// substitution as the third (and final) lookup tier behind per-
+    /// host findings and per-service findings. Example keys:
+    /// <c>engagement.name</c>, <c>operator.callsign</c>,
+    /// <c>payloads.wp_image</c>.
+    /// </summary>
+    [JsonPropertyName("globals")]
+    public Dictionary<string, string> Globals { get; set; } = new(StringComparer.Ordinal);
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -173,6 +181,101 @@ public sealed class KnowledgeBase
             Bloodhound ??= new BloodhoundFindings();
             return SharpHoundIngest.IngestJsonFile(jsonPath, Bloodhound);
         }
+    }
+
+    /// <summary>
+    /// Source tier that satisfied a <see cref="TryResolve"/> call. Used
+    /// by the chain-template KB substitution layer to audit *where* a
+    /// value came from without recording the value itself.
+    /// </summary>
+    public enum ResolveSource
+    {
+        NotFound = 0,
+        TargetFindings = 1,
+        ServiceFindings = 2,
+        Globals = 3,
+    }
+
+    /// <summary>
+    /// Resolve a dotted KB path against the standard tiers used by
+    /// chain-template <c>{kb.&lt;path&gt;}</c> substitution:
+    /// per-target findings → per-service findings (via the
+    /// <c>services.&lt;port&gt;.</c> key prefix on the host findings
+    /// dictionary) → engagement <see cref="Globals"/>.
+    ///
+    /// Built-in synthetics are exposed for typed fields so chain
+    /// templates can reference <c>cms.name</c> / <c>cms.version</c>
+    /// without the recon side having to also flat-write them — the
+    /// <see cref="Drederick.Recon.CmsFinding"/> already populated by
+    /// the CMS fingerprinter is consulted directly.
+    ///
+    /// Returns the source tier on hit; <see cref="ResolveSource.NotFound"/>
+    /// when no tier carries the path.
+    /// </summary>
+    public ResolveSource TryResolve(string targetHost, int? servicePort, string dottedPath, out string? value)
+    {
+        value = null;
+        if (string.IsNullOrEmpty(dottedPath)) return ResolveSource.NotFound;
+        lock (_gate)
+        {
+            if (!string.IsNullOrEmpty(targetHost) && Hosts.TryGetValue(targetHost, out var hf))
+            {
+                if (servicePort.HasValue)
+                {
+                    var svcKey = $"services.{servicePort.Value}.{dottedPath}";
+                    if (hf.Findings.TryGetValue(svcKey, out var svcVal))
+                    {
+                        value = svcVal;
+                        return ResolveSource.ServiceFindings;
+                    }
+                }
+                if (hf.Findings.TryGetValue(dottedPath, out var hostVal))
+                {
+                    value = hostVal;
+                    return ResolveSource.TargetFindings;
+                }
+                if (TryResolveBuiltinSynthetic(hf, dottedPath, out var synthVal))
+                {
+                    value = synthVal;
+                    return ResolveSource.TargetFindings;
+                }
+            }
+            if (Globals.TryGetValue(dottedPath, out var gVal))
+            {
+                value = gVal;
+                return ResolveSource.Globals;
+            }
+        }
+        return ResolveSource.NotFound;
+    }
+
+    private static bool TryResolveBuiltinSynthetic(HostFinding hf, string dottedPath, out string? value)
+    {
+        value = null;
+        // CMS fingerprint: cms.name / cms.version / cms.base_url /
+        // cms.confidence — first match (highest-confidence is sorted
+        // first by the fingerprinter; we just take element 0).
+        if (dottedPath.StartsWith("cms.", StringComparison.Ordinal)
+            && hf.CmsFingerprint.Count > 0)
+        {
+            var first = hf.CmsFingerprint[0];
+            var leaf = dottedPath["cms.".Length..];
+            switch (leaf)
+            {
+                case "base_url": value = first.BaseUrl; return true;
+            }
+            if (first.Matches.Count > 0)
+            {
+                var m = first.Matches[0];
+                switch (leaf)
+                {
+                    case "name": value = m.Name; return true;
+                    case "version": value = m.Version ?? ""; return true;
+                    case "confidence": value = m.Confidence.ToString(System.Globalization.CultureInfo.InvariantCulture); return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// <summary>Record the successful execution of an Empire module on a target.</summary>
