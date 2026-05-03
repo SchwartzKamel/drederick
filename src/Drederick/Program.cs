@@ -840,6 +840,13 @@ var dbPillage = new Drederick.Exploit.PostEx.DbPillageTool(
 var sshKeyBrute = new Drederick.Exploit.PostEx.SshKeyBruteTool(
     scope, audit, permissions, opts.OutputDir, credentialStore: null);
 
+// gap-039-passphrase-brute: offline passphrase brute against a captured
+// encrypted SSH private key. Sibling to sshKeyBrute (which sprays an
+// already-decrypted key). Cracked passphrase pushes into CredentialStore
+// as (user="ssh-key:<fingerprint>", realm=hostHint).
+var sshKeyPassphraseBrute = new Drederick.Exploit.PostEx.SshKeyPassphraseBruteTool(
+    scope, audit, permissions, credentialStore: null);
+
 // GAP-040: sudo -l + GTFOBins one-shot privesc on a captured-key SSH
 // foothold. Two-phase: enumerate then optionally auto-execute the safe
 // variant of each match. Destructive candidates require
@@ -943,7 +950,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sshKeyPassphraseBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump },
     audit,
     exploitBudget);
 

@@ -38,4 +38,14 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!-- gap-039-passphrase: SSH key fixtures (encrypted ed25519 + RSA)
+       used by SshKeyPassphraseBruteToolTests. Copied to test output so
+       tests resolve via AppContext.BaseDirectory. -->
+  <ItemGroup>
+    <None Include="fixtures\ssh-keys\**\*">
+      <Link>fixtures\ssh-keys\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
