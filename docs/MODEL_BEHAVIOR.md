@@ -309,7 +309,7 @@ boundary:
 
 When changing prompt templates, archetype playbooks, or routing rules,
 preserve every contract from [`#compliance`](#compliance): Copilot SDK
-checks `/models`, default `claude-haiku-4.5` remains the preferred
+checks `/models`, default `claude-sonnet-4.6` remains the preferred
 compliant model, non-compliant Copilot model refusals propagate even under
 hybrid, and hybrid falls back only on operational/provider failures.
 

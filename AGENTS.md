@@ -88,7 +88,7 @@ Build, test, and run commands you can rely on.
 | `drederick --scope … --target … --no-lab` | Strict-mode run (exploitation categories opt-in per flag). | `src/Drederick/Cli/*` | `tests/Drederick.Tests/**` |
 | `drederick doctor [--install] [-y]` | Detect/install operator tooling. | `src/Drederick/Doctor/*` | `DoctorTests` |
 | `drederick serve --out out/` | Launch Datasette against `findings.db`. | `src/Drederick/Cli/ServeCommand*` | `ServeCommandTests` (if present) |
-| `drederick --scope … --target … --agent` | LLM-driven planner. Supports `--llm-provider=copilot\|azure\|openai` (default `copilot`); Copilot uses the official `GitHub.Copilot.SDK`, checks `/models`, and prefers compliant `claude-haiku-4.5` unless `DREDERICK_MODEL` overrides it. | `src/Drederick/Agent/CopilotSdkAgentRunner.cs`, `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
+| `drederick --scope … --target … --agent` | LLM-driven planner. Supports `--llm-provider=copilot\|azure\|openai` (default `copilot`); Copilot uses the official `GitHub.Copilot.SDK`, checks `/models`, and prefers compliant `claude-sonnet-4.6` unless `DREDERICK_MODEL` overrides it. | `src/Drederick/Agent/CopilotSdkAgentRunner.cs`, `src/Drederick/Agent/MicrosoftAgentRunner.cs` | `MicrosoftAgentRunnerTests` |
 | `DREDERICK_SKIP_CVE=1 drederick …` | Skip CVE enrichment. | `src/Drederick/Enrichment/CveAnnotator.cs` | `CveAnnotatorTests` |
 | `drederick --no-fetch-poc` | Skip PoC source caching. | `src/Drederick/Enrichment/PocAggregator.cs` | `PocAggregatorTests` |
 | `drederick --allow-dos` / `--allow-destructive` / `--allow-exec-pocs` / `--allow-cred-attacks` / `--allow-payloads` / `--acknowledge-lockout-risk` | Per-run opt-ins for high-blast-radius categories (required in strict mode; defaults on in lab mode except `--allow-dos`). | `src/Drederick/Cli/*` | `OptInFlagTests` |
@@ -114,7 +114,7 @@ descriptions, hybrid fallback, Jeopardy swarm behavior, or cost reports,
 read [`docs/MODEL_BEHAVIOR.md`](docs/MODEL_BEHAVIOR.md) and
 [`.github/fight-history/INDEX.md`](.github/fight-history/INDEX.md).
 Preserve the contract: Copilot SDK checks `/models`, default
-`claude-haiku-4.5` remains the preferred compliant model,
+`claude-sonnet-4.6` remains the preferred compliant model,
 non-compliant Copilot model refusals propagate even under hybrid, and
 hybrid falls back only on operational/provider failures. Permission
 approval is not the boundary; scope checks, argv validation, budgets,
