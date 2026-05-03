@@ -45,14 +45,9 @@ public sealed class AdaptiveRunner : IReconAgentRunner
     }
 
     /// <summary>
-    /// Optional in-fight scaffolding (briefing.md + attack-graph.yaml)
-    /// loaded by <see cref="Drederick.Scaffolding.ScaffoldingDiscovery"/>.
-    /// When set, the runner emits activation events at start; the spec
-    /// also requires priority/anti-goal awareness inside the dispatch
-    /// loop (LOADER_SPEC §4.1/§4.2). The deterministic adaptive runner
-    /// does not yet reorder its tool dispatch around these — see the
-    /// PR notes for the deferred behavior. Activation events are
-    /// always emitted so the §6 acceptance suite passes.
+    /// Optional in-fight scaffolding (briefing.md + attack-graph.yaml).
+    /// When set, activation events are emitted at <see cref="RunAsync"/>
+    /// start. See <c>machines/SCAFFOLDING/LOADER_SPEC.md</c> §4.
     /// </summary>
     public ScaffoldingContext? Scaffolding { get; set; }
 

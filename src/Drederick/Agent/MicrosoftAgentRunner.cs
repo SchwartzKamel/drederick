@@ -48,9 +48,9 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
 
     /// <summary>
     /// In-fight scaffolding (briefing.md + attack-graph.yaml). When set,
-    /// activation events are emitted at run start and the user message
-    /// is augmented with a summary of assumed-breach material, priority
-    /// hints, and anti-goals. See LOADER_SPEC §4.
+    /// activation events fire at run start and the user message is
+    /// augmented with assumed-breach material, priority hints, and
+    /// anti-goals. See LOADER_SPEC §4.
     /// </summary>
     public ScaffoldingContext? Scaffolding { get; set; }
 
@@ -347,17 +347,13 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         In-fight scaffolding (LOADER_SPEC). If the user message contains
         an "In-fight scaffolding" block, the operator has supplied
         briefing.md and/or attack-graph.yaml. Treat it as authoritative
-        intel for THIS fight. Specifically: (a) every assumed-breach
-        artifact listed MUST be consumed by at least one tool call, or
-        you must explicitly state the tool is unavailable — silently
-        ignoring it is a contract violation; (b) priority hints are
-        ordered tie-breakers, prefer the named method when two actions
-        are otherwise equal; (c) anti-goals are HARD blockers, never
-        schedule an action that matches one; (d) briefing-derived
-        known nodes activate first — bias your first 5 actions toward
-        consuming the assumed-breach artifact (cf. PingPong's
-        c.roberts.pfx directive). If scaffolding is absent, behave as
-        before.
+        intel for THIS fight: (a) every assumed-breach artifact MUST be
+        consumed by at least one tool call or you must explicitly state
+        the tool is unavailable — silently ignoring it is a contract
+        violation; (b) priority hints are ordered tie-breakers; (c)
+        anti-goals are HARD blockers, never schedule a matching action;
+        (d) bias your first 5 actions toward consuming the assumed-
+        breach artifact. If scaffolding is absent, behave as before.
         """;
 
     internal static string BuildUserMessage(IReadOnlyList<string> targets, KnowledgeBase prior)
