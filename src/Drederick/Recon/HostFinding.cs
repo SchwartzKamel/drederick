@@ -41,6 +41,12 @@ public sealed class HostFinding
     [JsonPropertyName("cms_fingerprint")] public List<CmsFinding> CmsFingerprint { get; set; } = new();
     // --- ad --- (GAP-042)
     [JsonPropertyName("smb_null_session")] public List<SmbNullSessionFinding> SmbNullSession { get; set; } = new();
+    // --- GAP-041-kb: free-form findings for chain-template {kb.*}
+    // substitution. Recon and exploit tools may write structured facts
+    // here (e.g. cms.path = "/wp-admin", services.80.headers.x-powered-by =
+    // "PHP/7.4"). Keys use dotted notation; values are strings only —
+    // chain substitution layer never serialises objects into argv.
+    [JsonPropertyName("findings")] public Dictionary<string, string> Findings { get; set; } = new();
 }
 
 /// <summary>
