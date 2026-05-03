@@ -17,7 +17,9 @@ related:
 
 # Modules
 
-> **TL;DR.** 14 `IReconTool` scanners under `src/Drederick/Recon/`. Each
+> **TL;DR.** ~24 `IReconTool` scanners under `src/Drederick/Recon/` (the 14
+> classic recon tools below + 8 NSE-port natives under `Recon/Native/`)
+> plus `FingerprintStackTool` under `Enrichment/FingerprintStack/`. Each
 > checks `_scope.Require(target)` as its first statement, brackets work with
 > `audit.Record("<name>.start"/".finish", …)`, returns a typed result on
 > `HostFinding`, and validates any subprocess argv. Per-scanner anchors
@@ -406,8 +408,13 @@ gate. Summary:
 | `NativeHttpSprayTool` (pure-.NET HTTP spray: Basic/Digest/Tomcat/Jenkins/Grafana/WordPress/phpMyAdmin/OWA/WinRM) | `--allow-cred-attacks` + `--acknowledge-lockout-risk` |
 | `PasswordSprayTool` | `--allow-cred-attacks` + `--acknowledge-lockout-risk` |
 | `MultiStageExploitRunner` | `--allow-exec-pocs` + `--allow-payloads` |
+| `ZeroLogonTool` (CVE-2020-1472, native C# Netlogon bypass + secretsdump) | `--allow-exec-pocs` + `--allow-cred-attacks` |
+| `KerberoastTool` / `AsRepRoastTool` (`Drederick.Exploit.Ad`, AD ticket roasting) | `--allow-cred-attacks` |
+| `HttpFormBruteTool` / `CmsChainExecutor` (declarative CMS chain w/ `KbSubstitutionResolver`) | `--allow-exec-pocs` (+ `--allow-cred-attacks` for brute steps) |
+| `LlmExecShellTool` (LLM-driven post-ex shell over an open session) | (via active session; per-step scope check) |
 | `EmpireAgentStager` (agent payload generation) | `--allow-payloads` |
 | `EmpireModuleExecutor` (privesc/lateral movement) | `--allow-payloads` (+ `--allow-cred-attacks` for credential reuse) |
+| `MalleableProfileLibrary` (Empire C2 profile selector — APT/Crimeware/Normal) | (config-time; no network) |
 | `MacroPayloadGenerator` (VBA / HTA / LNK / ISO macro lures) | `--allow-phishing` |
 | `PhishingDelivery` (SMB drop / WebDAV PUT / one-shot HTTP stager) | `--allow-phishing` (SMTP relay additionally requires `--allow-smtp-relay`; Phase 2) |
 | `PostExLinux` / `PostExWindows` | (via session opened by exploit tools) |
@@ -577,3 +584,100 @@ deterministic runner, the LLM runner, `ChainReasoner`, and
   that owns the credential is responsible for feeding successes back into
   those stores (avoids a dependency cycle through `Drederick.Autopilot`).
 - **Gates:** `--allow-cred-attacks` + `--acknowledge-lockout-risk`.
+
+## Additional recon scanners {#additional-recon-scanners}
+
+Beyond the 14 classic recon tools above, several more `IReconTool`
+scanners ship under `src/Drederick/Recon/` and `src/Drederick/Recon/Native/`,
+plus `FingerprintStackTool` under `src/Drederick/Enrichment/FingerprintStack/`.
+All follow the standard pattern (`_scope.Require` first, audit
+bracketing, typed `HostFinding` result, argv validation).
+
+- **`HostDiscoveryTool`** — ARP / ICMP / TCP-ping sweep across an in-scope
+  CIDR. Documented in detail at [`#scanner-host-discovery`](#scanner-host-discovery).
+- **`S3MinioProbeTool`** — anonymous S3 / MinIO bucket discovery + listing
+  against in-scope HTTP services.
+- **`CmsFingerprintTool`** — version + plugin/theme detection for
+  WordPress / Drupal / Joomla. Feeds `CmsChainExecutor` selection.
+- **`SmbNullSessionTool`** — SMB null-session enumeration (shares, users,
+  groups, RID cycling) against scope-validated SMB hosts.
+- **`CertVulnerabilityEnumTool`** — AD CS template enumeration looking for
+  ESC1–ESC8 misconfigurations.
+- **`DcSyncDetectionTool`** — detects accounts with `Replicating Directory
+  Changes` / `…All` rights (DCSync prerequisites).
+- **`DelegationEnumTool`** — unconstrained / constrained / RBCD delegation
+  enumeration on AD accounts.
+- **`NseProxy`** (`src/Drederick/Recon/NseProxy.cs`) — runs a curated NSE
+  category against an already-open port set, surfacing structured findings
+  back through `HostFinding` for the planner.
+- **NSE-ported natives** under `src/Drederick/Recon/Native/` — see
+  [`#scanner-native-nse-ports`](#scanner-native-nse-ports) for the eight
+  pure-.NET ports (no `nmap` dependency).
+- **`FingerprintStackTool`** (`Drederick.Enrichment.FingerprintStack`) —
+  banner + favicon + header + body multi-signal fingerprinter; consumes the
+  `LearnedFingerprintStore` so each engagement sharpens the corpus.
+
+## CMS chain step `KbSubstitutionResolver` {#kb-substitution-resolver}
+
+`src/Drederick/Exploit/Web/KbSubstitutionResolver.cs` resolves
+`${kb.<path>:<default>}` placeholders inside `cms-chain-templates.yaml`
+chain steps against `KnowledgeBase` at run-time:
+
+- **Inputs:** the raw step argument template, the active `KnowledgeBase`,
+  the live `Scope.Scope`, and the run's `AuditLog`.
+- **Lookup:** `${kb.host.cms.admin_path:/wp-admin/}` walks the JSON path
+  in `KnowledgeBase` for the active host. Missing keys fall back to the
+  inline default; missing keys without a default are recorded as
+  `chain.kb_substitution.unresolved` and short-circuit the step.
+- **Audit events:** every successful resolution emits
+  `chain.kb_substitution.resolved` with the path + a SHA-256 of the
+  resolved value (no plaintext); failures emit
+  `chain.kb_substitution.unresolved`.
+- **Scope:** the resolver itself is pure (no network); downstream chain
+  steps re-check scope per `@invariant-id:scope-in-every-tool`.
+
+## `FightNotebook` + learning surface {#fight-notebook}
+
+`src/Drederick/Learning/` is the cross-engagement memory layer:
+
+- **`FightNotebook`** (`FightNotebook.cs`) — append-only JSONL at
+  `memory/fight-notebook.jsonl`. The LLM planner gets a `take_note`
+  `AIFunction`; the operator gets a `notebook` CLI subcommand. Every note
+  is tagged (kind + fight + tactic) and replayed into the planner's
+  context on subsequent runs.
+- **`FightCorpus`** (`FightCorpus.cs`) — read-only loader for the
+  operator-curated `~/HTB/fight-log.yaml` catalog; surfaces prior
+  wins/losses + open `GAP-NNN` items.
+- **`ArchetypeClassifier`** + **`TargetArchetype`** — classifies each
+  target into a working archetype (web / AD / file-share / …) so the
+  runner picks enumeration depth and exploit selection per fight.
+- **`LearnedFingerprintStore`** + **`FingerprintLearner`**
+  (`src/Drederick/Enrichment/FingerprintStack/`) — auto-grows the
+  fingerprint corpus from each engagement and persists at
+  `out/memory/learned-fingerprints.json`.
+
+See [`LEARNING_LOOP.md`](LEARNING_LOOP.md) for the operator-facing
+workflow and [`ARCHITECTURE.md#layer-learning`](ARCHITECTURE.md#layer-learning)
+for layer wiring.
+
+## Scaffolding loader {#scaffolding-loader}
+
+`src/Drederick/Scaffolding/` is the in-fight scaffolding loader per
+`machines/SCAFFOLDING/LOADER_SPEC.md`. It is **read-only context** — it
+never executes tools or touches the network.
+
+- **`BriefingDocument`** + **`BriefingLoader`** — parses per-machine
+  `briefing.md` (target metadata, declared trophies, scope hints) into a
+  typed shape consumed by every runner.
+- **`AttackGraph`** + **`AttackGraphLoader`** — parses
+  `attack-graph.yaml` (nodes = capabilities; edges = required
+  preconditions). Unknown vocabulary is preserved, not rejected, so
+  playbooks can evolve without breaking the loader.
+- **`ScaffoldingDiscovery`** — walks the briefing root, locates briefing
+  + attack-graph + cornerman files, and produces a bundled
+  **`ScaffoldingContext`** that `AdaptiveRunner`,
+  `MicrosoftAgentRunner`, and `AutopilotRunner` all read at run-start.
+
+Downstream tools still enforce scope per
+`@invariant-id:scope-in-every-tool`; nothing in the scaffolding layer is
+a security boundary.

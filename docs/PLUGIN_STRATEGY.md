@@ -205,6 +205,62 @@ Can we re-implement the engine cleanly in <500 lines of C#?
 - **Embedding outdated data**: bundle community data with provenance + version + last-fetched timestamp. Refresh via tooling, not manual edits.
 - **Reinventing for ego**: don't re-implement nmap. Pattern 1 gracefully enriches with it.
 
+<a id="how-the-llm-sees-tools"></a>
+## How the LLM sees tools
+
+All four patterns above feed the same LLM-visible surface. The contract:
+
+- **`ITool` family in code.** Capability families are fronted by
+  marker interfaces:
+  [`IReconTool`](../src/Drederick/Recon/IReconTool.cs),
+  [`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs),
+  [`IPayloadTool`](../src/Drederick/Exploit/IPayloadTool.cs),
+  [`ICredTool`](../src/Drederick/Exploit/ICredTool.cs),
+  [`IFuzzTool`](../src/Drederick/Recon/Fuzz/IFuzzTool.cs), and
+  [`IPocSource`](../src/Drederick/Enrichment/IPocSource.cs). Each
+  toolbox (`ReconToolbox`, `ExploitToolbox`, `FuzzToolbox`)
+  dispatches by concrete type — the marker interface is metadata
+  only (`Name`, `Description`).
+- **`[Description(...)]` is the LLM-visible string.** Every public
+  toolbox method and every parameter must carry a precise
+  `[Description]`. The model picks tools by reading those strings;
+  vague or copy-pasted descriptions starve the planner. The same
+  attribute drives the `AIFunction` wrappers exposed via
+  [`LlmExploitTools`](../src/Drederick/Agent/LlmExploitTools.cs)
+  and registered through
+  [`LlmToolCatalog.BuildAiFunctions`](../src/Drederick/Agent/LlmToolCatalog.cs).
+- **`ToolBudget` defaults `(PerTargetPerTool: 3, MaxTotalCalls: 200)`.**
+  Override per-tool only when the call shape genuinely needs it
+  (e.g. a streaming probe that must call repeatedly per target).
+  Tighter budgets force the LLM to prioritize high-signal actions —
+  the right default for an offensive harness.
+- **Long-term notebook.** The
+  [`take_note`](../src/Drederick/Agent/LlmNotebookTool.cs) tool wraps
+  [`FightNotebook`](../src/Drederick/Learning/FightNotebook.cs) and
+  lets the model persist observations, dead-ends, and winning moves
+  across turns — and across fights. It is wired in
+  `LlmToolCatalog.BuildAiFunctions` behind the
+  `// --- llm-notebook-wiring ---` anchor so additional notebook-
+  adjacent tools can be appended without churning unrelated lines.
+  Notes are auto-redacted of plaintext credentials at persistence
+  time; `@invariant-id:audit-everything` and
+  `@invariant-id:no-exfiltration` apply equally to notebook entries.
+
+When adding a tool from any of the four patterns above, the registration
+checklist is:
+
+1. Implement the matching `ITool` interface.
+2. Add a public toolbox method with `[Description(...)]` on the method
+   and every parameter.
+3. Register in `Program.cs` under the section anchor for that family
+   (`// --- recon tools ---`, `// --- exploit tools ---`,
+   `// --- enrichment ---`).
+4. Update `ToolBudget` only if the default `(3 / 200)` is wrong.
+5. Add the matching tests from
+   [`DEVELOPING.md#testing`](DEVELOPING.md#testing) — including the
+   canary-string check that no plaintext secret appears in audit or
+   notebook entries.
+
 <a id="see-also"></a>
 ## See also
 

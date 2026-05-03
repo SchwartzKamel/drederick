@@ -20,16 +20,21 @@ related:
 
 # Architecture
 
-> **TL;DR.** `CLI → Scope → Doctor → ReconToolbox (17 `IReconTool`s;
+> **TL;DR.** `CLI → Scope → Doctor → Scaffolding (per-machine briefing +
+> attack-graph loader) → ReconToolbox (`IReconTool` scanners;
 > `NativeScannerTool` preferred, `NmapTool` optional NSE enrichment) →
 > HostWorkerPool → Runner (AdaptiveRunner / MicrosoftAgentRunner /
 > HybridAgentRunner / AutopilotRunner) → Enrichment (NVD + multi-source PoC) →
 > ExploitToolbox (`ExploitRunner`, `MsfRcRunner`, `NucleiRunner`,
-> `NativeHttpSprayTool`, `PasswordSprayTool`, `MultiStageExploitRunner`) →
-> Post-ex (`SessionManager`, `PostExLinux`,
+> `NativeHttpSprayTool`, `PasswordSprayTool`, `MultiStageExploitRunner`,
+> `ZeroLogonTool`, `KerberoastTool`/`AsRepRoastTool`, `CmsChainExecutor` with
+> `KbSubstitutionResolver` for CMS chain steps, Empire C2 stagers/modules
+> with `MalleableProfileLibrary`) → Post-ex (`SessionManager`, `PostExLinux`,
 > `PostExWindows`, `SessionPivotProber`, `FlagExtractor`) → Reporting (JSON /
-> Markdown / SqliteReport) + Memory (`memory/findings.json`) → Presentation
-> (Datasette / Avalonia `Drederick.UI` / browser `Drederick.Web` + SignalR)`.
+> Markdown / SqliteReport) + Memory (`memory/findings.json`) + Learning
+> (`FightNotebook` / `FightCorpus` / `ArchetypeClassifier` /
+> `LearnedFingerprintStore`) → Presentation (Datasette / Avalonia
+> `Drederick.UI` / browser `Drederick.Web` + SignalR)`.
 > A parallel Jeopardy CTF subsystem lives under `src/Drederick/Jeopardy/`;
 > the Jeopardy LLM backend is selectable via `LlmProviderFactory` (Copilot /
 > Azure OpenAI / llama.cpp). Scope is enforced *inside every tool* — recon,
@@ -75,10 +80,10 @@ flowchart TD
     Pool["HostWorkerPool<br/>bounded Channel&lt;…&gt;<br/>--host-concurrency<br/>--service-concurrency"]
     Runner["Runner<br/>AdaptiveRunner (deterministic)<br/>MicrosoftAgentRunner (LLM)"]
     Enrich["Enrichment<br/>CveAnnotator (NVD 2.0)<br/>PocAggregator (Searchsploit / GHSA / Metasploit / Nuclei)<br/>cached verbatim to out/poc_cache/"]
-    Exploit["ExploitToolbox<br/>ExploitRunner · MsfRcRunner · NucleiRunner<br/>NativeHttpSprayTool · PasswordSprayTool<br/>MultiStageExploitRunner<br/>(scope-gated, per-category opt-in)"]
+    Exploit["ExploitToolbox<br/>ExploitRunner · MsfRcRunner · NucleiRunner<br/>NativeHttpSprayTool · PasswordSprayTool<br/>MultiStageExploitRunner · ZeroLogonTool<br/>KerberoastTool · AsRepRoastTool<br/>CmsChainExecutor (KbSubstitutionResolver)<br/>Empire C2 (Stager · ModuleExecutor · MalleableProfileLibrary)<br/>(scope-gated, per-category opt-in)"]
     PostEx["Post-ex<br/>SessionManager · SessionPivotProber<br/>PostExLinux · PostExWindows · FlagExtractor"]
     Report["Reporting<br/>JsonReport · MarkdownReport<br/>ManualCommandsCheatsheet<br/>SqliteReport (findings.db)"]
-    Present["Presentation / Memory<br/>drederick serve → Datasette<br/>Avalonia operator console (Drederick.UI)<br/>KnowledgeBase (memory/findings.json)"]
+    Present["Presentation / Memory / Learning<br/>drederick serve → Datasette<br/>Avalonia Drederick.UI · Drederick.Web (SignalR)<br/>KnowledgeBase (memory/findings.json)<br/>FightNotebook · FightCorpus · ArchetypeClassifier<br/>Scaffolding (briefing + attack-graph loader)"]
 
     CLI --> Scope --> Doctor --> Toolbox --> Pool --> Runner --> Enrich --> Exploit --> PostEx --> Report --> Present
 ```
@@ -292,6 +297,29 @@ tool additionally gates on a `RunPermissions` category flag.
 - `ExploitToolbox` — DI surface wrapping the above. The LLM runner sees
   every exploit tool as an `AIFunction` with a `[Description]` attribute;
   scope + permission checks still fire inside each tool.
+- `ZeroLogonTool` — native C# CVE-2020-1472 (Netlogon ANSI auth bypass)
+  exploit against in-scope Windows domain controllers; chains into
+  `secretsdump` for NTDS extraction. Gate: `--allow-exec-pocs` + AD
+  cred-attack acknowledgement.
+- AD ticket-roast tools (`Drederick.Exploit.Ad`): `AsRepRoastTool` (zero-cred
+  AS-REP roast) and `KerberoastTool` (authenticated SPN-targeted TGS roast).
+  Gate: `--allow-cred-attacks`.
+- `CmsChainExecutor` (`Drederick.Exploit.Web`) — declarative CMS exploit chain
+  driver (`cms-chain-templates.yaml`). Steps reference KnowledgeBase facts via
+  `${kb.path:default}` placeholders that the **`KbSubstitutionResolver`**
+  (`src/Drederick/Exploit/Web/KbSubstitutionResolver.cs`) resolves at run-time
+  against `KnowledgeBase`, emitting `chain.kb_substitution.*` audit events.
+  `HttpFormBruteTool` and `PrefetchTokenStep` are the per-step credential and
+  CSRF-token primitives.
+- **Empire C2 integration** (`src/Drederick/Exploit/Empire/`):
+  `EmpireApiClient`, `EmpireAgentStager` (PowerShell/Python/Bash payload
+  generation, `IPayloadTool`), `EmpireModuleExecutor` (privesc + lateral
+  movement, `IExploitTool`), `EmpireModuleLibrary` (token/SeImpersonate →
+  Potato fingerprint matcher), `SessionAgentMapper` (thread-safe
+  agent_id → target registry), and `MalleableProfileLibrary` (selects from
+  the bundled BC-SECURITY/Malleable-C2-Profiles corpus by category — APT /
+  Crimeware / Normal). See [`EMPIRE.md`](./EMPIRE.md) and
+  [`C2_INTEGRATION.md`](./C2_INTEGRATION.md).
 
 ### `Drederick.Exploit` — post-exploitation {#layer-post-ex}
 
@@ -359,6 +387,51 @@ for the operator guide.
 `KnowledgeBase` persists findings between runs (`memory/findings.json`). The
 next run starts with the prior map and writes back merged state, so repeat
 passes converge on deltas rather than re-discovering the whole surface.
+`KnowledgeBase.TryResolve(host, port, path)` is the read API used by the
+chain-step `KbSubstitutionResolver` (see
+[`Drederick.Exploit`](#layer-exploit)).
+
+### `Drederick.Learning` — fight notebook + adaptive classifiers {#layer-learning}
+
+Long-term, cross-engagement memory layered on top of `KnowledgeBase`:
+
+- **`FightNotebook`** (`src/Drederick/Learning/FightNotebook.cs`) — append-
+  only JSONL notebook (`memory/fight-notebook.jsonl`). The LLM and the
+  operator drop short structured `FightNote`s during/between fights via
+  the `take_note` LLM tool and the `notebook` CLI subcommand. Read back by
+  `drederick review` and the `MicrosoftAgentRunner` planner so lessons
+  carry across engagements.
+- **`FightCorpus`** (`src/Drederick/Learning/FightCorpus.cs`) — read-only
+  loader for the operator-curated `~/HTB/fight-log.yaml` catalog. Surfaces
+  prior wins/losses + open `GAP-NNN` items into the planner's context. See
+  [`LEARNING_LOOP.md`](./LEARNING_LOOP.md).
+- **`ArchetypeClassifier` / `TargetArchetype`** — classifies each target as
+  web / AD / file-share / etc., so the runner biases enumeration depth and
+  exploit selection per fight.
+- **`LearnedFingerprintStore` / `FingerprintLearner`**
+  (`src/Drederick/Enrichment/FingerprintStack/`) — auto-grows the
+  fingerprint corpus from each engagement and persists at
+  `out/memory/learned-fingerprints.json`.
+
+### `Drederick.Scaffolding` — per-machine briefing + attack-graph loader {#layer-scaffolding}
+
+In-fight scaffolding loader (`src/Drederick/Scaffolding/`) per
+`machines/SCAFFOLDING/LOADER_SPEC.md`:
+
+- **`BriefingDocument` / `BriefingLoader`** — parses per-machine
+  `briefing.md` (target metadata, scope hints, declared trophies) into a
+  typed shape the planner consults at runtime.
+- **`AttackGraph` / `AttackGraphLoader`** — parses `attack-graph.yaml`
+  (nodes = capabilities; edges = required preconditions) without
+  rejecting unknown vocabulary, so playbooks evolve without breaking the
+  loader.
+- **`ScaffoldingDiscovery`** — orchestrates briefing + attack-graph +
+  cornerman discovery into a bundled `ScaffoldingContext` available to
+  `AdaptiveRunner` / `MicrosoftAgentRunner` / `AutopilotRunner`.
+
+Scaffolding is read-only context — it never executes tools or touches the
+network; downstream tools enforce scope per
+`@invariant-id:scope-in-every-tool`.
 
 ### `Drederick.Audit` {#layer-audit}
 

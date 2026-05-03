@@ -70,7 +70,7 @@ and drops it at `~/.local/bin/drederick`. Override via environment:
 
 ```bash
 # Pin a version
-curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.3.1 bash
+curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | VERSION=v0.4.0 bash
 
 # System-wide install (requires sudo)
 curl -fsSL https://raw.githubusercontent.com/SchwartzKamel/drederick/main/scripts/install.sh | sudo PREFIX=/usr/local/bin bash
@@ -447,6 +447,30 @@ Still planned, tracked in follow-up PRs:
 - Bundled wordlist + pinned NSE-script list.
 - Integration tests against `vulhub` (env-gated).
 - Self-contained `dotnet publish` with embedded web assets.
+
+Shipped in v0.4.0 (see [`CHANGELOG.md`](CHANGELOG.md)):
+
+- LLM fight notebook (`src/Drederick/Learning/FightNotebook.cs`,
+  `LlmNotebookTool`, `drederick notebook {list,tail,show}`): the planner
+  records mid-round observations into append-only JSONL
+  (`out/fight-notes.jsonl` + `~/.drederick/fight-notebook.jsonl`) and the
+  operator browses them between bouts.
+- Native C# ZeroLogon (CVE-2020-1472) exploit
+  (`src/Drederick/Exploit/ZeroLogonTool.cs`) — pure managed Netlogon RPC,
+  no external deps.
+- Moriarty-style Windows MSRC corpus + `drederick windows-vulns
+  {list,analyze}` subcommand (`src/Drederick/Cli/WindowsVulnsCommand.cs`,
+  `src/Drederick/Exploit/Windows/`): post-ex JSON snapshot in, matching
+  CVEs and privesc paths out.
+- In-fight scaffolding loader Tier 0+1+2 (`src/Drederick/Scaffolding/`):
+  primes the planner with prior-fight tapes, attack-graph hints, and
+  pre-loaded briefings before the first probe.
+- `KbSubstitutionResolver` (`src/Drederick/Exploit/Web/KbSubstitutionResolver.cs`):
+  CMS chain templates can reference live `KnowledgeBase` fields via
+  `{{kb.fingerprint.*}}` / `{{kb.cred.*}}` placeholders.
+- Malleable-C2-Profiles port for Empire traffic obfuscation
+  (`src/Drederick/Exploit/Empire/MalleableProfileLibrary.cs` + bundled
+  profile corpus).
 
 Shipped in v0.3.1 (see [`CHANGELOG.md`](CHANGELOG.md)):
 

@@ -38,6 +38,7 @@ fight-history note.
 - [Data collection fields](#data-collection)
 - [Safe reporting rules](#safe-reporting)
 - [Archetype-aware prompt routing](#archetype-routing)
+- [LLM-visible tools and `take_note`](#take-note)
 
 <a id="purpose"></a>
 ## Purpose and ringside card
@@ -311,3 +312,71 @@ preserve every contract from [`#compliance`](#compliance): Copilot SDK
 checks `/models`, default `claude-haiku-4.5` remains the preferred
 compliant model, non-compliant Copilot model refusals propagate even under
 hybrid, and hybrid falls back only on operational/provider failures.
+
+<a id="take-note"></a>
+## LLM-visible tools and `take_note`
+
+The agent runners (`CopilotSdkAgentRunner`, `MicrosoftAgentRunner`)
+expose a curated set of `AIFunction`s through `LlmToolCatalog`. Every
+tool re-checks scope, permissions, argv, and audit invariants
+internally — none of those guards live in the prompt. Among the
+LLM-visible tools is `take_note`, the journaling primitive that ships
+with v0.4.0:
+
+| Tool | Source | What the model does with it |
+|---|---|---|
+| `exploit_plan` / `run_multi_stage` / `password_spray` / … | `src/Drederick/Agent/LlmExploitTools.cs` | Drive scope-validated offensive actions. |
+| `take_note` | [`src/Drederick/Agent/LlmNotebookTool.cs`](../src/Drederick/Agent/LlmNotebookTool.cs) — see the `[Description]` on `TakeNoteAsync` for the canonical wording surfaced to the model | Append a short structured note (`category`, `body`, `tags[]`, optional `target_host`) to the fight notebook. Local-disk recording action; no network reach, so it does **not** consult `_scope.Require` or `RunPermissions`. Plaintext secrets are auto-redacted by `FightNotebook.RedactSecrets`; only `body_sha256` is recorded to `audit.jsonl`. |
+
+### When the model should call `take_note`
+
+Treat note-taking as cheap, additive, and biased-toward-recall. Prompt
+templates and system messages should encourage proactive notes on:
+
+- **Assumption changes.** A working hypothesis (service identity, CVE
+  applicability, credential reuse path) just got disproved or
+  confirmed → category `mistake` or `observation`.
+- **Dead-ends.** A planned chain step failed for a *non-operational*
+  reason (wrong fingerprint, missing precondition, defender behavior)
+  → category `mistake` or `gap`.
+- **Surprise wins.** A step landed that wasn't the obvious next move,
+  or a chain converged faster than the priority bands predicted →
+  category `winning_move`. These are the highest-signal entries for
+  cross-fight learning.
+- **Defender behavior.** Lockout, WAF response shape, EDR alert
+  signature, throttling, fail2ban-style backoffs → category
+  `observation`. The harness can't see these structurally yet.
+- **Reusable patterns.** A technique that worked here and is likely to
+  work on the same archetype next time → category `tactic` or
+  `lesson`.
+
+### What the model should NOT do
+
+- Do **not** paste plaintext credentials, flags, hashes, PEM keys,
+  bearer tokens, or session secrets into note bodies. The notebook
+  redacts them, but the prompt-shape contract is "talk about
+  technique, not secrets."
+- Do **not** narrate routine tool output — that is what `audit.jsonl`
+  and `telemetry.db` are for. Notes are for *decisions* and
+  *lessons*, not raw transcript.
+- Do **not** treat note-taking as the security boundary. Compliance
+  refusal, scope check, argv validation, and permission gates remain
+  the boundary regardless of what gets journaled.
+
+### Coding-agent contract
+
+When changing the `take_note` description, the prompt template that
+mentions it, or the wiring through `LlmToolCatalog`:
+
+- Preserve the redaction backstop (`FightNotebook.RedactSecrets`) and
+  the SHA-256-only audit shape.
+- Keep `take_note` outside `_scope.Require` / `RunPermissions` —
+  note-taking is local-disk bookkeeping, not a network action. Adding
+  scope checks would silently block notes when the operator actively
+  needs them most (the fight is going sideways).
+- Keep the categories list aligned with `FightNoteCategory` in
+  `src/Drederick/Learning/FightNote.cs`.
+- Test that a canary plaintext credential in the note body never
+  appears in `out/fight-notes.jsonl`, the cross-fight aggregate, or
+  `audit.jsonl`. Existing coverage:
+  `tests/Drederick.Tests/Learning/FightNotebookTests.cs`.

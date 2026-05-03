@@ -42,8 +42,12 @@ related:
 ```bash
 dotnet build
 dotnet test
-dotnet format
+dotnet format Drederick.slnx
 ```
+
+`dotnet format` with no argument also works because `Drederick.slnx` is
+the only solution at the repo root, but pinning the solution explicitly
+is what CI runs and what the format gate checks against.
 
 Run a single test:
 
@@ -580,6 +584,45 @@ that protect both boundaries.
   targets. Every new scanner that invokes a subprocess **must** have a
   negative test on the built argv proving no forbidden NSE/CLI flag is
   enabled.
+
+### Test-project warning suppressions (PR #14)
+
+The tests project pins
+`<NoWarn>$(NoWarn);CA1416;xUnit1031</NoWarn>` in
+[`tests/Drederick.Tests/Drederick.Tests.csproj`](../tests/Drederick.Tests/Drederick.Tests.csproj).
+This silences exactly two analyzer rules and nothing else:
+
+- **CA1416** — platform-specific API in tests that already gate on
+  `RuntimeInformation.IsOSPlatform(...)` (e.g. `File.SetUnixFileMode`
+  used inside Linux-only fixtures).
+- **xUnit1031** — a small number of intentional blocking task ops
+  (`.Result` / `.Wait()`) inside synchronous test helpers where the
+  alternative would be more obscure than the warning is informative.
+
+Production code (`src/Drederick/`) does **not** suppress these rules;
+fix the underlying issue rather than widening `NoWarn`. If a new test
+genuinely needs another suppression, document the rule + reason inline
+above the `NoWarn` line so the next reviewer can audit the surface.
+
+### FightNotebook + `take_note` tool tests
+
+[`LlmNotebookTool`](../src/Drederick/Agent/LlmNotebookTool.cs) wraps
+`FightNotebook` and exposes a single `take_note` `AIFunction` so the
+LLM runner can record observations, dead-ends, and winning moves into
+the long-term notebook between turns. When you add coverage:
+
+- Drive `LlmNotebookTool.TakeNoteAsync` with a fake / in-memory
+  `FightNotebook` rather than touching disk.
+- Use the canary-string pattern (`DREDERICK_TEST_CANARY_…`) to assert
+  redaction holds — plaintext credentials, tickets, or session tokens
+  passed in note bodies must be stripped by the notebook before
+  persistence.
+- `LlmToolCatalog.BuildAiFunctions` wires the notebook in via the
+  `// --- llm-notebook-wiring ---` anchor in
+  [`LlmToolCatalog.cs`](../src/Drederick/Agent/LlmToolCatalog.cs); when
+  exposing a new LLM-visible tool, append at the end of that block
+  rather than rewriting it (see
+  [`../AGENTS.md#agent-coordination`](../AGENTS.md#agent-coordination)).
 
 ## Running the web UI in dev
 

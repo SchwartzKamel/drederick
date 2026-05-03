@@ -100,6 +100,8 @@ Build, test, and run commands you can rely on.
 | `drederick ctf-solve … --llm-provider={copilot,azure,llamacpp}` | Pick the Jeopardy solver swarm backend at runtime. Copilot default; `--azure-endpoint` / `--azure-deployment` / `--llamacpp-url` / `--llamacpp-model` supply per-provider config. | `src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs` | `LlmProviderFactoryTests` |
 | `drederick doctor --category=jeopardy [--llm-provider=…]` | Provider-aware Jeopardy preflight: Docker, sandbox image, `jeopardy.llm.token`, `jeopardy.llm.reachable`. | `src/Drederick/Doctor/JeopardyDoctorChecks.cs` | `JeopardyDoctorChecksTests` |
 | `drederick web [--web-bind <host>] [--web-port <int>] [--web-token <value>]` | Launch the browser operator pane (ASP.NET Core + SignalR + React SPA). Loopback + no-auth by default; non-loopback binds require a bearer token (auto-generated to `out/web-token.txt` if not supplied). | `src/Drederick.Web/**`, `web/**` | `tests/Drederick.Tests/Web/**`, `web/e2e/**` |
+| `drederick notebook {list,tail,show} [--category …] [--tag …] [--limit N] [--no-aggregate]` | Browse the LLM fight notebook (per-run `out/fight-notes.jsonl` + global `~/.drederick/fight-notebook.jsonl`) populated by `LlmNotebookTool` (`take_note`). | `src/Drederick/Learning/FightNotebook.cs`, `src/Drederick/Learning/Cli/**`, `src/Drederick/Agent/LlmNotebookTool.cs` | `tests/Drederick.Tests/Learning/**` |
+| `drederick windows-vulns {list,analyze} [--post-ex-json <path>] [--json]` | Moriarty-style Windows MSRC corpus query: list known Windows vulns or analyze a post-ex JSON snapshot for matching CVEs (kernel build, hotfixes, services). | `src/Drederick/Cli/WindowsVulnsCommand.cs`, `src/Drederick/Exploit/Windows/**` | `tests/Drederick.Tests/Exploit/Windows/**` |
 
 Continuous integration is wired in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
 release artifacts via [`.github/workflows/release.yml`](.github/workflows/release.yml).
@@ -191,6 +193,15 @@ surgical edits, identify the owning concept first.
 | `src/Drederick/Jeopardy/Llm/LlmProviderFactory.cs` | Provider switch for `ctf-solve` and `drederick doctor --category=jeopardy`. Parses `--llm-provider={copilot,azure,llamacpp}` and builds the matching `ICopilotLlmClient`. | jeopardy-llm |
 | `src/Drederick.Web/` | ASP.NET Core minimal API + SignalR hub (`EventsHub`) serving the React SPA from `wwwroot/`. Bearer-token middleware on non-loopback binds. Owned by `ui-shell`. | ui-shell |
 | `web/` | Vite + React + TypeScript SPA for the Web UI. 8 operator pages, Playwright E2E under `web/e2e/`. | ui-shell |
+| `src/Drederick/Learning/FightNotebook.cs` / `FightNote.cs` / `FightCorpus.cs` / `FightLogSchema.cs` | LLM fight notebook: append-only JSONL (`out/fight-notes.jsonl` + `~/.drederick/fight-notebook.jsonl`), corpus loader, schema for round-by-round notes. | learning |
+| `src/Drederick/Learning/Cli/` | `notebook` subcommand handlers (list/tail/show) over the fight-notebook JSONL. | learning |
+| `src/Drederick/Agent/LlmNotebookTool.cs` | LLM-visible `take_note` tool — lets the planner dictate observations into the fight notebook mid-round. | orchestration-llm |
+| `src/Drederick/Exploit/ZeroLogonTool.cs` | Native C# ZeroLogon (CVE-2020-1472) exploit against the domain controller's Netlogon RPC interface. Pure managed implementation; no external deps. | exploit-tools |
+| `src/Drederick/Cli/WindowsVulnsCommand.cs` | `windows-vulns` subcommand: Moriarty-style MSRC corpus query + post-ex JSON analyzer. | cli |
+| `src/Drederick/Exploit/Windows/` | Embedded Windows MSRC vulnerability corpus + analyzers consumed by `windows-vulns`. | exploit-tools |
+| `src/Drederick/Scaffolding/` | In-fight scaffolding loader (Tier 0+1+2): `AttackGraph` / `AttackGraphLoader` / `BriefingDocument` / `BriefingLoader` / `ScaffoldingContext` / `ScaffoldingDiscovery`. Bootstraps the planner with prior-fight tapes, attack-graph hints, and pre-loaded briefings. | scaffolding |
+| `src/Drederick/Exploit/Web/KbSubstitutionResolver.cs` | KB-driven token substitution for `CmsChainExecutor` — resolves `{{kb.fingerprint.*}}` / `{{kb.cred.*}}` placeholders inside chain steps from the live `KnowledgeBase`. | exploit-tools |
+| `src/Drederick/Exploit/Empire/MalleableProfileLibrary.cs` / `profiles/` | BC-SECURITY/Malleable-C2-Profiles ports for Empire traffic obfuscation: profile catalog + bundled `.profile` corpus consumed by `EmpireAgentStager`. | empire-c2 |
 
 <a id="extension-points"></a>
 ## Extension points

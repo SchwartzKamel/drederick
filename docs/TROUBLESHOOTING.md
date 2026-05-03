@@ -43,6 +43,7 @@ from the CLI's error messages, other docs, and issues stay valid.
 | Jeopardy: CTFd 401 / 403 | [jeopardy-ctfd-auth](#jeopardy-ctfd-auth) |
 | Jeopardy: no LLM provider picked up | [jeopardy-llm](#jeopardy-llm) |
 | Jeopardy: scope rejects CTFd host | [jeopardy-scope](#jeopardy-scope) |
+| `dotnet format` exits 2 in CI but no diff locally | [format-gate](#format-gate) |
 
 ---
 
@@ -853,6 +854,41 @@ boundary; the LLM cannot bypass it.
     ```bash
     jq 'select(.event|startswith("scope"))' out/ctf-report/audit.jsonl
     ```
+
+---
+
+## format-gate
+
+`dotnet format --verify-no-changes` exits with code `2` whenever a
+fixable analyzer warning is reachable, even if no source-text rewrite
+would land. The CI format gate runs that flag, so a "no diff locally,
+red in CI" symptom usually traces back to one of two analyzer ids in
+the test project:
+
+- **`CA1416`** — `File.SetUnixFileMode` calls flagged unreachable on
+  Windows. The tests already gate on `/bin/sleep` existence so the
+  call is dead at runtime; the analyzer can't see that.
+- **`xUnit1031`** — blocking `Task` waits in tests that *deliberately*
+  assert deadlock behavior.
+
+Wrapping every call in `OperatingSystem.IsWindows()` or rewriting the
+deadlock tests as `async` would be churn for no behavior change. The
+surgical fix landed in
+[PR #14](https://github.com/SchwartzKamel/drederick/pull/14):
+suppress the two ids at the test-project level.
+
+`tests/Drederick.Tests/Drederick.Tests.csproj`:
+
+```xml
+<PropertyGroup>
+  <NoWarn>$(NoWarn);CA1416;xUnit1031</NoWarn>
+</PropertyGroup>
+```
+
+If a *new* analyzer id starts firing the same way, prefer narrowing
+(individual `#pragma warning disable …` around the offending lines)
+over expanding the project-wide list — the goal is to keep the gate
+sharp on real findings.
 
 ---
 
