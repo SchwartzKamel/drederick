@@ -57,11 +57,13 @@ loaded (the `scope-file-read-only` invariant).
   **Findings → Open in Datasette** button launches `drederick serve`
   against the currently selected output directory.
 
-## What's still CLI-only
+## What's still Avalonia-CLI-only
 
 The offensive engine (`ExploitRunner`, `MsfDriver`, `CredRunner`,
-`PayloadStager`, session tracking) and the Jeopardy CTF subsystem ship
-today as CLI features. Run them with the per-category opt-in flags
+`PayloadStager`, session tracking) and the Jeopardy CTF subsystem are
+exposed by the CLI and by the **Web UI** (see [`WEB_UI.md`](./WEB_UI.md)
+— Offensive and Jeopardy pages). They are not yet surfaced in the
+Avalonia console. Run them with the per-category opt-in flags
 (`--allow-exec-pocs`, `--allow-cred-attacks`, `--allow-payloads`,
 `--allow-destructive`, `--allow-dos`, `--acknowledge-lockout-risk`).
 Surfacing them in the Avalonia console is tracked in [`UI.md`
