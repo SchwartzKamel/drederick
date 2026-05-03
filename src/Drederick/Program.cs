@@ -921,6 +921,16 @@ var asRepRoast = new Drederick.Exploit.Ad.AsRepRoastTool(
 var kerberoast = new Drederick.Exploit.Ad.KerberoastTool(
     scope, audit, permissions, credentialStore: null);
 
+// GAP-047: Windows credential dump (SAM + LSA + NTDS) via impacket-secretsdump.
+// Three modes: Remote (SAM+LSA over SMB), RemoteDcSync (NTDS via DRSUAPI),
+// LocalHives (offline parse from extracted SYSTEM/SAM/NTDS files). Master
+// gate ExploitCategory.CredAttacks; DCSync mode additionally requires
+// AllowDestructive (Event 4662 / Defender ATA noise). Harvested NT hashes
+// land in CredentialStore as ntlm-hash for chain-reuse PtH; cleartext
+// service-account passwords from LSA land as cleartext-password-from-lsa.
+var ntdsSamDump = new Drederick.Exploit.PostEx.Windows.NtdsSamDumpTool(
+    scope, audit, permissions, opts.OutputDir, credentialStore: null);
+
 var exploitBudgetBase = opts.UseAgent
     ? Drederick.Exploit.ToolBudget.LlmDefault
     : Drederick.Exploit.ToolBudget.Default;
@@ -933,7 +943,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sudoGtfoBins, winrmPostEx },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump },
     audit,
     exploitBudget);
 
