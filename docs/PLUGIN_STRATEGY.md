@@ -215,7 +215,8 @@ All four patterns above feed the same LLM-visible surface. The contract:
   [`IReconTool`](../src/Drederick/Recon/IReconTool.cs),
   [`IExploitTool`](../src/Drederick/Exploit/IExploitTool.cs),
   [`IPayloadTool`](../src/Drederick/Exploit/IPayloadTool.cs),
-  [`ICredTool`](../src/Drederick/Exploit/ICredTool.cs),
+  `ICredTool` (planned — credential tools currently implement
+  `IExploitTool`),
   [`IFuzzTool`](../src/Drederick/Recon/Fuzz/IFuzzTool.cs), and
   [`IPocSource`](../src/Drederick/Enrichment/IPocSource.cs). Each
   toolbox (`ReconToolbox`, `ExploitToolbox`, `FuzzToolbox`)
