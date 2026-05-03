@@ -11,12 +11,21 @@ namespace Drederick.Jeopardy.Llm;
 /// </summary>
 public enum LlmProvider
 {
-    /// <summary>GitHub Copilot SDK (default).</summary>
+    /// <summary>
+    /// Autodetect: probe Copilot → Azure → OpenAI and pick the first that
+    /// is configured. The new default — keeps the champ from blindly
+    /// throwing a punch with the wrong glove on. Use <c>--llm-provider=auto</c>
+    /// to opt back in explicitly.
+    /// </summary>
+    Auto = 0,
+    /// <summary>GitHub Copilot SDK / Copilot-direct API.</summary>
     Copilot,
     /// <summary>Azure OpenAI deployment-routed client.</summary>
     Azure,
     /// <summary>Local <c>llama-server</c> (escape hatch / offline).</summary>
     LlamaCpp,
+    /// <summary>Legacy raw OpenAI (<c>OPENAI_API_KEY</c>).</summary>
+    OpenAi,
 }
 
 /// <summary>
@@ -35,23 +44,110 @@ public static class LlmProviderFactory
 {
     /// <summary>
     /// Parse a provider string (from a CLI flag or a Web UI form value).
-    /// Accepts the same aliases as <c>JeopardySessionManager</c>:
-    /// <c>copilot</c>, <c>azure</c>, <c>llamacpp</c> / <c>llama-cpp</c> /
-    /// <c>llama.cpp</c>. Unknown values throw
-    /// <see cref="ArgumentException"/>; null / empty returns the
-    /// <see cref="LlmProvider.Copilot"/> default.
+    /// Accepts <c>auto</c> (default), <c>copilot</c>, <c>azure</c>,
+    /// <c>llamacpp</c> / <c>llama-cpp</c> / <c>llama.cpp</c>, and
+    /// <c>openai</c>. Unknown values throw <see cref="ArgumentException"/>;
+    /// null / empty returns the <see cref="LlmProvider.Auto"/> default
+    /// (probes copilot → azure → openai and picks the first configured).
     /// </summary>
     public static LlmProvider Parse(string? raw)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return LlmProvider.Copilot;
+        if (string.IsNullOrWhiteSpace(raw)) return LlmProvider.Auto;
         return raw.Trim().ToLowerInvariant() switch
         {
+            "auto" or "autodetect" or "detect" => LlmProvider.Auto,
             "copilot" or "github-copilot" or "gh-copilot" => LlmProvider.Copilot,
             "azure" or "azure-openai" or "aoai" => LlmProvider.Azure,
             "llamacpp" or "llama-cpp" or "llama.cpp" or "local" => LlmProvider.LlamaCpp,
+            "openai" or "oai" => LlmProvider.OpenAi,
             _ => throw new ArgumentException(
-                $"unknown LLM provider '{raw}'; valid: copilot | azure | llamacpp"),
+                $"unknown LLM provider '{raw}'; valid: auto | copilot | azure | llamacpp | openai"),
         };
+    }
+
+    /// <summary>
+    /// Resolve <see cref="LlmProvider.Auto"/> by probing in priority order:
+    /// Copilot (env tokens / <c>gh auth token</c>) → Azure (endpoint + auth
+    /// env presence) → OpenAI (<c>OPENAI_API_KEY</c>). Returns the first
+    /// ready provider. If none are ready returns
+    /// <see cref="LlmProvider.Auto"/> as a sentinel (caller treats as
+    /// "nothing configured"). Explicit (non-Auto) requests are passed
+    /// through unchanged — operator intent wins.
+    ///
+    /// <para>Probes are cheap: env-var presence checks plus, for Copilot,
+    /// a single <c>gh auth token</c> invocation. No live HTTP probes to
+    /// Azure / OpenAI. Decision is recorded as
+    /// <c>llm.provider.autodetect</c> with <c>selected</c> + <c>source</c>
+    /// + <c>attempted</c> so operators can grep <c>audit.jsonl</c>. No
+    /// secret values are recorded.</para>
+    /// </summary>
+    public static LlmProvider Resolve(
+        LlmProvider requested,
+        AuditLog audit,
+        bool allowGitHubCliAuth = true)
+    {
+        ArgumentNullException.ThrowIfNull(audit);
+        if (requested != LlmProvider.Auto) return requested;
+
+        // 1. Copilot — most operators are here.
+        var (copilotToken, copilotSource) = CopilotAuthTokenResolver.ResolveToken(allowGitHubCliAuth, audit);
+        if (!string.IsNullOrWhiteSpace(copilotToken))
+        {
+            audit.Record("llm.provider.autodetect", new Dictionary<string, object?>
+            {
+                ["selected"] = "copilot",
+                ["source"] = copilotSource.ToString(),
+                ["attempted"] = new[] { "copilot" },
+            });
+            return LlmProvider.Copilot;
+        }
+
+        // 2. Azure — env presence only, no live probe.
+        var azureEndpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
+        var azureApiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY");
+        var azureBearer = Environment.GetEnvironmentVariable("AZURE_OPENAI_BEARER_TOKEN");
+        var azureUseEntra = string.Equals(
+            Environment.GetEnvironmentVariable("AZURE_OPENAI_USE_ENTRA"),
+            "1", StringComparison.Ordinal);
+        // Match TryCreateAzure semantics: USE_ENTRA alone is not enough —
+        // it requires a pre-fetched bearer too. Otherwise the factory
+        // would refuse and we'd be misleading the operator.
+        var azureAuthReady = !string.IsNullOrWhiteSpace(azureApiKey)
+            || !string.IsNullOrWhiteSpace(azureBearer)
+            || (azureUseEntra && !string.IsNullOrWhiteSpace(azureBearer));
+        if (!string.IsNullOrWhiteSpace(azureEndpoint) && azureAuthReady)
+        {
+            var authKind = !string.IsNullOrWhiteSpace(azureApiKey) ? "api_key"
+                : !string.IsNullOrWhiteSpace(azureBearer) ? "bearer"
+                : "entra";
+            audit.Record("llm.provider.autodetect", new Dictionary<string, object?>
+            {
+                ["selected"] = "azure",
+                ["source"] = $"env:{authKind}",
+                ["attempted"] = new[] { "copilot", "azure" },
+            });
+            return LlmProvider.Azure;
+        }
+
+        // 3. OpenAI — legacy fallback.
+        var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        if (!string.IsNullOrWhiteSpace(openAiKey))
+        {
+            audit.Record("llm.provider.autodetect", new Dictionary<string, object?>
+            {
+                ["selected"] = "openai",
+                ["source"] = "env:OPENAI_API_KEY",
+                ["attempted"] = new[] { "copilot", "azure", "openai" },
+            });
+            return LlmProvider.OpenAi;
+        }
+
+        audit.Record("llm.provider.autodetect", new Dictionary<string, object?>
+        {
+            ["selected"] = "none",
+            ["attempted"] = new[] { "copilot", "azure", "openai" },
+        });
+        return LlmProvider.Auto; // sentinel — nothing configured
     }
 
     /// <summary>
@@ -72,6 +168,17 @@ public static class LlmProviderFactory
         ArgumentNullException.ThrowIfNull(audit);
         stderr ??= Console.Error;
 
+        provider = Resolve(provider, audit, allowGitHubCliAuth);
+        if (provider == LlmProvider.Auto)
+        {
+            stderr.WriteLine(
+                "llm-provider=auto: no provider configured. "
+                + "Run `gh auth login --web` for Copilot, or export "
+                + "AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY for Azure, "
+                + "or OPENAI_API_KEY for raw OpenAI.");
+            return null;
+        }
+
         switch (provider)
         {
             case LlmProvider.Copilot:
@@ -80,6 +187,11 @@ public static class LlmProviderFactory
                 return CreateAzure(opts, audit, stderr);
             case LlmProvider.LlamaCpp:
                 return CreateLlamaCpp(opts, audit, stderr);
+            case LlmProvider.OpenAi:
+                stderr.WriteLine(
+                    "llm-provider=openai: the Jeopardy swarm does not currently "
+                    + "support raw OpenAI. Use --llm-provider=copilot or =azure.");
+                return null;
             default:
                 stderr.WriteLine($"llm-provider: unsupported provider enum value '{provider}'.");
                 return null;

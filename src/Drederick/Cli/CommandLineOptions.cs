@@ -422,8 +422,8 @@ public sealed class CommandLineOptions
     public string? CtfMsgBody { get; set; }
 
     // --- jeopardy-llm-provider-options ---
-    /// <summary>Which LLM backend to use. Applies to both ctf-solve swarm and --agent recon mode. Default <see cref="LlmProvider.Copilot"/>.</summary>
-    public LlmProvider LlmProvider { get; set; } = LlmProvider.Copilot;
+    /// <summary>Which LLM backend to use. Applies to both ctf-solve swarm and --agent recon mode. Default <see cref="LlmProvider.Auto"/> (probes copilot → azure → openai).</summary>
+    public LlmProvider LlmProvider { get; set; } = LlmProvider.Auto;
 
     /// <summary>Azure OpenAI endpoint override (e.g. https://my-resource.openai.azure.com). Falls back to $AZURE_OPENAI_ENDPOINT.</summary>
     public string? AzureEndpoint { get; set; }
@@ -1408,7 +1408,7 @@ public sealed class CommandLineOptions
 
         Jeopardy CTF mode:
           drederick ctf-solve --scope <file> --ctfd <url> [--models <csv>]
-                              [--llm-provider copilot|azure|llamacpp]
+                              [--llm-provider auto|copilot|azure|llamacpp|openai]
                               [--azure-endpoint <url>] [--azure-api-version <v>]
                               [--azure-deployment modelId=deploymentName]...
                               [--llamacpp-url <url>] [--llamacpp-model modelId[=modelName]]...

@@ -147,10 +147,10 @@ public class CtfSolveCliTests
     // --- jeopardy-llm-provider-cli-tests ---
 
     [Fact]
-    public void Default_LlmProvider_Is_Copilot()
+    public void Default_LlmProvider_Is_Auto()
     {
         var o = CommandLineOptions.Parse(new[] { "ctf-solve" });
-        Assert.Equal(Drederick.Jeopardy.Llm.LlmProvider.Copilot, o.LlmProvider);
+        Assert.Equal(Drederick.Jeopardy.Llm.LlmProvider.Auto, o.LlmProvider);
     }
 
     [Theory]

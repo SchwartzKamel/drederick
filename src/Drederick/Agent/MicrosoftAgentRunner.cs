@@ -57,6 +57,10 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         LlmExploitTools? exploitTools = null,
         bool allowGitHubCliAuth = true)
     {
+        ArgumentNullException.ThrowIfNull(audit);
+        provider = LlmProviderFactory.Resolve(provider, audit, allowGitHubCliAuth);
+        if (provider == LlmProvider.Auto) return null; // sentinel: nothing configured
+
         var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
 
         switch (provider)
@@ -93,6 +97,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
                 // rather than silently dropping tools in agent mode.
                 return null;
 
+            case LlmProvider.OpenAi:
             default:
                 {
                     // Legacy OpenAI path
@@ -121,6 +126,10 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         AuditLog audit,
         bool allowGitHubCliAuth = true)
     {
+        ArgumentNullException.ThrowIfNull(audit);
+        provider = LlmProviderFactory.Resolve(provider, audit, allowGitHubCliAuth);
+        if (provider == LlmProvider.Auto) return null;
+
         var model = Environment.GetEnvironmentVariable("DREDERICK_MODEL");
         switch (provider)
         {
@@ -152,6 +161,7 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             case LlmProvider.LlamaCpp:
                 return null;
 
+            case LlmProvider.OpenAi:
             default:
             {
                 var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");

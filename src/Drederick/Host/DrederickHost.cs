@@ -179,8 +179,19 @@ public sealed class DrederickHost
             if (agentRunner is null)
             {
                 var providerName = options.LlmProvider.ToString().ToLowerInvariant();
-                audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = $"no_{providerName}_config" });
-                Emit(progress, ScanEventKind.Info, message: $"LLM provider '{providerName}' not configured; falling back to AdaptiveRunner.");
+                audit.Record("runner.fallback", new Dictionary<string, object?>
+                {
+                    ["requested_provider"] = providerName,
+                    ["reason"] = $"no_{providerName}_config",
+                });
+                if (options.LlmProvider == Drederick.Jeopardy.Llm.LlmProvider.Auto)
+                {
+                    Emit(progress, ScanEventKind.Info, message: "No LLM provider configured (probed: copilot, azure, openai); falling back to AdaptiveRunner.");
+                }
+                else
+                {
+                    Emit(progress, ScanEventKind.Info, message: $"LLM provider '{providerName}' not configured; falling back to AdaptiveRunner. Hint: --llm-provider=auto probes all providers.");
+                }
                 runner = new AdaptiveRunner(audit, options.HostConcurrency, options.ServiceConcurrency, options.ContentDiscovery);
             }
             else

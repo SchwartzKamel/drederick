@@ -1066,9 +1066,22 @@ if (opts.UseAgent)
         llmExploitTools);
     if (agentRunner is null)
     {
-        var providerName = opts.LlmProvider.ToString().ToLowerInvariant();
-        Console.Error.WriteLine($"--agent requested but LLM provider '{providerName}' is not configured. Falling back to AdaptiveRunner.");
-        audit.Record("runner.fallback", new Dictionary<string, object?> { ["reason"] = $"no_{providerName}_config" });
+        var requestedProviderName = opts.LlmProvider.ToString().ToLowerInvariant();
+        if (opts.LlmProvider == Drederick.Jeopardy.Llm.LlmProvider.Auto)
+        {
+            Console.Error.WriteLine("--agent requested. No LLM provider configured (probed: copilot, azure, openai). Falling back to AdaptiveRunner.");
+            Console.Error.WriteLine("To configure: 'gh auth login' for Copilot, or export AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY for Azure, or OPENAI_API_KEY for raw OpenAI.");
+        }
+        else
+        {
+            Console.Error.WriteLine($"--agent requested with --llm-provider={requestedProviderName} but that provider is not configured. Falling back to AdaptiveRunner.");
+            Console.Error.WriteLine("Hint: try --llm-provider=auto to probe all providers and use the first ready one.");
+        }
+        audit.Record("runner.fallback", new Dictionary<string, object?>
+        {
+            ["requested_provider"] = requestedProviderName,
+            ["reason"] = $"no_{requestedProviderName}_config",
+        });
         runner = new AdaptiveRunner(audit, opts.HostConcurrency, opts.ServiceConcurrency, opts.ContentDiscovery);
     }
     else

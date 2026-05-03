@@ -543,7 +543,22 @@ internal sealed class LlmTokenCheck : IDoctorCheck
     public Task<DoctorCheckResult> RunAsync(bool install, bool assumeYes, TextReader stdin, TextWriter stdout, CancellationToken ct)
     {
         JeopardyDoctorChecks.RecordStart(_d.Audit, Id);
-        switch (_d.LlmProvider)
+        // Auto: resolve to a concrete provider first so the per-provider
+        // probe below reports the chosen one. The audit event from
+        // Resolve already records selected/source/attempted.
+        var provider = _d.LlmProvider == Drederick.Jeopardy.Llm.LlmProvider.Auto
+            ? Drederick.Jeopardy.Llm.LlmProviderFactory.Resolve(_d.LlmProvider, _d.Audit)
+            : _d.LlmProvider;
+        if (_d.LlmProvider == Drederick.Jeopardy.Llm.LlmProvider.Auto
+            && provider == Drederick.Jeopardy.Llm.LlmProvider.Auto)
+        {
+            return Task.FromResult(JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Fail,
+                "llm-provider=auto: no provider configured (probed copilot, azure, openai)",
+                fixCommand: "gh auth login --web   # or export AZURE_OPENAI_ENDPOINT+AZURE_OPENAI_API_KEY, or OPENAI_API_KEY",
+                fixRationale: "See docs/LLM_SETUP.md for the full env matrix per provider."));
+        }
+        switch (provider)
         {
             case Drederick.Jeopardy.Llm.LlmProvider.Azure:
                 {
@@ -632,7 +647,17 @@ internal sealed class LlmReachableCheck : IDoctorCheck
     public async Task<DoctorCheckResult> RunAsync(bool install, bool assumeYes, TextReader stdin, TextWriter stdout, CancellationToken ct)
     {
         JeopardyDoctorChecks.RecordStart(_d.Audit, Id);
-        switch (_d.LlmProvider)
+        var provider = _d.LlmProvider == Drederick.Jeopardy.Llm.LlmProvider.Auto
+            ? Drederick.Jeopardy.Llm.LlmProviderFactory.Resolve(_d.LlmProvider, _d.Audit)
+            : _d.LlmProvider;
+        if (_d.LlmProvider == Drederick.Jeopardy.Llm.LlmProvider.Auto
+            && provider == Drederick.Jeopardy.Llm.LlmProvider.Auto)
+        {
+            return JeopardyDoctorChecks.Finish(_d.Audit, Id,
+                DoctorCheckStatus.Warn,
+                "skipped — no LLM provider configured (autodetect found none)");
+        }
+        switch (provider)
         {
             case Drederick.Jeopardy.Llm.LlmProvider.Azure:
                 return await CheckAzureAsync(ct).ConfigureAwait(false);

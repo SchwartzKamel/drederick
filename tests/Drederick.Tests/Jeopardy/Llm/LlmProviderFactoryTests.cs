@@ -57,8 +57,11 @@ public sealed class LlmProviderFactoryTests : IDisposable
     // --- parse --------------------------------------------------------
 
     [Theory]
-    [InlineData(null, LlmProvider.Copilot)]
-    [InlineData("", LlmProvider.Copilot)]
+    [InlineData(null, LlmProvider.Auto)]
+    [InlineData("", LlmProvider.Auto)]
+    [InlineData("auto", LlmProvider.Auto)]
+    [InlineData("AUTO", LlmProvider.Auto)]
+    [InlineData("autodetect", LlmProvider.Auto)]
     [InlineData("copilot", LlmProvider.Copilot)]
     [InlineData("COPILOT", LlmProvider.Copilot)]
     [InlineData("gh-copilot", LlmProvider.Copilot)]
@@ -69,6 +72,8 @@ public sealed class LlmProviderFactoryTests : IDisposable
     [InlineData("llama-cpp", LlmProvider.LlamaCpp)]
     [InlineData("llama.cpp", LlmProvider.LlamaCpp)]
     [InlineData("local", LlmProvider.LlamaCpp)]
+    [InlineData("openai", LlmProvider.OpenAi)]
+    [InlineData("oai", LlmProvider.OpenAi)]
     public void Parse_Accepts_Aliases(string? raw, LlmProvider expected)
     {
         Assert.Equal(expected, LlmProviderFactory.Parse(raw));
@@ -77,7 +82,7 @@ public sealed class LlmProviderFactoryTests : IDisposable
     [Fact]
     public void Parse_Rejects_Unknown()
     {
-        Assert.Throws<ArgumentException>(() => LlmProviderFactory.Parse("openai"));
+        Assert.Throws<ArgumentException>(() => LlmProviderFactory.Parse("not-a-provider"));
     }
 
     // --- copilot ------------------------------------------------------
@@ -238,16 +243,16 @@ public sealed class LlmProviderFactoryTests : IDisposable
     // --- provider routing --------------------------------------------
 
     [Fact]
-    public void Default_CommandLineOptions_LlmProvider_Is_Copilot()
+    public void Default_CommandLineOptions_LlmProvider_Is_Auto()
     {
         var opts = new CommandLineOptions();
-        Assert.Equal(LlmProvider.Copilot, opts.LlmProvider);
+        Assert.Equal(LlmProvider.Auto, opts.LlmProvider);
     }
 
     [Fact]
-    public void Parsed_Cli_Without_Flag_Defaults_To_Copilot()
+    public void Parsed_Cli_Without_Flag_Defaults_To_Auto()
     {
         var opts = CommandLineOptions.Parse(new[] { "ctf-solve" });
-        Assert.Equal(LlmProvider.Copilot, opts.LlmProvider);
+        Assert.Equal(LlmProvider.Auto, opts.LlmProvider);
     }
 }
