@@ -325,7 +325,7 @@ with v0.4.0:
 
 | Tool | Source | What the model does with it |
 |---|---|---|
-| `exploit_plan` / `run_multi_stage` / `password_spray` / … | `src/Drederick/Agent/LlmExploitTools.cs` | Drive scope-validated offensive actions. |
+| `exploit_plan` / `execute_cred_spray` / `run_post_ex_linux` / `run_post_ex_windows` / `pivot_and_scan` / `extract_flags_from_dir` / `run_multi_stage` / `generate_macro` / `deliver_phish_smb` / `deliver_phish_webdav` / `start_phish_stager` / `exec_shell` / `get_cms_chain_template` | [`src/Drederick/Agent/LlmExploitTools.cs`](../src/Drederick/Agent/LlmExploitTools.cs) — see the `[Description]` attribute on each method for the wording surfaced to the model | Drive scope-validated offensive actions. Each wrapper re-checks `_scope.Require(target)` and the relevant `RunPermissions` flag (`--allow-cred-attacks` + `--acknowledge-lockout-risk`, `--allow-exec-pocs`, `--allow-payloads`, `--allow-phishing`, `--allow-exec-shell`) before dispatching to the underlying `IExploitTool`/`ICredTool`/`IPayloadTool`. |
 | `take_note` | [`src/Drederick/Agent/LlmNotebookTool.cs`](../src/Drederick/Agent/LlmNotebookTool.cs) — see the `[Description]` on `TakeNoteAsync` for the canonical wording surfaced to the model | Append a short structured note (`category`, `body`, `tags[]`, optional `target_host`) to the fight notebook. Local-disk recording action; no network reach, so it does **not** consult `_scope.Require` or `RunPermissions`. Plaintext secrets are auto-redacted by `FightNotebook.RedactSecrets`; only `body_sha256` is recorded to `audit.jsonl`. |
 
 ### When the model should call `take_note`
