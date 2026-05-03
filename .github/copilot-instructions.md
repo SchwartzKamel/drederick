@@ -500,7 +500,7 @@ Use `docs/MODEL_BEHAVIOR.md` as the durable guide and
 Lame benchmark tape. Preserve these contracts:
 
 - Copilot SDK checks `/models`, audits model decisions, and defaults to
-  `claude-haiku-4.5`.
+  `claude-sonnet-4.6`.
 - `CopilotModelCompliance` proves availability/policy/tool-call support,
   not offsec willingness or quality.
 - Non-compliant Copilot model refusals propagate even under hybrid.
