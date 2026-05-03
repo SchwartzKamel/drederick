@@ -497,6 +497,6 @@ drederick --scope lab.txt --target 10.0.0.0/8 --autopilot --out out/
 - **Listener orchestration:** Auto-start Empire server, return listener URL to stager
 - **Module API integration:** Query `empire/handlers` for available modules, match against findings
 - **Callback tunneling:** Route agent callbacks through Drederick's network isolation layer
-- **OPSEC profiles:** Template stagers with obfuscation, certificate pinning, jitter
+- **OPSEC profile auto-rotation:** Per-stage profile rotation and certificate pinning on top of the bundled Malleable C2 corpus already shipped via [`MalleableProfileLibrary`](../src/Drederick/Exploit/Empire/MalleableProfileLibrary.cs).
 - **Lateral move simulation:** Pre-flight test lateral movement paths before execution
 

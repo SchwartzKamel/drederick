@@ -122,13 +122,17 @@ impact faster:
   should assume it will run concurrently per-host and per-service. No
   shared mutable state outside `KnowledgeBase` / `AuditLog`, both of
   which must stay thread-safe.
-- **Wider enumeration surface.** Roadmap scanners to implement
-  aggressively: SMB (shares, sessions, OS), FTP (anon + banner), SSH
-  (algos, host keys, user enum), SNMP (community brute + walk), LDAP
-  (anon bind, naming contexts, user/group enum), RPC (endpoint mapper
-  + null session), Kerberos (SPN listing, AS-REP roast, kerberoast
-  where in scope), HTTP content-discovery (wordlist-driven), TLS
-  cipher enumeration, DNS AXFR. Each re-checks scope inside the tool.
+- **Wider enumeration surface.** The shipped scanner set already
+  covers SMB (shares, sessions, OS), FTP (anon + banner), SSH (algos,
+  host keys), SNMP (community brute + walk), LDAP (anon bind, naming
+  contexts), RPC (endpoint mapper + null session via
+  `Recon/Ad/SmbNullSessionTool`), Kerberos (SPN listing,
+  delegation/AS-REP/kerberoast helpers under `DelegationEnumTool` /
+  `DcSyncDetectionTool`), HTTP content-discovery
+  (`HttpContentDiscoveryTool`), TLS cipher enumeration
+  (`TlsCipherEnumTool`), and DNS AXFR (`DnsZoneTransferTool`). Each
+  re-checks scope inside the tool. New scanners should match this
+  bar — wider surface, scope-checked, audit-recorded.
 - **Full NSE surface inside scope.** `safe,default,discovery,version,
   auth,exploit,intrusive,vuln` are all available in lab mode. `dos`
   and `malware` are opt-in per run. In strict mode the defaults are

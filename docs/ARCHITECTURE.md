@@ -437,7 +437,8 @@ network; downstream tools enforce scope per
 
 Append-only JSONL log (`out/audit.jsonl`) capturing every tool call, scope
 decision, doctor detection/install, and session event. Used by tests,
-forensics, and the planned live UI stream.
+forensics, and the live UI stream surfaced via the `Drederick.Web`
+SignalR `EventsHub`.
 
 ## Thread-safety {#thread-safety}
 
