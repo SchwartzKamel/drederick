@@ -135,6 +135,10 @@ CREATE TABLE IF NOT EXISTS loot (
   source_tool TEXT NOT NULL,
   captured_at TEXT NOT NULL,
   metadata TEXT,
+  -- --- htb-flag-filter --- flag-detector annotations (GAP-008, GAP-009).
+  confidence REAL,
+  rejection_reason TEXT,
+  -- --- end htb-flag-filter ---
   UNIQUE(target, kind, value_sha256)
 );
 CREATE INDEX IF NOT EXISTS idx_loot_target ON loot(target);
@@ -165,7 +169,39 @@ CREATE INDEX IF NOT EXISTS idx_phpinfo_target ON phpinfo_findings(target);
 " + NotesSchema.GetCreateTableDdl() + @"
 ";
         cmd.ExecuteNonQuery();
+        // --- htb-flag-filter --- additive migration: ensure flag-detector
+        // columns exist on loot tables created by older builds (GAP-008/9).
+        EnsureLootDetectorColumns(conn);
+        // --- end htb-flag-filter ---
     }
+
+    // --- htb-flag-filter ---
+    private static void EnsureLootDetectorColumns(SqliteConnection conn)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var info = conn.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(loot);";
+            using var r = info.ExecuteReader();
+            while (r.Read())
+            {
+                existing.Add(r.GetString(1));
+            }
+        }
+        if (!existing.Contains("confidence"))
+        {
+            using var alt = conn.CreateCommand();
+            alt.CommandText = "ALTER TABLE loot ADD COLUMN confidence REAL;";
+            alt.ExecuteNonQuery();
+        }
+        if (!existing.Contains("rejection_reason"))
+        {
+            using var alt = conn.CreateCommand();
+            alt.CommandText = "ALTER TABLE loot ADD COLUMN rejection_reason TEXT;";
+            alt.ExecuteNonQuery();
+        }
+    }
+    // --- end htb-flag-filter ---
 
     public void WriteReport(IEnumerable<HostFinding> findings)
     {

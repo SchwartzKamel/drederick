@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Drederick.Audit;
+using Drederick.Reporting;
 
 namespace Drederick.Autopilot;
 
@@ -22,6 +23,13 @@ public sealed class FlagExtractor
     private readonly AuditLog _audit;
     private readonly IReadOnlyList<Regex> _patterns;
     private readonly long _maxFileBytes;
+    // --- htb-flag-filter --- delegate ambiguous (bare-hex) candidates to
+    // the context-aware FlagDetector so URL paths, JSON keys, Vulners IDs
+    // and ETags don't get surfaced as flags (GAP-008 / GAP-009).
+    private static readonly FlagDetector _detector = new();
+    private static readonly Regex _bareHexPattern =
+        new(@"\b[a-fA-F0-9]{32}\b", RegexOptions.Compiled);
+    // --- end htb-flag-filter ---
 
     /// <summary>Built-in patterns covering the common CTF/lab formats.</summary>
     public static IReadOnlyList<Regex> DefaultPatterns { get; } = new[]
@@ -97,12 +105,26 @@ public sealed class FlagExtractor
     public void ScanText(string text, string source, ConcurrentDictionary<string, FlagMatch> seen)
     {
         if (string.IsNullOrEmpty(text)) return;
+        // --- htb-flag-filter ---
+        var flagSource = InferFlagSource(source);
         foreach (var pattern in _patterns)
         {
             foreach (Match m in pattern.Matches(text))
             {
                 if (m.Length < 4) continue;
                 var value = m.Value;
+
+                // Bare-hex candidates run through the context-aware
+                // FlagDetector. Strong markers (HTB{...}/flag{...}/...) are
+                // accepted as before.
+                if (pattern == _bareHexPattern || (pattern.ToString().Contains("[a-fA-F0-9]{32}", StringComparison.Ordinal)))
+                {
+                    if (!IsAcceptedBareHex(value, m.Index, text, flagSource, source))
+                    {
+                        continue;
+                    }
+                }
+
                 var digest = Sha256Hex(value);
                 seen.TryAdd(digest, new FlagMatch(
                     Value: value,
@@ -111,7 +133,45 @@ public sealed class FlagExtractor
                     Source: source));
             }
         }
+        // --- end htb-flag-filter ---
     }
+
+    // --- htb-flag-filter ---
+    private static bool IsAcceptedBareHex(string value, int index, string text,
+        FlagSource flagSource, string origin)
+    {
+        // Run the surrounding ±100 char window through the detector so its
+        // context heuristics (URL/JSON/GUID/Vulners) apply.
+        var winStart = Math.Max(0, index - 100);
+        var winEnd = Math.Min(text.Length, index + value.Length + 100);
+        var window = text.Substring(winStart, winEnd - winStart);
+        var best = _detector.DetectBest(window, flagSource, origin);
+        return best is not null && best.Value == value;
+    }
+
+    private static FlagSource InferFlagSource(string origin)
+    {
+        if (string.IsNullOrEmpty(origin)) return FlagSource.FileSystemContent;
+        if (origin.Contains("stdout", StringComparison.OrdinalIgnoreCase) ||
+            origin.Contains("stderr", StringComparison.OrdinalIgnoreCase) ||
+            origin.Contains("shell", StringComparison.OrdinalIgnoreCase))
+        {
+            return FlagSource.ShellCommandOutput;
+        }
+        if (origin.EndsWith("/root/root.txt", StringComparison.OrdinalIgnoreCase) ||
+            (origin.Contains("/home/", StringComparison.OrdinalIgnoreCase) &&
+             origin.EndsWith("/user.txt", StringComparison.OrdinalIgnoreCase)))
+        {
+            return FlagSource.UserHomeFile;
+        }
+        if (origin.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return FlagSource.NetworkServiceResponse;
+        }
+        return FlagSource.FileSystemContent;
+    }
+    // --- end htb-flag-filter ---
 
     private static IEnumerable<string> SafeEnumerate(string root)
     {
