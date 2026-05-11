@@ -225,6 +225,23 @@ public sealed partial class HttpProbeTool : IReconTool
                 var body = System.Text.Encoding.UTF8.GetString(buf, 0, total);
                 var m = TitleRegex().Match(body);
                 if (m.Success) result.Title = m.Groups[1].Value.Trim();
+
+                // --- phpinfo additions (GAP-054) ---
+                if (PhpInfoParser.LooksLikePhpInfo(body))
+                {
+                    var info = PhpInfoParser.Parse(body, url);
+                    result.PhpInfo = info;
+                    _audit.Record("phpinfo.parsed", new Dictionary<string, object?>
+                    {
+                        ["target"] = target,
+                        ["url"] = url,
+                        ["php_version"] = info.PhpVersion,
+                        ["rce_on_write_likely"] = info.RceOnWriteLikely,
+                        ["user_ini_injection_likely"] = info.UserIniInjectionLikely,
+                        ["fpm_user"] = info.FpmUser,
+                        ["fpm_group"] = info.FpmGroup,
+                    });
+                }
             }
         }
         catch (Exception ex)

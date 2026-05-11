@@ -1,4 +1,8 @@
+using System.ComponentModel;
+using Drederick.Audit;
 using Drederick.Recon;
+using Drederick.Recon.Fuzz;
+using Drederick.Scope;
 using Microsoft.Extensions.AI;
 
 namespace Drederick.Agent;
@@ -8,7 +12,9 @@ internal static class LlmToolCatalog
     internal static List<AIFunction> BuildAiFunctions(
         ReconToolbox tools,
         LlmExploitTools? exploitTools,
-        LlmNotebookTool? notebook = null)
+        LlmNotebookTool? notebook = null,
+        FuzzToolbox? fuzz = null,
+        AuditLog? audit = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -38,29 +44,27 @@ internal static class LlmToolCatalog
         AddIf("tls-cipher-enum",
             AIFunctionFactory.Create(tools.TlsCipherEnumAsync, name: "tls_cipher_enum"));
 
-        // --- llm-exploit-wiring ---
-        // Offensive surface (exploit, credential spray, post-ex, pivot,
-        // multi-stage chain, flag extraction). Each AIFunction re-checks
-        // scope internally and consults RunPermissions before touching
-        // anything. Null-gated on the underlying tool being wired.
         if (exploitTools is not null)
         {
             aiTools.AddRange(exploitTools.BuildAiFunctions());
         }
-        // --- end llm-exploit-wiring ---
 
-        // --- llm-notebook-wiring ---
-        // Long-term fight notebook. Lets the model record observations,
-        // tactics, gaps, mistakes, winning moves, and lessons during a
-        // run so the operator can review between fights and the planner
-        // can replay them into future engagements. Local-disk only —
-        // no network surface, no scope/permission gate (note-taking is
-        // bookkeeping, not an offensive action).
         if (notebook is not null)
         {
             aiTools.AddRange(notebook.BuildAiFunctions());
         }
-        // --- end llm-notebook-wiring ---
+
+        // --- llm-fuzz-wiring (GAP-051) ---
+        // Web/DNS fuzzers (vhost, subdomain, header, web-param, api-endpoint,
+        // graphql). Each wrapper delegates to the underlying IFuzzTool whose
+        // ProbeAsync re-checks scope as its first statement; the wrapper
+        // additionally meters the call through FuzzToolbox.RecordCall so the
+        // LLM cannot loop forever. Null-gated on a FuzzToolbox being supplied.
+        if (fuzz is not null)
+        {
+            var llmFuzz = new LlmFuzzTools(fuzz);
+            aiTools.AddRange(llmFuzz.BuildAiFunctions());
+        }
 
         return aiTools;
     }
@@ -68,6 +72,220 @@ internal static class LlmToolCatalog
     internal static IList<AITool> BuildAiTools(
         ReconToolbox tools,
         LlmExploitTools? exploitTools,
-        LlmNotebookTool? notebook = null) =>
-        BuildAiFunctions(tools, exploitTools, notebook).Cast<AITool>().ToArray();
+        LlmNotebookTool? notebook = null,
+        FuzzToolbox? fuzz = null,
+        AuditLog? audit = null) =>
+        BuildAiFunctions(tools, exploitTools, notebook, fuzz, audit).Cast<AITool>().ToArray();
+}
+
+/// <summary>
+/// LLM-facing wrappers for the fuzzing subsystem (GAP-051). Each public method
+/// maps 1:1 to an <see cref="AIFunction"/> exposed to <c>MicrosoftAgentRunner</c>.
+/// Safety posture mirrors <see cref="LlmExploitTools"/>:
+/// <list type="number">
+///   <item><description>The underlying <see cref="IFuzzTool"/> calls
+///     <c>_scope.Require(...)</c> as the first statement of its
+///     <c>ProbeAsync</c>; this wrapper does not bypass it.</description></item>
+///   <item><description><see cref="FuzzToolbox.RecordCall"/> meters per-target
+///     and global call budgets — exhaustion returns a structured envelope
+///     <c>{ error = "budget_exceeded" }</c> instead of throwing into the
+///     model.</description></item>
+///   <item><description><see cref="ScopeException"/> is caught and surfaced as
+///     <c>{ error = "scope_refused" }</c> so the LLM can self-correct;
+///     other exceptions become <c>{ error = "tool_error" }</c>.</description></item>
+/// </list>
+/// None of the six wrapped tools require a destructive opt-in — they perform
+/// HTTP / DNS enumeration that lab and strict mode both permit. The
+/// network-fuzz subsystem (<c>ProtocolFuzzTool</c>) is intentionally NOT
+/// exposed here because it can crash services and requires
+/// <c>RunPermissions.AllowDestructive</c>.
+/// </summary>
+public sealed class LlmFuzzTools
+{
+    private readonly FuzzToolbox _fuzz;
+
+    public LlmFuzzTools(FuzzToolbox fuzz)
+    {
+        ArgumentNullException.ThrowIfNull(fuzz);
+        _fuzz = fuzz;
+    }
+
+    public IReadOnlyList<AIFunction> BuildAiFunctions()
+    {
+        var list = new List<AIFunction>();
+        if (_fuzz.GetByName("vhost-fuzz") is VhostFuzzTool)
+            list.Add(AIFunctionFactory.Create(VhostFuzz, name: "vhost_fuzz"));
+        if (_fuzz.GetByName("subdomain-fuzz") is SubdomainFuzzTool)
+            list.Add(AIFunctionFactory.Create(SubdomainFuzz, name: "subdomain_fuzz"));
+        if (_fuzz.GetByName("header-fuzz") is HeaderFuzzTool)
+            list.Add(AIFunctionFactory.Create(HeaderFuzz, name: "header_fuzz"));
+        if (_fuzz.GetByName("web-param-fuzz") is WebParamFuzzTool)
+            list.Add(AIFunctionFactory.Create(WebParamFuzz, name: "web_param_fuzz"));
+        if (_fuzz.GetByName("api-endpoint-fuzz") is ApiEndpointFuzzTool)
+            list.Add(AIFunctionFactory.Create(ApiEndpointFuzz, name: "api_endpoint_fuzz"));
+        if (_fuzz.GetByName("graphql-fuzz") is GraphqlFuzzTool)
+            list.Add(AIFunctionFactory.Create(GraphqlFuzz, name: "graphql_fuzz"));
+        return list;
+    }
+
+    [Description(
+        "Brute-force virtual hosts on the apex domain via ffuf (Host header " +
+        "fuzzing). Discovers panel.example.htb, dev.example.htb, etc., that " +
+        "share an IP. Apex must resolve to an in-scope IP. Returns the list " +
+        "of discovered vhosts with status code and response size.")]
+    public object VhostFuzz(
+        [Description("Apex domain (e.g. 'pterodactyl.htb').")] string apex_domain,
+        [Description("Optional cap on wordlist size (default 5000).")] int? wordlist_size = null)
+        => Invoke<VhostFuzzTool>("vhost-fuzz", apex_domain, t =>
+        {
+            var opts = wordlist_size.HasValue ? new VhostFuzzOptions { MaxWords = wordlist_size.Value } : null;
+            var url = $"http://{apex_domain}/";
+            var r = t.ProbeAsync(url, apex_domain, opts).GetAwaiter().GetResult();
+            return new
+            {
+                target = r.Target,
+                tool = r.ToolName,
+                hits = r.Hits,
+                error = r.Error,
+            };
+        });
+
+    [Description(
+        "Brute-force DNS subdomains of the apex via gobuster (with dnsx " +
+        "fallback). Apex must resolve to an in-scope IP. Returns the list " +
+        "of resolved subdomains.")]
+    public object SubdomainFuzz(
+        [Description("Apex domain (e.g. 'pterodactyl.htb').")] string apex_domain,
+        [Description("Optional cap on wordlist size (default 5000).")] int? wordlist_size = null)
+        => Invoke<SubdomainFuzzTool>("subdomain-fuzz", apex_domain, t =>
+        {
+            var opts = wordlist_size.HasValue ? new SubdomainFuzzOptions { MaxWords = wordlist_size.Value } : null;
+            var r = t.ProbeAsync(apex_domain, opts).GetAwaiter().GetResult();
+            return new
+            {
+                target = r.Target,
+                tool = r.ToolName,
+                subdomains = r.Subdomains,
+                words_tried = r.WordsTried,
+                error = r.Error,
+            };
+        });
+
+    [Description(
+        "Probe an HTTP target for header-injection / cache-key / smuggling / " +
+        "host-header rewrite oddities. URL host must be in scope.")]
+    public object HeaderFuzz(
+        [Description("Absolute URL (http(s)://host[:port]/path).")] string url)
+        => InvokeUrl<HeaderFuzzTool>("header-fuzz", url, t =>
+        {
+            var r = t.ProbeAsync(url).GetAwaiter().GetResult();
+            return new
+            {
+                target = r.Target,
+                tool = r.ToolName,
+                findings = r.Findings,
+                error = r.Error,
+            };
+        });
+
+    [Description(
+        "Discover hidden / reflected query and form parameters on an HTTP " +
+        "endpoint via ffuf parameter brute (FUZZ=value). URL host must be " +
+        "in scope. Returns reflected parameter names and request counts.")]
+    public object WebParamFuzz(
+        [Description("Absolute URL of the target endpoint.")] string url,
+        [Description("Optional HTTP method (GET or POST). Default GET.")] string? method = null)
+        => InvokeUrl<WebParamFuzzTool>("web-param-fuzz", url, t =>
+        {
+            var opts = string.IsNullOrWhiteSpace(method)
+                ? null
+                : new WebParamFuzzTool.ParamFuzzOptions { Method = method! };
+            var r = t.ProbeAsync(url, opts).GetAwaiter().GetResult();
+            return new
+            {
+                target = r.Target,
+                tool = r.ToolName,
+                discovered_parameters = r.DiscoveredParameters,
+                requests_sent = r.RequestsSent,
+                reflected_count = r.ReflectedCount,
+                error = r.Error,
+            };
+        });
+
+    [Description(
+        "Brute-force REST/JSON API endpoints under a base URL. URL host must " +
+        "be in scope. Returns list of endpoint hits with status codes.")]
+    public object ApiEndpointFuzz(
+        [Description("Absolute URL of the API base.")] string url)
+        => InvokeUrl<ApiEndpointFuzzTool>("api-endpoint-fuzz", url, t =>
+        {
+            var r = t.ProbeAsync(url).GetAwaiter().GetResult();
+            return new
+            {
+                target = r.Target,
+                tool = r.ToolName,
+                hits = r.Hits,
+                error = r.Error,
+            };
+        });
+
+    [Description(
+        "Probe a GraphQL endpoint: introspection, schema digest, mutations/" +
+        "queries enumeration, GraphQL Cop checks. URL host must be in scope.")]
+    public object GraphqlFuzz(
+        [Description("Absolute URL of the GraphQL endpoint (e.g. http://host/graphql).")] string url)
+        => InvokeUrl<GraphqlFuzzTool>("graphql-fuzz", url, t =>
+        {
+            var r = t.ProbeAsync(url).GetAwaiter().GetResult();
+            return new
+            {
+                target = r.Target,
+                tool = r.ToolName,
+                introspection_enabled = r.IntrospectionEnabled,
+                schema_digest = r.SchemaDigest,
+                mutations = r.Mutations,
+                queries = r.Queries,
+                cop_findings = r.CopFindings,
+                error = r.Error,
+            };
+        });
+
+    private object Invoke<TTool>(string toolName, string target, Func<TTool, object> body)
+        where TTool : class, IFuzzTool
+    {
+        if (_fuzz.GetByName(toolName) is not TTool t)
+            return new { error = "not_wired", tool = toolName };
+        try
+        {
+            _fuzz.RecordCall(toolName, target);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new { error = "budget_exceeded", reason = ex.Message };
+        }
+        try
+        {
+            return body(t);
+        }
+        catch (ScopeException ex)
+        {
+            return new { error = "scope_refused", reason = ex.Message };
+        }
+        catch (ArgumentException ex)
+        {
+            return new { error = "invalid_argument", reason = ex.Message };
+        }
+        catch (Exception ex)
+        {
+            return new { error = "tool_error", reason = ex.GetType().Name, message = ex.Message };
+        }
+    }
+
+    private object InvokeUrl<TTool>(string toolName, string url, Func<TTool, object> body)
+        where TTool : class, IFuzzTool
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return new { error = "invalid_argument", reason = "url must be an absolute http(s) URL" };
+        return Invoke<TTool>(toolName, uri.Host, body);
+    }
 }

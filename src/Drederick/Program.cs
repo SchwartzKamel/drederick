@@ -574,6 +574,14 @@ else
     return 2;
 }
 
+// --- locker collision (GAP-045) ---
+// Refuse to reuse a non-empty locker unless --allow-locker-collision.
+{
+    var lockerExit = LockerCollisionGuard.Apply(opts.OutputDir, opts.AllowLockerCollision, Console.Error);
+    if (lockerExit is int code) return code;
+}
+// --- end locker collision ---
+
 Directory.CreateDirectory(opts.OutputDir);
 var auditPath = Path.Combine(opts.OutputDir, "audit.jsonl");
 using var audit = new AuditLog(auditPath);

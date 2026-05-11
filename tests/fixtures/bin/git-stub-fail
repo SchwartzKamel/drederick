@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Test fixture: a `git` stand-in that emits a large multi-line stderr and exits
+# 128 — mirrors the real git failure shape (`fatal: …` lines, occasionally many
+# of them when the remote returns extra advice). Used by
+# tests/Drederick.Tests/Enrichment/PocSourceDiagnosticsTests.cs to exercise the
+# `poc.fetch.diagnostics` audit-event path introduced for GAP-053. Exit code is
+# what live git returns when it cannot reach the remote (128).
+echo "fatal: unable to access 'https://github.com/example/repo/': Could not resolve host: github.com" >&2
+echo "fatal: unable to access 'https://github.com/example/repo/': transport endpoint is not connected" >&2
+echo "hint: this is a stub failure used by drederick tests; do not run in production" >&2
+# Pad stderr past the 2 KB diagnostics cap so truncation logic gets exercised.
+for i in $(seq 1 80); do
+  echo "stderr-padding-line-$i: this line exists only to push past the 2048-byte truncation threshold for stderr" >&2
+done
+exit 128

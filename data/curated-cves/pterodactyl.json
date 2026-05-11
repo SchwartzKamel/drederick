@@ -1,0 +1,57 @@
+{
+  "_comment": "htb-cms-cve-pack: hand-curated CVEs for Pterodactyl Panel + Wings. Bypasses NVD CPE-string ambiguity (vendor 'pterodactyl' / product 'panel' is sparsely populated in NVD). Sourced from upstream GHSA + the htb/pterodactyl pre-fight briefing. Match policy: prefer false positives over false negatives.",
+  "vendor": "pterodactyl",
+  "product": "panel",
+  "entries": [
+    {
+      "cpe_pattern": "cpe:2.3:a:pterodactyl:panel:*",
+      "version_range": "<=1.11.10",
+      "cve_id": "CVE-2024-43791",
+      "ghsa_id": "GHSA-4r78-3w7p-c83p",
+      "severity": "high",
+      "cvss": 7.6,
+      "summary": "Pterodactyl Panel allows account takeover via crafted password-reset flow when the email address can be controlled.",
+      "ref_urls": [
+        "https://github.com/pterodactyl/panel/security/advisories/GHSA-4r78-3w7p-c83p",
+        "https://nvd.nist.gov/vuln/detail/CVE-2024-43791"
+      ]
+    },
+    {
+      "cpe_pattern": "cpe:2.3:a:pterodactyl:panel:*",
+      "version_range": "<=1.11.10",
+      "cve_id": "CVE-2025-49132",
+      "ghsa_id": "GHSA-r394-9wq2-pf3v",
+      "severity": "critical",
+      "cvss": 9.1,
+      "summary": "Pterodactyl Panel locale handling allows an unauthenticated attacker to read arbitrary files on the host (locale parameter directory traversal in the i18n loader).",
+      "ref_urls": [
+        "https://github.com/pterodactyl/panel/security/advisories/GHSA-r394-9wq2-pf3v",
+        "https://nvd.nist.gov/vuln/detail/CVE-2025-49132"
+      ]
+    },
+    {
+      "cpe_pattern": "cpe:2.3:a:pterodactyl:panel:*",
+      "version_range": "<=1.11.10",
+      "cve_id": "GHSA-4r78-3w7p-c83p",
+      "ghsa_id": "GHSA-4r78-3w7p-c83p",
+      "severity": "high",
+      "cvss": 7.6,
+      "summary": "GHSA-4r78-3w7p-c83p: Pterodactyl Panel password-reset flaw permitting account takeover (duplicate of CVE-2024-43791 for cases where only the GHSA id is published).",
+      "ref_urls": [
+        "https://github.com/pterodactyl/panel/security/advisories/GHSA-4r78-3w7p-c83p"
+      ]
+    },
+    {
+      "cpe_pattern": "cpe:2.3:a:pterodactyl:panel:*",
+      "version_range": "<=1.11.10",
+      "cve_id": "GHSA-r394-9wq2-pf3v",
+      "ghsa_id": "GHSA-r394-9wq2-pf3v",
+      "severity": "critical",
+      "cvss": 9.1,
+      "summary": "GHSA-r394-9wq2-pf3v: Pterodactyl Panel locale-parameter LFI (duplicate of CVE-2025-49132 for cases where only the GHSA id is published).",
+      "ref_urls": [
+        "https://github.com/pterodactyl/panel/security/advisories/GHSA-r394-9wq2-pf3v"
+      ]
+    }
+  ]
+}

@@ -133,6 +133,7 @@ fingerprints:
     version_extract:
       - regex: '(?i)Ghost\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
         source: meta_generator
+    cpe_template: "cpe:2.3:a:ghost:ghost:{version}:*:*:*:*:*:*:*"
 
   - name: TYPO3
     description: "TYPO3 CMS"
@@ -211,3 +212,102 @@ fingerprints:
       html_patterns:
         - "(?i)ManageEngine"
     confidence_required: 2
+
+  - name: PterodactylPanel
+    description: "Pterodactyl Panel — game server management"
+    signals:
+      cookies:
+        - "pterodactyl_session"
+        - "remember_web_"
+      html_patterns:
+        - "(?i)Pterodactyl"
+        - "(?i)/assets/pterodactyl"
+      header_patterns:
+        - "(?i)X-Powered-By:.*Laravel"
+      meta_generator:
+        - "Pterodactyl"
+    confidence_required: 1
+    version_extract:
+      - regex: '(?i)Pterodactyl[^0-9]{0,40}([0-9]+\.[0-9]+\.[0-9]+)'
+        source: html
+      - regex: '(?i)"version"\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
+        source: html
+    cpe_template: "cpe:2.3:a:pterodactyl:panel:{version}:*:*:*:*:*:*:*"
+
+  - name: PterodactylWings
+    description: "Pterodactyl Wings — daemon"
+    signals:
+      header_patterns:
+        - "(?i)Server:.*Wings"
+      html_patterns:
+        - "(?i)wings"
+        - "(?i)\"daemon\"\\s*:"
+    confidence_required: 1
+    version_extract:
+      - regex: '(?i)"version"\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
+        source: html
+    cpe_template: "cpe:2.3:a:pterodactyl:wings:{version}:*:*:*:*:*:*:*"
+
+  - name: Cockpit
+    description: "Cockpit headless CMS"
+    signals:
+      cookies:
+        - "cockpit"
+      html_patterns:
+        - "(?i)Cockpit\\s*CMS"
+        - "(?i)/cockpit/assets"
+      meta_generator:
+        - "Cockpit"
+    confidence_required: 1
+    version_extract:
+      - regex: '(?i)Cockpit[^0-9]{0,30}([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: html
+    cpe_template: "cpe:2.3:a:cockpit-hq:cockpit:{version}:*:*:*:*:*:*:*"
+
+  - name: Flarum
+    description: "Flarum forum"
+    signals:
+      cookies:
+        - "flarum_session"
+        - "flarum_remember"
+      html_patterns:
+        - "(?i)flarum"
+        - "(?i)data-flarum"
+      meta_generator:
+        - "Flarum"
+    confidence_required: 1
+    version_extract:
+      - regex: '(?i)Flarum[^0-9]{0,30}([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: html
+    cpe_template: "cpe:2.3:a:flarum:flarum:{version}:*:*:*:*:*:*:*"
+
+  - name: Shopware
+    description: "Shopware e-commerce"
+    signals:
+      cookies:
+        - "session-"
+        - "sw-cache-id"
+      html_patterns:
+        - "(?i)shopware"
+      meta_generator:
+        - "Shopware"
+      header_patterns:
+        - "(?i)X-Shopware"
+    confidence_required: 1
+    version_extract:
+      - regex: '(?i)Shopware[^0-9]{0,30}([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+        source: html
+    cpe_template: "cpe:2.3:a:shopware:shopware:{version}:*:*:*:*:*:*:*"
+
+  - name: LaravelSpa
+    description: "Laravel single-page app frontend"
+    signals:
+      cookies:
+        - "laravel_session"
+        - "XSRF-TOKEN"
+      header_patterns:
+        - "(?i)X-Powered-By:.*Laravel"
+      html_patterns:
+        - "(?i)laravel"
+    confidence_required: 1
+    cpe_template: "cpe:2.3:a:laravel:laravel:{version}:*:*:*:*:*:*:*"

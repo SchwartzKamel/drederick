@@ -157,7 +157,8 @@ public class HttpContentDiscoveryToolTests
         Assert.Contains(result.Entries, e => e.Path == "/forbidden" && e.Status == 403);
         Assert.DoesNotContain(result.Entries, e => e.Status == 404);
         Assert.DoesNotContain(result.Entries, e => e.Status == 418);
-        Assert.Equal(5, handler.CallCount);
+        // 5 wordlist requests + 1 SPA-baseline 404 probe = 6 total handler calls.
+        Assert.Equal(6, handler.CallCount);
     }
 
     [Fact]
@@ -224,7 +225,8 @@ public class HttpContentDiscoveryToolTests
         Assert.Contains(result.Entries, e => e.Path == "/ok1" && e.Status == 200);
         Assert.Contains(result.Entries, e => e.Path == "/ok2" && e.Status == 200);
         Assert.DoesNotContain(result.Entries, e => e.Path == "/boom");
-        Assert.Equal(3, handler.CallCount);
+        // 3 wordlist requests + 1 SPA-baseline 404 probe = 4 total handler calls.
+        Assert.Equal(4, handler.CallCount);
     }
 
     [Fact]

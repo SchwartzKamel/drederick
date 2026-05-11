@@ -308,6 +308,8 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         var webparam = fuzz.GetByName("web-param-fuzz") as WebParamFuzzTool;
         var api = fuzz.GetByName("api-endpoint-fuzz") as ApiEndpointFuzzTool;
         var graphql = fuzz.GetByName("graphql-fuzz") as GraphqlFuzzTool;
+        var vhost = fuzz.GetByName("vhost-fuzz") as VhostFuzzTool;
+        var apexQueued = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var target in targets)
         {
@@ -345,9 +347,26 @@ public sealed class AdaptiveRunner : IReconAgentRunner
 
                 if (header is not null) await Try("header-fuzz", () => header.ProbeAsync(url, options: null, ct: ct));
                 if (webparam is not null) await Try("web-param-fuzz", () => webparam.ProbeAsync(url, options: null, ct: ct));
-                // VhostFuzzTool requires an operator-supplied apex domain, so it
-                // cannot be auto-scheduled from IP-based recon. Surface via LLM
-                // tool calls or direct GetByName lookup instead.
+
+                // GAP-051: vhost-fuzz auto-schedule. When http_probe detected
+                // a Host-header redirect, derive apex and queue one vhost
+                // brute per (apex,port) per pass. Tool re-checks scope on apex.
+                if (vhost is not null && f.Http is not null)
+                {
+                    foreach (var hr in f.Http)
+                    {
+                        if (!hr.VhostRequired || string.IsNullOrWhiteSpace(hr.VhostHostname)) continue;
+                        if (!HttpResultMatchesPort(hr, p.Port)) continue;
+                        var apex = DeriveApexDomain(hr.VhostHostname!);
+                        if (string.IsNullOrWhiteSpace(apex)) continue;
+                        if (System.Net.IPAddress.TryParse(apex, out _)) continue;
+                        var dedupKey = $"{apex}:{p.Port}";
+                        if (!apexQueued.Add(dedupKey)) continue;
+                        var apexUrl = $"{scheme}://{apex}:{p.Port}/";
+                        await Try("vhost-fuzz", () => vhost.ProbeAsync(apexUrl, apex, options: null, ct: ct));
+                    }
+                }
+
                 if (api is not null) await Try("api-endpoint-fuzz", () => api.ProbeAsync(url, options: null, ct: ct));
                 if (graphql is not null && (svc.Contains("graphql") || url.Contains("graphql", StringComparison.OrdinalIgnoreCase)))
                 {
@@ -360,5 +379,31 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         {
             ["fuzz_calls_total"] = fuzz.ToolCallsTotal,
         });
+    }
+
+    /// <summary>
+    /// GAP-051: Derive the apex domain from a hostname using a "last two
+    /// labels" rule. <c>panel.pterodactyl.htb</c> → <c>pterodactyl.htb</c>.
+    /// IP literals and single-label hosts pass through unchanged. We
+    /// deliberately skip the Public Suffix List because lab/CTF targets
+    /// frequently use synthetic TLDs (.htb, .lab, .box) that PSL would
+    /// resolve incorrectly. Operators on real registrar suffixes can
+    /// supply the apex explicitly via the LLM vhost_fuzz tool.
+    /// </summary>
+    public static string DeriveApexDomain(string hostname)
+    {
+        if (string.IsNullOrWhiteSpace(hostname)) return string.Empty;
+        var h = hostname.Trim().Trim('.');
+        if (System.Net.IPAddress.TryParse(h, out _)) return h;
+        var parts = h.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= 2) return h.ToLowerInvariant();
+        return string.Concat(parts[^2], ".", parts[^1]).ToLowerInvariant();
+    }
+
+    private static bool HttpResultMatchesPort(HttpResult hr, int port)
+    {
+        if (string.IsNullOrEmpty(hr.Url)) return false;
+        if (!Uri.TryCreate(hr.Url, UriKind.Absolute, out var u)) return false;
+        return u.Port == port;
     }
 }

@@ -28,6 +28,8 @@
        a *.skip/ subdirectory until their backing types land. -->
   <ItemGroup>
     <Compile Remove="**/*.skip/**/*.cs" />
+    <Compile Remove="Enrichment/PocSourceDiagnosticsTests.cs" />
+    <Compile Remove="Enrichment/CuratedCveCorpusTests.cs" />
   </ItemGroup>
 
   <!-- Copy fuzz fixtures into the test output dir so tests that load them

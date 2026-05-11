@@ -35,6 +35,32 @@ public sealed class ScaffoldingContext
     {
         if (_activated) return;
         _activated = true;
+
+        // GAP-049: pre-seed attack-graph nodes from the briefing's topology
+        // table. When drederick is pivot-blind on direct scans (targets sit
+        // behind a chisel SOCKS hop the cornerman built), the planner still
+        // needs the hostname/role/IP set to act on. Idempotent: same
+        // briefing + same audit log = same events.
+        if (Briefing is not null)
+        {
+            var seeded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in Briefing.TopologyEntries)
+            {
+                if (string.IsNullOrEmpty(entry.Hostname)) continue;
+                if (!seeded.Add(entry.Hostname)) continue;
+                _audit.Record("attack_graph.node.activated", new Dictionary<string, object?>
+                {
+                    ["node_id"] = entry.Hostname,
+                    ["kind"] = "host",
+                    ["state"] = "known",
+                    ["source"] = "briefing",
+                    ["ip"] = entry.Ip,
+                    ["role"] = entry.Role,
+                    ["notes"] = entry.Notes,
+                });
+            }
+        }
+
         if (Graph is null) return;
 
         var briefingArtifacts = Briefing?.AssumedBreach

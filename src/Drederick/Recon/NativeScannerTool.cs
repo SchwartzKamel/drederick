@@ -24,6 +24,7 @@ public sealed class NativeScannerTool : IReconTool
 
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
+    private readonly ProxyContext? _proxy;
 
     // Top common ports mirroring nmap's -F / --top-ports 1000 list (key subset).
     private static readonly int[] DefaultPorts =
@@ -41,10 +42,11 @@ public sealed class NativeScannerTool : IReconTool
     private const int BannerMaxBytes = 2048;
     private const int BannerTruncateAt = 200;
 
-    public NativeScannerTool(Scope.Scope scope, AuditLog audit)
+    public NativeScannerTool(Scope.Scope scope, AuditLog audit, ProxyContext? proxy = null)
     {
         _scope = scope;
         _audit = audit;
+        _proxy = proxy;
     }
 
     /// <summary>
@@ -79,7 +81,7 @@ public sealed class NativeScannerTool : IReconTool
         try
         {
             var tasks = portList.Select(port =>
-                ScanPortAsync(target, port, timeoutMs, sem, openPorts, ct));
+                ScanPortAsync(target, port, timeoutMs, sem, openPorts, _proxy, _audit, ct));
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -125,6 +127,8 @@ public sealed class NativeScannerTool : IReconTool
         int timeoutMs,
         SemaphoreSlim sem,
         ConcurrentBag<NmapPort> results,
+        ProxyContext? proxy,
+        AuditLog audit,
         CancellationToken ct)
     {
         await sem.WaitAsync(ct).ConfigureAwait(false);
@@ -134,17 +138,48 @@ public sealed class NativeScannerTool : IReconTool
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             connectCts.CancelAfter(timeoutMs);
 
+            Socket? proxiedSocket = null;
             try
             {
-                await tcp.ConnectAsync(target, port, connectCts.Token).ConfigureAwait(false);
+                if (proxy is not null)
+                {
+                    audit.Record("proxy.connect.start", new Dictionary<string, object?>
+                    {
+                        ["target"] = target,
+                        ["port"] = port,
+                        ["proxy_endpoint"] = $"{proxy.Host}:{proxy.Port}",
+                        ["proxy_type"] = proxy.Type.ToString(),
+                    });
+                    var resolveAtProxy = proxy.Type == ProxyType.Socks5Hostname;
+                    proxiedSocket = await Drederick.Recon.Scanning.Socks5Connector.ConnectAsync(
+                        proxy, target, port, timeoutMs, resolveAtProxy, connectCts.Token)
+                        .ConfigureAwait(false);
+                    audit.Record("proxy.connect.success", new Dictionary<string, object?>
+                    {
+                        ["target"] = target,
+                        ["port"] = port,
+                    });
+                }
+                else
+                {
+                    await tcp.ConnectAsync(target, port, connectCts.Token).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                return; // connect timed out — port is closed/filtered
+                if (proxy is not null)
+                    audit.Record("proxy.connect.fail", new Dictionary<string, object?>
+                    { ["target"] = target, ["port"] = port, ["error"] = "timeout" });
+                proxiedSocket?.Dispose();
+                return;
             }
-            catch (Exception) when (!ct.IsCancellationRequested)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                return; // connection refused / error — port is closed
+                if (proxy is not null)
+                    audit.Record("proxy.connect.fail", new Dictionary<string, object?>
+                    { ["target"] = target, ["port"] = port, ["error"] = ex.Message });
+                proxiedSocket?.Dispose();
+                return;
             }
 
             // Port is open — identify service via port-specific logic or banner
@@ -156,7 +191,10 @@ public sealed class NativeScannerTool : IReconTool
                 _ => null,
             };
 
-            if (service is null)
+            // SOCKS5-tunnelled banners are intentionally skipped for now (the
+            // open-port record is what the planner consumes; banner-grab over
+            // a SOCKS Socket would need a parallel TLS/raw read path).
+            if (proxiedSocket is null && service is null)
             {
                 try
                 {
@@ -184,6 +222,7 @@ public sealed class NativeScannerTool : IReconTool
                 Service = service,
                 Extra = banner is not null ? Truncate(banner, BannerTruncateAt) : null,
             });
+            proxiedSocket?.Dispose();
         }
         finally
         {

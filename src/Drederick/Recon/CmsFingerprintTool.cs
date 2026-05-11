@@ -192,8 +192,9 @@ public sealed class CmsFingerprintTool : IReconTool
                 if (totalConfidence < 1) continue;
 
                 string? version = ExtractVersion(fp, root.Body, metaGenerators, headersFlat);
+                string? cpe = ResolveCpe(fp.CpeTemplate, version);
 
-                var match = new CmsMatch(fp.Name, version, totalConfidence, signals);
+                var match = new CmsMatch(fp.Name, version, totalConfidence, signals, cpe);
                 matches.Add(match);
                 _audit.Record("cms-fingerprint.match", new Dictionary<string, object?>
                 {
@@ -353,6 +354,13 @@ public sealed class CmsFingerprintTool : IReconTool
             }
         }
         return null;
+    }
+
+    internal static string? ResolveCpe(string? template, string? version)
+    {
+        if (string.IsNullOrWhiteSpace(template)) return null;
+        var v = string.IsNullOrWhiteSpace(version) ? "*" : version!.Trim();
+        return template.Replace("{version}", v, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> ParseCookies(IEnumerable<string> setCookies)
@@ -559,6 +567,7 @@ internal sealed class CmsFingerprintEntry
     public CmsSignals Signals { get; set; } = new();
     public int ConfidenceRequired { get; set; } = 2;
     public List<CmsVersionExtract> VersionExtract { get; set; } = new();
+    public string? CpeTemplate { get; set; }
 }
 
 internal sealed class CmsSignals

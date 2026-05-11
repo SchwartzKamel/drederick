@@ -128,6 +128,37 @@ public sealed class CommandLineOptions
     /// </summary>
     public bool LabMode { get; set; } = true;
 
+    // --- locker collision ---
+    /// <summary>
+    /// GAP-045: when <c>true</c>, allow startup against a non-empty existing
+    /// locker (an <c>--out</c> directory whose <c>audit.jsonl</c> is &gt; 0
+    /// bytes). Default <c>false</c> — the convention is "Fresh locker, every
+    /// fight" (README → Code of the Ring); the next fight is always
+    /// <c>r&lt;N+1&gt;</c>. CLI: <c>--allow-locker-collision</c>.
+    /// </summary>
+    public bool AllowLockerCollision { get; set; }
+    // --- end locker collision ---
+
+    // --- proxy flag ---
+    /// <summary>
+    /// GAP-049: route TCP connect-scans + nmap through a SOCKS5/SOCKS4/HTTP
+    /// proxy so drederick can reach scope-resolved targets that sit behind
+    /// a chisel/ligolo SOCKS hop the cornerman built. Raw-socket SYN scan
+    /// is refused under <c>--proxy</c> (cannot be tunnelled); nmap is
+    /// forced to <c>-sT --proxies</c>. CLI: <c>--proxy &lt;uri&gt;</c>
+    /// (e.g. <c>socks5://127.0.0.1:1080</c>).
+    /// </summary>
+    public string? ProxyUri { get; set; }
+
+    /// <summary>
+    /// GAP-049 companion: required in strict mode (<c>--no-lab</c>) when
+    /// <see cref="ProxyUri"/> resolves to a non-loopback host. Default
+    /// permissive in lab mode. CLI: <c>--allow-external-proxy</c> /
+    /// <c>--no-allow-external-proxy</c>.
+    /// </summary>
+    public bool AllowExternalProxy { get; set; }
+    // --- end proxy flag ---
+
     // --- tenable-import options ---
     /// <summary>
     /// Path to a Tenable scan export file (Nessus XML <c>.nessus</c> or Tenable
@@ -1365,6 +1396,23 @@ public sealed class CommandLineOptions
                     }
                 // --- end jeopardy-llm-provider-flag-parse ---
                 // --- end jeopardy-cli-flag-parse ---
+                // --- locker collision ---
+                // GAP-045: refuse to reuse a locker (out dir) that already
+                // contains a non-empty audit.jsonl unless the operator
+                // explicitly overrides. Convention is "Fresh locker, every
+                // fight" (README → Code of the Ring).
+                case "--allow-locker-collision":
+                    o.AllowLockerCollision = true; break;
+                // --- end locker collision ---
+                // --- proxy flag parse ---
+                case "--proxy":
+                    o.ProxyUri = RequireNext(args, ref i, a);
+                    break;
+                case "--allow-external-proxy":
+                    o.AllowExternalProxy = true; break;
+                case "--no-allow-external-proxy":
+                    o.AllowExternalProxy = false; break;
+                // --- end proxy flag parse ---
                 default:
                     throw new ArgumentException($"Unknown argument: {a}");
             }

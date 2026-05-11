@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Test fixture: a `git` stand-in that succeeds for `--version` calls and exits
+# 0 with a fake version banner. Used together with `git-stub-fail` to
+# exercise the `IGitClient.GitVersion` capture path without spawning real git.
+case "$1" in
+  --version)
+    echo "git version 2.43.0 (drederick-test-stub)"
+    exit 0
+    ;;
+  *)
+    echo "git-stub-version: only --version is supported" >&2
+    exit 1
+    ;;
+esac

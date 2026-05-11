@@ -138,6 +138,30 @@ CREATE TABLE IF NOT EXISTS loot (
   UNIQUE(target, kind, value_sha256)
 );
 CREATE INDEX IF NOT EXISTS idx_loot_target ON loot(target);
+-- --- phpinfo additions (GAP-054) ---
+CREATE TABLE IF NOT EXISTS phpinfo_findings (
+  id INTEGER PRIMARY KEY,
+  target TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  php_version TEXT,
+  disable_functions TEXT,
+  open_basedir TEXT,
+  allow_url_fopen TEXT,
+  allow_url_include TEXT,
+  file_uploads TEXT,
+  upload_max_filesize TEXT,
+  upload_tmp_dir TEXT,
+  user_ini_filename TEXT,
+  session_save_path TEXT,
+  include_path TEXT,
+  fpm_user TEXT,
+  fpm_group TEXT,
+  rce_on_write_likely INTEGER NOT NULL DEFAULT 0,
+  user_ini_injection_likely INTEGER NOT NULL DEFAULT 0,
+  captured_at TEXT NOT NULL,
+  UNIQUE(target, source_url)
+);
+CREATE INDEX IF NOT EXISTS idx_phpinfo_target ON phpinfo_findings(target);
 " + NotesSchema.GetCreateTableDdl() + @"
 ";
         cmd.ExecuteNonQuery();
@@ -167,6 +191,19 @@ CREATE INDEX IF NOT EXISTS idx_loot_target ON loot(target);
                         InsertFinding(conn, tx, hostId, serviceId, "nmap-script",
                             JsonSerializer.Serialize(s), now);
                     }
+                }
+            }
+
+            // GAP-040: also persist native-scan fallback open ports. Without
+            // this block the services table is empty when nmap is missing
+            // or returns empty (e.g. PingPong R1: 9 scans → 0 services rows).
+            if (host.NativeScan is not null)
+            {
+                foreach (var p in host.NativeScan.OpenPorts)
+                {
+                    var serviceId = UpsertService(conn, tx, hostId, p.Port, p.Protocol, p.Service, p.Product, p.Version);
+                    var portData = JsonSerializer.Serialize(p);
+                    InsertFinding(conn, tx, hostId, serviceId, "native_scan", portData, now);
                 }
             }
 

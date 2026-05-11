@@ -119,6 +119,7 @@ public static class BriefingLoader
         var sectionsParsed = new List<string>();
 
         string? topology = null;
+        var topologyEntries = new List<TopologyEntry>();
         var artifacts = new List<AssumedBreachArtifact>();
         var paths = new List<string>();
         var cornermanDo = new List<string>();
@@ -132,6 +133,7 @@ public static class BriefingLoader
             {
                 case "topology":
                     topology = content.Trim();
+                    topologyEntries.AddRange(ParseTopologyTable(content));
                     sectionsParsed.Add("Topology");
                     break;
                 case "assumed-breach material":
@@ -157,7 +159,53 @@ public static class BriefingLoader
         return new BriefingDocument(
             path, sha, lineCount, frontmatter,
             topology, artifacts, paths, cornermanDo, cornermanDont, oos,
-            sectionsParsed, raw);
+            sectionsParsed, raw, topologyEntries);
+    }
+
+    /// <summary>
+    /// Parse a markdown topology table. Header row drives column lookup
+    /// (case-insensitive substring match) so order-of-columns differences
+    /// across briefings (pterodactyl vs pingpong) Just Work. Malformed rows
+    /// — wrong cell count, empty hostname — are skipped silently.
+    /// </summary>
+    internal static IEnumerable<TopologyEntry> ParseTopologyTable(string content)
+    {
+        var lines = content.Split('\n');
+        string[]? headers = null;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (!line.StartsWith("|")) continue;
+            if (Regex.IsMatch(line, @"^\|[\s\-:|]+\|$")) continue;
+            var cells = line.Trim('|').Split('|').Select(c => c.Trim()).ToArray();
+            if (headers is null)
+            {
+                headers = cells.Select(c => c.ToLowerInvariant()).ToArray();
+                continue;
+            }
+            if (cells.Length < 2) continue;
+            string Get(params string[] keys)
+            {
+                foreach (var k in keys)
+                {
+                    var idx = Array.FindIndex(headers, h => h.Contains(k, StringComparison.Ordinal));
+                    if (idx >= 0 && idx < cells.Length) return cells[idx];
+                }
+                return string.Empty;
+            }
+            var hostname = Strip(Get("hostname", "host", "name"));
+            if (string.IsNullOrEmpty(hostname)) continue;
+            if (!seen.Add(hostname)) continue;
+            var role = Strip(Get("role", "function"));
+            var ip = Strip(Get("ip", "address"));
+            var notes = Strip(Get("notes", "note", "comment"));
+            yield return new TopologyEntry(
+                hostname,
+                NullIfEmpty(role),
+                NullIfEmpty(ip),
+                NullIfEmpty(notes));
+        }
     }
 
     private static string NormalizeHeading(string h)

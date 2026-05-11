@@ -81,19 +81,17 @@ public sealed class NucleiTemplatesGitSource : IPocSource
                     ["dest"] = repoDir,
                     ["depth"] = 1,
                 });
-                var ok = await _git.CloneSparseAsync(
+                var cloneResult = await _git.CloneSparseAsync(
                     GitPocAllowlist.NucleiTemplates,
                     repoDir,
                     SparsePaths,
                     ct).ConfigureAwait(false);
-                if (!ok)
+                if (!cloneResult.Success)
                 {
-                    ctx.Audit?.Record("poc.fetch.error", new Dictionary<string, object?>
-                    {
-                        ["source"] = Name,
-                        ["cve_id"] = cveId,
-                        ["error"] = "git clone failed",
-                    });
+                    await GitPocDiagnostics.RecordCloneFailureAsync(
+                        ctx.Audit, Name, cveId,
+                        GitPocAllowlist.NucleiTemplates,
+                        _git, cloneResult, ct).ConfigureAwait(false);
                     return empty;
                 }
             }

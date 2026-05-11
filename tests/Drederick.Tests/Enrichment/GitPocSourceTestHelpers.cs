@@ -18,19 +18,27 @@ internal sealed class FakeGitClient : IGitClient
     public List<CloneCall> Clones { get; } = new();
     public Dictionary<string, byte[]> Layout { get; } = new();
     public bool ForceFail { get; set; }
+    public int FailExitCode { get; set; } = 128;
+    public string FailStderr { get; set; } = "fatal: unable to access repository";
+    public string FailStage { get; set; } = "clone";
+    public string GitVersion { get; set; } = "git version 2.43.0 (fake)";
+    public bool EgressOk { get; set; } = true;
+    public string EgressStderr { get; set; } = string.Empty;
     public ConcurrentBag<string> CachedDirs { get; } = new();
 
     public bool IsCached(string repoDir) => CachedDirs.Contains(repoDir);
 
-    public Task<bool> CloneSparseAsync(
+    public Task<GitCloneResult> CloneSparseAsync(
         string repoUrl,
         string destDir,
         IReadOnlyList<string> sparsePaths,
         CancellationToken ct)
     {
         Clones.Add(new CloneCall(repoUrl, destDir, sparsePaths.ToArray()));
-        if (!GitPocAllowlist.IsAllowed(repoUrl)) return Task.FromResult(false);
-        if (ForceFail) return Task.FromResult(false);
+        if (!GitPocAllowlist.IsAllowed(repoUrl))
+            return Task.FromResult(new GitCloneResult(false, -1, "url not on allowlist", "url-not-allowed"));
+        if (ForceFail)
+            return Task.FromResult(new GitCloneResult(false, FailExitCode, FailStderr, FailStage));
         Directory.CreateDirectory(Path.Combine(destDir, ".git"));
         foreach (var (rel, body) in Layout)
         {
@@ -39,8 +47,11 @@ internal sealed class FakeGitClient : IGitClient
             File.WriteAllBytes(full, body);
         }
         CachedDirs.Add(destDir);
-        return Task.FromResult(true);
+        return Task.FromResult(new GitCloneResult(true, 0, string.Empty, "ok"));
     }
+
+    public Task<GitEgressResult> ProbeEgressAsync(CancellationToken ct)
+        => Task.FromResult(new GitEgressResult(EgressOk, EgressOk ? 0 : 128, EgressStderr, "git ls-remote (fake)"));
 }
 
 /// <summary>

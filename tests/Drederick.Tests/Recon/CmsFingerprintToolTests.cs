@@ -313,4 +313,167 @@ public class CmsFingerprintToolTests
         Assert.Contains(corpus, e => e.Name == "CameleonCMS");
         Assert.Contains(corpus, e => e.Name == "WordPress");
     }
+
+    // --- htb-cms-cve-pack: Pterodactyl + Cockpit + Wings + Flarum + Shopware + Laravel-SPA ---
+
+    private static string FindFixture(string filename)
+    {
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 8 && dir is not null; i++)
+        {
+            var c = Path.Combine(dir, "tests", "fixtures", "cms", filename);
+            if (File.Exists(c)) return c;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException($"fixture not found: {filename}");
+    }
+
+    [Fact]
+    public async Task PterodactylPanel_FromRealFixture_FingerprintsWithCpe()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var body = await File.ReadAllTextAsync(FindFixture("pterodactyl-panel-1.11.10.html"));
+        var handler = new CannedHandler
+        {
+            Responder = req =>
+            {
+                var p = req.RequestUri!.AbsolutePath;
+                return p switch
+                {
+                    "/" => Html(body, setCookies: new[] { "pterodactyl_session=abcd1234; Path=/; HttpOnly" }),
+                    "/assets/manifest.json" => Html("""{"app.js":"/build/assets/app-1234abcd.js"}"""),
+                    "/auth/login" => Html("<html>Pterodactyl Login</html>"),
+                    _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+                };
+            },
+        };
+        var tool = Build(scope, audit, handler);
+
+        var f = await tool.FingerprintAsync("10.0.0.5", 80);
+
+        var ptero = f.Matches.FirstOrDefault(m => m.Name == "PterodactylPanel");
+        Assert.NotNull(ptero);
+        Assert.Equal("1.11.10", ptero!.Version);
+        Assert.True(ptero.Confidence >= 2);
+        Assert.NotNull(ptero.Cpe);
+        Assert.Contains("pterodactyl:panel:1.11.10", ptero.Cpe!);
+    }
+
+    [Fact]
+    public async Task Cockpit_MetaGenerator_AndAppDiv()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var body = await File.ReadAllTextAsync(FindFixture("cockpit.html"));
+        var handler = new CannedHandler { Responder = _ => Html(body) };
+        var tool = Build(scope, audit, handler);
+
+        var f = await tool.FingerprintAsync("10.0.0.5", 80);
+
+        var c = f.Matches.FirstOrDefault(m => m.Name == "Cockpit");
+        Assert.NotNull(c);
+        Assert.Equal("2.6.3", c!.Version);
+        Assert.NotNull(c.Cpe);
+        Assert.Contains("cockpit-hq:cockpit:2.6.3", c.Cpe!);
+    }
+
+    [Fact]
+    public async Task Flarum_CookieAndAssetPath()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var body = await File.ReadAllTextAsync(FindFixture("flarum.html"));
+        var handler = new CannedHandler
+        {
+            Responder = _ => Html(body, setCookies: new[] { "flarum_session=xyz; Path=/" }),
+        };
+        var tool = Build(scope, audit, handler);
+
+        var f = await tool.FingerprintAsync("10.0.0.5", 80);
+
+        var fl = f.Matches.FirstOrDefault(m => m.Name == "Flarum");
+        Assert.NotNull(fl);
+        Assert.True(fl!.Confidence >= 2);
+    }
+
+    [Fact]
+    public async Task PterodactylWings_ApiSystemJson()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var apiJson = await File.ReadAllTextAsync(FindFixture("wings-api-system.json"));
+        var handler = new CannedHandler
+        {
+            Responder = req =>
+            {
+                var p = req.RequestUri!.AbsolutePath;
+                if (p == "/") return Html(apiJson);
+                if (p == "/api/system") return Html(apiJson);
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            },
+        };
+        var tool = Build(scope, audit, handler);
+
+        var f = await tool.FingerprintAsync("10.0.0.5", 8080);
+
+        var w = f.Matches.FirstOrDefault(m => m.Name == "PterodactylWings");
+        Assert.NotNull(w);
+        Assert.NotNull(w!.Cpe);
+        Assert.Contains("pterodactyl:wings", w.Cpe!);
+    }
+
+    [Fact]
+    public async Task Shopware_HeaderHints()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var body = "<html><head><meta name=\"shopware\" content=\"v\"></head><body><script src=\"/bundles/storefront/app.js\"></script>Shopware v6.5.7</body></html>";
+        var handler = new CannedHandler
+        {
+            Responder = _ => Html(body, extraHeaders: new[]
+            {
+                new KeyValuePair<string, string>("X-Shopware-Cache", "HIT"),
+                new KeyValuePair<string, string>("X-Powered-By", "Shopware"),
+            }),
+        };
+        var tool = Build(scope, audit, handler);
+
+        var f = await tool.FingerprintAsync("10.0.0.5", 80);
+
+        var s = f.Matches.FirstOrDefault(m => m.Name == "Shopware");
+        Assert.NotNull(s);
+        Assert.True(s!.Confidence >= 2);
+    }
+
+    [Fact]
+    public async Task Ghost_CpeTemplate_Resolved()
+    {
+        var scope = ScopeLoader.Parse("10.0.0.0/24");
+        using var audit = NewAudit();
+        var body = "<html><head><meta name=\"generator\" content=\"Ghost 5.71.1\"></head><body><link rel=\"stylesheet\" href=\"/assets/ghost.min.css\"/></body></html>";
+        var handler = new CannedHandler { Responder = _ => Html(body) };
+        var tool = Build(scope, audit, handler);
+
+        var f = await tool.FingerprintAsync("10.0.0.5", 80);
+
+        var g = f.Matches.FirstOrDefault(m => m.Name == "Ghost");
+        Assert.NotNull(g);
+        Assert.NotNull(g!.Cpe);
+        Assert.Contains("ghost:ghost:5.71.1", g.Cpe!);
+    }
+
+    [Fact]
+    public void ResolveCpe_NullTemplate_ReturnsNull()
+    {
+        Assert.Null(CmsFingerprintTool.ResolveCpe(null, "1.2.3"));
+        Assert.Null(CmsFingerprintTool.ResolveCpe("", "1.2.3"));
+    }
+
+    [Fact]
+    public void ResolveCpe_NullVersion_SubstitutesWildcard()
+    {
+        var c = CmsFingerprintTool.ResolveCpe("cpe:2.3:a:pterodactyl:panel:{version}:*:*:*:*:*:*:*", null);
+        Assert.Equal("cpe:2.3:a:pterodactyl:panel:*:*:*:*:*:*:*:*", c);
+    }
 }

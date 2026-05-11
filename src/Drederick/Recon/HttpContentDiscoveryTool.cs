@@ -1,18 +1,22 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Authentication;
+using System.Security.Cryptography;
 using Drederick.Audit;
 using Drederick.Scope;
 
 namespace Drederick.Recon;
 
 /// <summary>
-/// Path-only HTTP content discovery. For each word in a bounded, sanitized
-/// wordlist, GETs <c>&lt;baseUrl&gt;/&lt;word&gt;</c> and records the response
-/// status and size when the status is in a small set of "interesting" codes
-/// (skipping 404s). Strictly path-only — NO query parameter fuzzing, NO POST
-/// bodies, NO header injection, NO auth probing. Off-by-default behavior is
-/// enforced at the CLI layer; this tool just performs the probe when invoked.
+/// Path-only HTTP content discovery with SPA catch-all baseline detection,
+/// optional wordlist profile selection (raft-small/medium/large from
+/// SecLists), and optional extension fanout. For each word in a bounded,
+/// sanitized wordlist GETs &lt;baseUrl&gt;/&lt;word&gt; and records status +
+/// size + body sha256 (for 200s). Strictly path-only — NO query parameter
+/// fuzzing, NO POST bodies, NO header injection, NO auth probing.
+/// Closes GAP-055 (SPA catch-all detection) and provides the
+/// <see cref="HttpContentDiscoveryAutoRouter"/> helper for GAP-057
+/// (vhost-detection auto-routing).
 /// </summary>
 public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
 {
@@ -20,26 +24,16 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
 
     public string Description =>
         "GET a bounded list of common paths under a base URL and return the statuses and sizes " +
-        "for interesting responses (200/201/204/301/302/307/401/403). Path-only, rate limited, " +
-        "no parameter or credential brute-forcing.";
+        "for interesting responses (200/201/204/301/302/307/401/403). Detects SPA catch-all 200s " +
+        "via baseline-sha256 comparison. Path-only, rate limited, no parameter or credential brute-forcing.";
 
-    /// <summary>
-    /// Statuses considered "interesting" enough to record. 404 is intentionally
-    /// omitted so noisy output stays clean.
-    /// </summary>
     private static readonly HashSet<int> InterestingStatuses = new()
     {
         200, 201, 204, 301, 302, 307, 401, 403,
     };
 
-    /// <summary>Safety valve — never probe more than this many paths regardless of input size.</summary>
     public const int MaxWordlistEntries = 2000;
 
-    /// <summary>
-    /// Hand-curated default wordlist (~100 highest-signal paths). Operators can
-    /// override by passing their own <c>wordlist</c> to the constructor.
-    /// All entries here are guaranteed to pass <see cref="IsSafePath"/>.
-    /// </summary>
     public static readonly IReadOnlyList<string> DefaultWordlist = new[]
     {
         "robots.txt", "sitemap.xml", "humans.txt", "favicon.ico", "crossdomain.xml",
@@ -59,18 +53,26 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
         ".env.production", ".env.development", ".htaccess", ".htpasswd",
         ".DS_Store", "Thumbs.db", "web.config", "composer.json", "composer.lock",
         "package.json", "package-lock.json", "yarn.lock", "Gemfile", "Gemfile.lock",
-        "backup", "backup/", "backup.zip", "backup.tar.gz", "backup.sql", "db.sql",
-        "dump.sql", "database.sql", "old", "old/", "new", "new/", "tmp", "tmp/",
-        "temp", "temp/", "test", "test/", "tests", "dev", "staging",
-        "server-status", "server-info", "status", "health", "healthz", "ping",
-        "metrics", "debug", "console", "actuator", "actuator/health", "actuator/env",
-        "config", "config.php", "config.json", "config.yml", "settings",
-        "uploads", "uploads/", "files", "files/", "images", "img", "static",
-        "assets", "public", "private", "hidden",
-        "cgi-bin", "cgi-bin/", "cgi-bin/test.cgi",
-        "manager/html", "host-manager/html", "jmx-console", "web-console",
-        "_vti_bin", "_vti_pvt", "solr", "solr/admin",
-        "robots", "LICENSE", "README", "README.md", "CHANGELOG", "CHANGELOG.md",
+        "config.php", "configuration.php", "settings.php", "config.json", "config.yaml",
+        "backup", "backup/", "backups", "backup.sql", "dump.sql", "db.sql",
+        "uploads", "uploads/", "files", "files/", "media", "media/", "static", "static/",
+        "tmp", "tmp/", "temp", "temp/", "cache", "cache/",
+        "test", "tests", "testing", "dev", "development", "staging",
+        "old", "new", "v1", "v2", "v3",
+        "console", "manager", "manager/html", "actuator", "actuator/health", "actuator/env",
+        "metrics", "health", "status", "ping", "version",
+        "server-status", "server-info", "server-status/",
+    };
+
+    public static readonly IReadOnlyList<string> KnownProfiles = new[]
+    {
+        "default", "raft-small", "raft-medium", "raft-large",
+    };
+
+    private static readonly IReadOnlyList<string> SeclistsSearchDirs = new[]
+    {
+        "/usr/share/seclists/Discovery/Web-Content/",
+        "/usr/share/wordlists/seclists/Discovery/Web-Content/",
     };
 
     private readonly Scope.Scope _scope;
@@ -78,6 +80,8 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
     private readonly IReadOnlyList<string> _wordlist;
+    private readonly IReadOnlyList<string> _extensions;
+    private readonly string _profileName;
     private readonly int _rateLimitRps;
 
     public HttpContentDiscoveryTool(
@@ -85,7 +89,9 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
         AuditLog audit,
         HttpClient? httpClient = null,
         IEnumerable<string>? wordlist = null,
-        int rateLimitRps = 10)
+        int rateLimitRps = 10,
+        IEnumerable<string>? extensions = null,
+        string? wordlistProfile = null)
     {
         _scope = scope;
         _audit = audit;
@@ -115,17 +121,132 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
             _ownsHttpClient = false;
         }
 
-        var source = wordlist ?? DefaultWordlist;
-        _wordlist = SanitizeAndCap(source);
+        _extensions = NormalizeExtensions(extensions);
+
+        IEnumerable<string> source;
+        if (wordlist is not null)
+        {
+            source = wordlist;
+            _profileName = wordlistProfile ?? "custom";
+        }
+        else if (!string.IsNullOrWhiteSpace(wordlistProfile))
+        {
+            _profileName = wordlistProfile.Trim().ToLowerInvariant();
+            source = ResolveWordlistProfile(_profileName, _audit);
+        }
+        else
+        {
+            source = DefaultWordlist;
+            _profileName = "default";
+        }
+
+        var expanded = ExpandExtensions(source, _extensions);
+        _wordlist = SanitizeAndCap(expanded);
     }
 
-    /// <summary>
-    /// Returns true if <paramref name="path"/> contains only URL-safe path
-    /// characters: alphanumerics, <c>-</c>, <c>_</c>, <c>.</c>, <c>/</c>, and
-    /// the single allowed percent escape <c>%2F</c> (case-insensitive). Any
-    /// other character — including <c>&lt; &gt; ? &amp; = ;</c>, whitespace,
-    /// newlines, or stray <c>%</c> — causes rejection.
-    /// </summary>
+    public IReadOnlyList<string> EffectiveExtensions => _extensions;
+    public string WordlistProfile => _profileName;
+
+    private static IReadOnlyList<string> NormalizeExtensions(IEnumerable<string>? extensions)
+    {
+        if (extensions is null) return Array.Empty<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var kept = new List<string>();
+        foreach (var raw in extensions)
+        {
+            if (raw is null) continue;
+            var ext = raw.Trim().TrimStart('.');
+            if (ext.Length == 0) continue;
+            bool ok = true;
+            foreach (var c in ext)
+            {
+                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')))
+                { ok = false; break; }
+            }
+            if (!ok) continue;
+            if (!seen.Add(ext)) continue;
+            kept.Add(ext);
+        }
+        return kept;
+    }
+
+    internal static IEnumerable<string> ExpandExtensions(
+        IEnumerable<string> words,
+        IReadOnlyList<string> extensions)
+    {
+        foreach (var w in words)
+        {
+            if (w is null) continue;
+            yield return w;
+            if (extensions.Count == 0) continue;
+            var trimmed = w.TrimEnd();
+            if (trimmed.EndsWith('/')) continue;
+            foreach (var ext in extensions)
+            {
+                yield return trimmed + "." + ext;
+            }
+        }
+    }
+
+    public static IEnumerable<string> ResolveWordlistProfile(string name, AuditLog? audit = null)
+    {
+        var profile = (name ?? "default").Trim().ToLowerInvariant();
+        if (profile == "default" || profile.Length == 0)
+        {
+            return DefaultWordlist;
+        }
+        if (profile is "raft-small" or "raft-medium" or "raft-large")
+        {
+            var fileName = profile + "-words.txt";
+            foreach (var dir in SeclistsSearchDirs)
+            {
+                string path;
+                try { path = Path.Combine(dir, fileName); }
+                catch { continue; }
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        var lines = File.ReadAllLines(path);
+                        audit?.Record("http-content-discovery.wordlist_profile.loaded",
+                            new Dictionary<string, object?>
+                            {
+                                ["profile"] = profile,
+                                ["path"] = path,
+                                ["lines"] = lines.Length,
+                            });
+                        return lines;
+                    }
+                    catch (Exception ex)
+                    {
+                        audit?.Record("http-content-discovery.wordlist_profile.read_error",
+                            new Dictionary<string, object?>
+                            {
+                                ["profile"] = profile,
+                                ["path"] = path,
+                                ["error"] = ex.Message,
+                            });
+                    }
+                }
+            }
+            audit?.Record("http-content-discovery.wordlist_profile.fallback",
+                new Dictionary<string, object?>
+                {
+                    ["profile"] = profile,
+                    ["reason"] = "seclists_not_found",
+                    ["fallback"] = "default",
+                });
+            return DefaultWordlist;
+        }
+        audit?.Record("http-content-discovery.wordlist_profile.unknown",
+            new Dictionary<string, object?>
+            {
+                ["profile"] = profile,
+                ["fallback"] = "default",
+            });
+        return DefaultWordlist;
+    }
+
     public static bool IsSafePath(string path)
     {
         if (string.IsNullOrEmpty(path)) return false;
@@ -168,7 +289,6 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
         return kept;
     }
 
-    /// <summary>The effective, sanitized, capped wordlist in use.</summary>
     public IReadOnlyList<string> EffectiveWordlist => _wordlist;
 
     public async Task<HttpContentDiscoveryResult> ProbeAsync(
@@ -184,10 +304,6 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
             throw new ArgumentException($"baseUrl '{baseUrl}' is not an absolute URL.", nameof(baseUrl));
         }
 
-        // Scope gate on the host. Scope only understands IP literals, which is
-        // exactly what we want here — a hostname cannot be meaningfully
-        // scope-checked in advance, and HTTP content discovery must land on an
-        // authorized IP.
         var host = baseUri.Host;
         _scope.Require(host);
 
@@ -198,9 +314,58 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
             ["base_url"] = normalizedBase,
             ["word_count"] = _wordlist.Count,
             ["rate_limit_rps"] = _rateLimitRps,
+            ["profile"] = _profileName,
+            ["extensions"] = _extensions,
         });
 
         var result = new HttpContentDiscoveryResult { BaseUrl = normalizedBase };
+
+        // SPA catch-all baseline probe (GAP-055): hit a guaranteed-404
+        // random path. If the target is a SPA the response is 200 with the
+        // shell HTML for any unknown route. Capture sha256 + length + type
+        // so the main loop can tag matching 200s as "spa_catch_all".
+        var baselineRand = Convert.ToHexString(
+            RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        var baselinePath = "/__drederick_baseline_404_" + baselineRand;
+        try
+        {
+            using var breq = new HttpRequestMessage(HttpMethod.Get, normalizedBase + baselinePath);
+            using var bcts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            bcts.CancelAfter(TimeSpan.FromSeconds(5));
+            using var bresp = await _http.SendAsync(
+                breq, HttpCompletionOption.ResponseContentRead, bcts.Token).ConfigureAwait(false);
+            var bbytes = await bresp.Content.ReadAsByteArrayAsync(bcts.Token).ConfigureAwait(false);
+            result.BaselineStatus = (int)bresp.StatusCode;
+            result.BaselineContentLength = bbytes.LongLength;
+            result.BaselineContentType = bresp.Content.Headers.ContentType?.MediaType;
+            result.BaselineSha256 = Convert.ToHexString(SHA256.HashData(bbytes)).ToLowerInvariant();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _audit.Record("http-content-discovery.baseline_error", new Dictionary<string, object?>
+            {
+                ["base_url"] = normalizedBase,
+                ["path"] = baselinePath,
+                ["error"] = ex.Message,
+            });
+        }
+
+        result.SpaCatchAllDetected =
+            result.BaselineStatus == 200 && !string.IsNullOrEmpty(result.BaselineSha256);
+        if (result.SpaCatchAllDetected)
+        {
+            _audit.Record("http.discovery.spa_catch_all_detected", new Dictionary<string, object?>
+            {
+                ["base_url"] = normalizedBase,
+                ["baseline_sha256"] = result.BaselineSha256,
+                ["baseline_content_length"] = result.BaselineContentLength,
+                ["baseline_content_type"] = result.BaselineContentType,
+            });
+        }
 
         var minIntervalTicks = Stopwatch.Frequency / _rateLimitRps;
         long nextAllowedTick = Stopwatch.GetTimestamp();
@@ -209,7 +374,6 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
         {
             ct.ThrowIfCancellationRequested();
 
-            // Leaky-bucket style pacing: wait until the next slot opens.
             var now = Stopwatch.GetTimestamp();
             if (now < nextAllowedTick)
             {
@@ -239,7 +403,20 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
                 }
 
                 long size;
-                if (resp.Content.Headers.ContentLength.HasValue)
+                if (status == 200)
+                {
+                    var bytes = await resp.Content.ReadAsByteArrayAsync(reqCts.Token)
+                        .ConfigureAwait(false);
+                    size = bytes.LongLength;
+                    var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+                    entry.BodySha256 = sha;
+                    if (result.SpaCatchAllDetected
+                        && string.Equals(sha, result.BaselineSha256, StringComparison.Ordinal))
+                    {
+                        entry.MatchKind = "spa_catch_all";
+                    }
+                }
+                else if (resp.Content.Headers.ContentLength.HasValue)
                 {
                     size = resp.Content.Headers.ContentLength.Value;
                 }
@@ -266,7 +443,6 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
                     ["path"] = entry.Path,
                     ["error"] = ex.Message,
                 });
-                // Per-path failures do not abort the probe.
                 continue;
             }
         }
@@ -276,6 +452,7 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
             ["base_url"] = normalizedBase,
             ["entries_recorded"] = result.Entries.Count,
             ["word_count"] = _wordlist.Count,
+            ["spa_catch_all_detected"] = result.SpaCatchAllDetected,
         });
 
         return result;
@@ -284,5 +461,49 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
     public void Dispose()
     {
         if (_ownsHttpClient) _http.Dispose();
+    }
+}
+
+/// <summary>
+/// Bridge from <c>http.vhost.detected</c> events (emitted by
+/// <see cref="HttpProbeTool"/>) to a queue of base URLs that
+/// <see cref="HttpContentDiscoveryTool"/> should be re-fired against.
+/// Closes GAP-057. Thread-safe.
+/// </summary>
+public sealed class HttpContentDiscoveryAutoRouter
+{
+    private readonly object _lock = new();
+    private readonly List<string> _queued = new();
+    private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<string> QueuedBaseUrls
+    {
+        get { lock (_lock) { return _queued.ToArray(); } }
+    }
+
+    public void OnVhostDetected(string vhost, int port = 80, bool useTls = false)
+    {
+        if (string.IsNullOrWhiteSpace(vhost)) return;
+        var trimmed = vhost.Trim();
+        var scheme = useTls ? "https" : "http";
+        var isDefaultPort = (useTls && port == 443) || (!useTls && port == 80);
+        var authority = isDefaultPort
+            ? trimmed
+            : trimmed + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var url = scheme + "://" + authority + "/";
+        lock (_lock)
+        {
+            if (_seen.Add(url)) _queued.Add(url);
+        }
+    }
+
+    public IReadOnlyList<string> Drain()
+    {
+        lock (_lock)
+        {
+            var copy = _queued.ToArray();
+            _queued.Clear();
+            return copy;
+        }
     }
 }

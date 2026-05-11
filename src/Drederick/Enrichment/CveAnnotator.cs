@@ -27,11 +27,13 @@ public sealed class CveAnnotator
 {
     private readonly NvdCache _cache;
     private readonly AuditLog? _audit;
+    private readonly CuratedCveCorpus? _curated;
 
-    public CveAnnotator(NvdCache? cache = null, AuditLog? audit = null)
+    public CveAnnotator(NvdCache? cache = null, AuditLog? audit = null, CuratedCveCorpus? curated = null)
     {
         _cache = cache ?? new NvdCache();
         _audit = audit;
+        _curated = curated;
     }
 
     /// <summary>Result summary, mostly for tests and log output.</summary>
@@ -46,14 +48,19 @@ public sealed class CveAnnotator
         if (string.IsNullOrWhiteSpace(outputDir)) throw new ArgumentException("outputDir required", nameof(outputDir));
 
         IReadOnlyList<NvdEntry> entries;
+        bool cacheLoaded = true;
         try
         {
             entries = await _cache.LoadAsync(ct).ConfigureAwait(false);
         }
         catch (InvalidOperationException)
         {
-            // No cache and refresh failed — nothing to annotate with. Stay quiet.
-            return new AnnotationResult(0, 0, false);
+            entries = Array.Empty<NvdEntry>();
+            cacheLoaded = false;
+            if (_curated is null || _curated.Count == 0)
+            {
+                return new AnnotationResult(0, 0, false);
+            }
         }
 
         var matcher = new CpeMatcher(entries);
@@ -86,6 +93,33 @@ public sealed class CveAnnotator
                 candidateCount++;
                 var serviceId = LookupServiceId(conn, hostId.Value, cand.Port, cand.Protocol);
 
+                if (_curated is not null && _curated.Count > 0)
+                {
+                    var curatedMatches = _curated.Match(cand.Vendor, cand.Product, cand.Version);
+                    foreach (var cm in curatedMatches)
+                    {
+                        if (!emitted.Add((cand.Port, cm.CveId))) continue;
+
+                        report.UpsertCve(cm.CveId, cm.Cvss, cm.Summary, null);
+                        cveCount++;
+
+                        foreach (var url in cm.RefUrls)
+                        {
+                            try { report.UpsertPocRef(cm.CveId, "curated", url: url); } catch { }
+                        }
+
+                        var curatedPayload = JsonSerializer.Serialize(new CveFindingPayload(
+                            cm.CveId, cm.Cvss, cand.Product, cand.Version, cand.Source, "curated",
+                            "curated", cm.Severity, cm.GhsaId));
+                        if (InsertCveFinding(conn, hostId.Value, serviceId, curatedPayload, now))
+                        {
+                            findingCount++;
+                        }
+                    }
+                }
+
+                if (!cacheLoaded) continue;
+
                 var matches = matcher.Match(vendor: null, product: cand.Product, version: cand.Version);
                 foreach (var m in matches)
                 {
@@ -95,7 +129,8 @@ public sealed class CveAnnotator
                     cveCount++;
 
                     var payload = JsonSerializer.Serialize(new CveFindingPayload(
-                        m.CveId, m.Cvss, cand.Product, cand.Version, cand.Source, cand.MatchConfidence));
+                        m.CveId, m.Cvss, cand.Product, cand.Version, cand.Source, cand.MatchConfidence,
+                        "nvd", null, null));
                     if (InsertCveFinding(conn, hostId.Value, serviceId, payload, now))
                     {
                         findingCount++;
@@ -128,7 +163,8 @@ public sealed class CveAnnotator
         string Product,
         string? Version,
         string Source,
-        string MatchConfidence);
+        string MatchConfidence,
+        string? Vendor = null);
 
     /// <summary>
     /// Walks every result array on <see cref="HostFinding"/> that carries
@@ -191,6 +227,34 @@ public sealed class CveAnnotator
                     fp.Port.Value, "tcp", c.Product, c.Version, "fingerprint", "learned");
             }
         }
+
+        // CMS fingerprints (GAP-052) — yield each CMS match as a candidate so
+        // the curated CVE corpus can match by (vendor, product, version)
+        // without requiring the NVD CPE machinery to recognise the product.
+        foreach (var cms in host.CmsFingerprint)
+        {
+            if (cms is null) continue;
+            foreach (var m in cms.Matches)
+            {
+                if (m is null || string.IsNullOrWhiteSpace(m.Name)) continue;
+                string? vendor = null;
+                string product = m.Name;
+                if (!string.IsNullOrWhiteSpace(m.Cpe))
+                {
+                    try
+                    {
+                        var (v, p2, _) = CuratedCveCorpus.ParseCpe(m.Cpe!);
+                        if (!string.IsNullOrWhiteSpace(v)) vendor = v;
+                        if (!string.IsNullOrWhiteSpace(p2)) product = p2;
+                    }
+                    catch { }
+                }
+                int port = PortFromUrl(cms.BaseUrl);
+                if (port <= 0) port = 443;
+                yield return new ProductCandidate(
+                    port, "tcp", product, m.Version, "cms_fingerprint", "learned", vendor);
+            }
+        }
     }
 
     private static int PortFromUrl(string? url)
@@ -206,7 +270,10 @@ public sealed class CveAnnotator
         string? product,
         string? version,
         string source,
-        string match_confidence);
+        string match_confidence,
+        string? enrichment_source = null,
+        string? severity = null,
+        string? ghsa_id = null);
 
     private static long? LookupHostId(SqliteConnection conn, string address)
     {

@@ -9,6 +9,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Enrichment/FingerprintStack/Corpus/favicon-corpus.json" />
     <EmbeddedResource Include="Recon/Resources/cms-fingerprints.yaml" />
+    <EmbeddedResource Include="..\..\data\curated-cves\*.json" LinkBase="Enrichment\curated-cves">
+      <LogicalName>Drederick.Enrichment.curated-cves.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Exploit/PostEx/Resources/db-pillage-schemas.yaml" />
     <EmbeddedResource Include="Exploit/PostEx/Resources/gtfobins.yaml" />
     <EmbeddedResource Include="Exploit/PostEx/Resources/winrm-enum-commands.yaml" />
@@ -30,8 +33,6 @@
     <PackageReference Include="System.DirectoryServices.Protocols" Version="9.0.0" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
-
-  <Import Project="_AgentExclude.props" Condition="Exists('_AgentExclude.props')" />
 
   <Target Name="_CopyCopilotCliToPublishDir" AfterTargets="Publish" DependsOnTargets="_DownloadCopilotCli" Condition="'$(CopilotSkipCliDownload)' != 'true' And '$(_CopilotPlatform)' != '' And '$(PublishDir)' != ''">
     <PropertyGroup>

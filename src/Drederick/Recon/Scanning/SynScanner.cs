@@ -22,12 +22,19 @@ public sealed class SynScanner
 {
     private readonly Scope.Scope _scope;
     private readonly AuditLog _audit;
+    private readonly Drederick.Recon.ProxyContext? _proxy;
 
-    public SynScanner(Scope.Scope scope, AuditLog audit)
+    public SynScanner(Scope.Scope scope, AuditLog audit, Drederick.Recon.ProxyContext? proxy = null)
     {
         _scope = scope;
         _audit = audit;
+        _proxy = proxy;
     }
+
+    /// <summary>GAP-049: true when raw-socket SYN scanning is incompatible with
+    /// the active configuration. Raw sockets cannot be tunnelled through a
+    /// SOCKS/HTTP proxy; callers must fall back to <see cref="NativeScannerTool"/>.</summary>
+    public bool ProxyForcesFallback => _proxy is not null;
 
     /// <summary>
     /// Probe whether a raw TCP socket can be opened in this process.
@@ -71,6 +78,16 @@ public sealed class SynScanner
         CancellationToken ct = default)
     {
         _scope.Require(target);
+        if (_proxy is not null)
+        {
+            _audit.Record("scanner.syn.proxy.fallback", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["proxy_endpoint"] = $"{_proxy.Host}:{_proxy.Port}",
+                ["reason"] = "SYN scan refused under --proxy: raw sockets cannot be tunnelled through SOCKS/HTTP.",
+            });
+            return Array.Empty<int>();
+        }
         if (ports.Count == 0)
         {
             return Array.Empty<int>();

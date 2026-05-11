@@ -113,6 +113,9 @@ public sealed class HttpResult
     [JsonPropertyName("vhost_hostname")] public string? VhostHostname { get; set; }
     [JsonPropertyName("hostname")] public string? Hostname { get; set; }
     [JsonPropertyName("resolved_ip")] public string? ResolvedIp { get; set; }
+
+    // --- phpinfo additions (GAP-054) ---
+    [JsonPropertyName("phpinfo")] public PhpInfoFinding? PhpInfo { get; set; }
 }
 
 public sealed class TlsResult
@@ -334,6 +337,11 @@ public sealed class HttpContentDiscoveryResult
     [JsonPropertyName("base_url")] public string BaseUrl { get; set; } = "";
     [JsonPropertyName("entries")] public List<HttpContentDiscoveryEntry> Entries { get; set; } = new();
     [JsonPropertyName("error")] public string? Error { get; set; }
+    [JsonPropertyName("baseline_status")] public int BaselineStatus { get; set; }
+    [JsonPropertyName("baseline_sha256")] public string? BaselineSha256 { get; set; }
+    [JsonPropertyName("baseline_content_length")] public long BaselineContentLength { get; set; }
+    [JsonPropertyName("baseline_content_type")] public string? BaselineContentType { get; set; }
+    [JsonPropertyName("spa_catch_all_detected")] public bool SpaCatchAllDetected { get; set; }
 }
 
 public sealed class HttpContentDiscoveryEntry
@@ -341,6 +349,8 @@ public sealed class HttpContentDiscoveryEntry
     [JsonPropertyName("path")] public string Path { get; set; } = "";
     [JsonPropertyName("status")] public int Status { get; set; }
     [JsonPropertyName("size")] public long Size { get; set; }
+    [JsonPropertyName("body_sha256")] public string? BodySha256 { get; set; }
+    [JsonPropertyName("match_kind")] public string? MatchKind { get; set; }
 }
 
 public sealed class TlsCipherEnumResult
@@ -551,7 +561,8 @@ public sealed record CmsMatch(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("version")] string? Version,
     [property: JsonPropertyName("confidence")] int Confidence,
-    [property: JsonPropertyName("signals_matched")] IReadOnlyList<string> SignalsMatched);
+    [property: JsonPropertyName("signals_matched")] IReadOnlyList<string> SignalsMatched,
+    [property: JsonPropertyName("cpe")] string? Cpe = null);
 
 // --- GAP-042 SMB null-session + anonymous LDAP enumeration result records ---
 
@@ -594,3 +605,25 @@ public sealed record DomainUser(
     [property: JsonPropertyName("rid")] int? Rid,
     [property: JsonPropertyName("user_account_control")] string? UserAccountControl,
     [property: JsonPropertyName("member_of")] IReadOnlyList<string> MemberOf);
+
+
+// --- phpinfo additions (GAP-054) ---
+public sealed record PhpInfoFinding
+{
+    [System.Text.Json.Serialization.JsonPropertyName("php_version")] public string PhpVersion { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("disable_functions")] public string DisableFunctions { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("open_basedir")] public string OpenBasedir { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("allow_url_fopen")] public string AllowUrlFopen { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("allow_url_include")] public string AllowUrlInclude { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("file_uploads")] public string FileUploads { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("upload_max_filesize")] public string UploadMaxFilesize { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("upload_tmp_dir")] public string UploadTmpDir { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("user_ini_filename")] public string UserIniFilename { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("session_save_path")] public string SessionSavePath { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("include_path")] public string IncludePath { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("fpm_user")] public string FpmUser { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("fpm_group")] public string FpmGroup { get; init; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("rce_on_write_likely")] public bool RceOnWriteLikely { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("user_ini_injection_likely")] public bool UserIniInjectionLikely { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("source_path")] public string SourcePath { get; init; } = "";
+}

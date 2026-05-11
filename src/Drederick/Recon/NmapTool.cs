@@ -36,6 +36,7 @@ public sealed class NmapTool : IReconTool
     private readonly string _nmapPath;
     private readonly bool _labMode;
     private readonly RunPermissions _permissions;
+    private readonly ProxyContext? _proxy;
 
     // Strict (non-lab) NSE categories. Safe + default only.
     // safe    : scripts that do not attempt anything unsafe against the target
@@ -64,16 +65,64 @@ public sealed class NmapTool : IReconTool
         AuditLog audit,
         string? nmapPath = null,
         bool labMode = true,
-        RunPermissions? permissions = null)
+        RunPermissions? permissions = null,
+        ProxyContext? proxy = null)
     {
         _scope = scope;
         _audit = audit;
         _nmapPath = nmapPath ?? "nmap";
         _labMode = labMode;
         _permissions = permissions ?? RunPermissions.None;
+        _proxy = proxy;
     }
 
     public string NseCategories => BuildNseCategories(_labMode, _permissions);
+
+    /// <summary>
+    /// GAP-049: build the nmap argv for a single target. When a
+    /// <see cref="ProxyContext"/> is configured, prepends <c>-sT --proxies
+    /// socks4://host:port</c> (nmap's <c>--proxies</c> only supports SOCKS4
+    /// and HTTP, and only for TCP connect scans — UDP/SYN probes silently
+    /// bypass the proxy and would leak the operator IP, so they're refused
+    /// upstream by <see cref="Scanning.SynScanner"/>). Emits the warning
+    /// audit event <c>nmap.proxy.unsupported_scan_type</c> when any
+    /// non-CONNECT category was requested. Exposed <c>internal</c> so tests
+    /// can assert argv shape without spawning nmap.
+    /// </summary>
+    internal List<string> BuildArgs(string target, string? portSpec)
+    {
+        var args = new List<string>(BaseArgsCommon);
+        if (_proxy is not null)
+        {
+            args.Insert(0, "-sT");
+            args.Add("--proxies");
+            args.Add(_proxy.ToNmapProxiesArg());
+            _audit.Record("nmap.proxy.unsupported_scan_type", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["proxy_endpoint"] = $"{_proxy.Host}:{_proxy.Port}",
+                ["proxy_type"] = _proxy.Type.ToString(),
+                ["note"] = "nmap --proxies supports SOCKS4/HTTP for TCP connect scans only; UDP/SYN probes bypass the proxy.",
+            });
+        }
+        args.Add("--script");
+        args.Add(NseCategories);
+        args.Add("-oX");
+        args.Add("-");
+        if (!string.IsNullOrWhiteSpace(portSpec))
+        {
+            RejectUnsafePortSpec(portSpec);
+            args.Add("-p");
+            args.Add(portSpec);
+        }
+        else
+        {
+            args.Add("--top-ports");
+            args.Add("1000");
+        }
+        args.Add(target);
+        return args;
+    }
 
     internal static string BuildNseCategories(bool labMode, RunPermissions permissions)
     {
@@ -123,24 +172,7 @@ public sealed class NmapTool : IReconTool
     {
         _scope.Require(target);
 
-        var args = new List<string>(BaseArgsCommon);
-        args.Add("--script");
-        args.Add(NseCategories);
-        args.Add("-oX");
-        args.Add("-");
-        // Port spec: either user/agent-supplied (e.g. "1-65535", "80,443"), or top-1000 by default.
-        if (!string.IsNullOrWhiteSpace(portSpec))
-        {
-            RejectUnsafePortSpec(portSpec);
-            args.Add("-p");
-            args.Add(portSpec);
-        }
-        else
-        {
-            args.Add("--top-ports");
-            args.Add("1000");
-        }
-        args.Add(target);
+        var args = BuildArgs(target, portSpec);
 
         _audit.Record("nmap.start", new Dictionary<string, object?>
         {
