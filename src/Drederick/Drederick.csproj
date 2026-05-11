@@ -16,6 +16,11 @@
     <EmbeddedResource Include="Exploit/PostEx/Resources/gtfobins.yaml" />
     <EmbeddedResource Include="Exploit/PostEx/Resources/winrm-enum-commands.yaml" />
     <EmbeddedResource Include="Exploit/Resources/cms-chain-templates.yaml" />
+    <!-- htb-version-exploit-mapper:start -->
+    <EmbeddedResource Include="..\..\data\version-exploits.json" LinkBase="Enrichment">
+      <LogicalName>Drederick.Enrichment.version-exploits.json</LogicalName>
+    </EmbeddedResource>
+    <!-- htb-version-exploit-mapper:end -->
   </ItemGroup>
 
   <ItemGroup>
