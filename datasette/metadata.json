@@ -49,6 +49,60 @@
           "facets": ["source"],
           "sort": "name"
         },
+        "empire_servers": {
+          "title": "Empire servers",
+          "description": "Empire C2 teamserver instances launched by Drederick. One row per (host, port, started_at). 'status' is 'running' while the server is alive and transitions to 'stopped' when shut down.",
+          "label_column": "host",
+          "facets": ["status"],
+          "searchable": ["host"],
+          "sort_desc": "started_at"
+        },
+        "empire_listeners": {
+          "title": "Empire listeners",
+          "description": "Listeners registered on an Empire server (http, http_hop, dbx, smb, ...). Unique on (server_id, external_id).",
+          "label_column": "name",
+          "facets": ["type"],
+          "sort_desc": "created_at",
+          "columns": {
+            "server_id": {
+              "description": "Foreign key → empire_servers.id.",
+              "foreign_key": ["empire_listeners", "empire_servers", "id"]
+            }
+          }
+        },
+        "empire_agents": {
+          "title": "Empire agents",
+          "description": "Empire implants that have checked in. Joined to the originating teamserver, listener, and (when resolvable) the recon host row.",
+          "label_column": "external_id",
+          "facets": ["status", "os", "language"],
+          "sort_desc": "last_seen_at",
+          "columns": {
+            "server_id": {
+              "description": "Foreign key → empire_servers.id.",
+              "foreign_key": ["empire_agents", "empire_servers", "id"]
+            },
+            "listener_id": {
+              "description": "Foreign key → empire_listeners.id.",
+              "foreign_key": ["empire_agents", "empire_listeners", "id"]
+            },
+            "host_id": {
+              "description": "Foreign key → hosts.id. Links the agent back to the recon host row.",
+              "foreign_key": ["empire_agents", "hosts", "id"]
+            }
+          }
+        },
+        "empire_modules_executed": {
+          "title": "Empire modules executed",
+          "description": "Per-invocation record of every Empire module dispatched against an agent. argv_digest and output_digest are SHA-256 hashes — plaintext output stays in out/<host>/empire/.",
+          "searchable": ["module_name"],
+          "sort_desc": "executed_at",
+          "columns": {
+            "agent_id": {
+              "description": "Foreign key → empire_agents.id.",
+              "foreign_key": ["empire_modules_executed", "empire_agents", "id"]
+            }
+          }
+        },
         "notes": {
           "title": "Notes",
           "description": "Researcher annotations: flagged findings, tactical notes, file attachments, and categorized observations linked to hosts or services.",
@@ -151,6 +205,41 @@
           "title": "Top 50 CVEs by CVSS",
           "description": "Top 50 CVEs annotated onto this run, highest CVSS first. NULL CVSS values sort last.",
           "sql": "SELECT cve_id, cvss, summary FROM cves ORDER BY cvss DESC NULLS LAST LIMIT 50"
+        },
+        "empire_active_agents": {
+          "title": "Empire — active agents",
+          "description": "All Empire agents currently reporting status='active', joined to their teamserver, listener, and recon host row. Sorted by most-recent check-in.",
+          "sql": "SELECT a.external_id AS agent, a.user_name, a.process_name, a.pid, a.os, a.language, h.address AS host, l.name AS listener, l.type AS listener_type, s.host AS server_host, s.port AS server_port, a.checkin_at, a.last_seen_at FROM empire_agents a JOIN empire_servers s ON s.id = a.server_id LEFT JOIN empire_listeners l ON l.id = a.listener_id LEFT JOIN hosts h ON h.id = a.host_id WHERE a.status = 'active' ORDER BY a.last_seen_at DESC NULLS LAST, a.checkin_at DESC"
+        },
+        "empire_agents_per_host": {
+          "title": "Empire — agents per host",
+          "description": "Count of Empire agents per recon host, including offline ones. Useful for spotting hosts with multiple implants or stale agents to clean up.",
+          "sql": "SELECT h.address, COUNT(a.id) AS total_agents, SUM(CASE WHEN a.status = 'active' THEN 1 ELSE 0 END) AS active_agents, SUM(CASE WHEN a.status != 'active' THEN 1 ELSE 0 END) AS offline_agents, MAX(a.last_seen_at) AS last_seen FROM hosts h JOIN empire_agents a ON a.host_id = h.id GROUP BY h.id, h.address ORDER BY active_agents DESC, total_agents DESC, h.address"
+        },
+        "empire_modules_recent": {
+          "title": "Empire — recent module executions",
+          "description": "Last 50 Empire module invocations across every agent, joined to the agent and host. Plaintext output isn't stored — only argv_digest / output_digest SHA-256 hashes.",
+          "sql": "SELECT m.executed_at, m.module_name, m.exit_status, a.external_id AS agent, a.user_name AS agent_user, h.address AS host, m.argv_digest, m.output_digest FROM empire_modules_executed m JOIN empire_agents a ON a.id = m.agent_id LEFT JOIN hosts h ON h.id = a.host_id ORDER BY m.executed_at DESC LIMIT 50"
+        },
+        "empire_creds_harvested": {
+          "title": "Empire — credentials harvested",
+          "description": "Loot captured by Empire (realm = 'empire-loot' in loot.metadata), joined to the agent on the same host. value_sha256 is the only representation of the secret — plaintext stays in out/<host>/loot/.",
+          "sql": "SELECT l.captured_at, l.target AS host, l.kind, l.value_sha256, l.source_tool, json_extract(l.metadata, '$.username') AS captured_user, json_extract(l.metadata, '$.domain') AS captured_domain, a.external_id AS agent, a.user_name AS agent_user FROM loot l LEFT JOIN hosts h ON h.address = l.target LEFT JOIN empire_agents a ON a.host_id = h.id WHERE json_extract(l.metadata, '$.realm') = 'empire-loot' ORDER BY l.captured_at DESC"
+        },
+        "empire_listener_summary": {
+          "title": "Empire — listener inventory",
+          "description": "Every Empire listener with its parent teamserver and a per-listener agent count (total / active).",
+          "sql": "SELECT l.name, l.type, l.listen_host, l.listen_port, s.host AS server_host, s.port AS server_port, s.status AS server_status, COUNT(a.id) AS agent_count, SUM(CASE WHEN a.status = 'active' THEN 1 ELSE 0 END) AS active_agents, l.created_at FROM empire_listeners l JOIN empire_servers s ON s.id = l.server_id LEFT JOIN empire_agents a ON a.listener_id = l.id GROUP BY l.id, l.name, l.type, l.listen_host, l.listen_port, s.host, s.port, s.status, l.created_at ORDER BY l.created_at DESC"
+        },
+        "empire_lifecycle_audit": {
+          "title": "Empire — server lifecycle timeline",
+          "description": "Start/stop timeline of every Empire teamserver instance Drederick has tracked. 'lifecycle' is 'running' while stopped_at is NULL.",
+          "sql": "SELECT s.id, s.host, s.port, s.pid, s.started_at, s.stopped_at, s.status, CASE WHEN s.stopped_at IS NULL THEN 'running' ELSE 'stopped' END AS lifecycle FROM empire_servers s ORDER BY s.started_at DESC"
+        },
+        "empire_host_compromise_chain": {
+          "title": "Empire — host compromise chain",
+          "description": "Per-host overview from initial recon → exploit_runs → empire_agents → modules_executed → harvested empire-loot credentials. Hosts with zero exploit / Empire activity are filtered out. Use as the landing query for post-exploitation triage.",
+          "sql": "WITH host_summary AS (SELECT h.id AS host_id, h.address, (SELECT COUNT(*) FROM findings f WHERE f.host_id = h.id) AS findings_count, (SELECT COUNT(*) FROM exploit_runs er WHERE er.target = h.address) AS exploit_runs, (SELECT SUM(CASE WHEN er.exit_code = 0 THEN 1 ELSE 0 END) FROM exploit_runs er WHERE er.target = h.address) AS exploit_successes, (SELECT COUNT(*) FROM empire_agents a WHERE a.host_id = h.id) AS empire_agents, (SELECT COUNT(*) FROM empire_agents a WHERE a.host_id = h.id AND a.status = 'active') AS empire_active, (SELECT COUNT(*) FROM empire_modules_executed m JOIN empire_agents a ON a.id = m.agent_id WHERE a.host_id = h.id) AS modules_executed, (SELECT COUNT(*) FROM loot l WHERE l.target = h.address AND json_extract(l.metadata, '$.realm') = 'empire-loot') AS empire_creds FROM hosts h) SELECT * FROM host_summary WHERE exploit_runs > 0 OR empire_agents > 0 ORDER BY empire_creds DESC, modules_executed DESC, empire_active DESC, exploit_successes DESC, address"
         }
       }
     }

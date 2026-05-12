@@ -309,6 +309,51 @@ All live at `/findings/<name>`.
 | `tooling_detected`    | Alphabetical dump of the `tooling` table. Run after `drederick doctor`. |
 | `top_cves_by_cvss`    | Top 50 CVEs by CVSS (NULLs last). Broad severity skim. |
 
+<!-- empire-datasette-queries -->
+
+### Empire C2 canned queries
+
+After [Empire wave D](../src/Drederick/Reporting/EmpireSchemaExtension.cs)
+landed, the `empire_servers`, `empire_listeners`, `empire_agents`, and
+`empire_modules_executed` tables are surfaced in Datasette with labels,
+facets, and a dedicated query namespace. All seven queries live at
+`/findings/<name>`:
+
+| Name                            | What it answers                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `empire_active_agents`          | All agents reporting `status='active'`, joined to server / listener / host. Sorted by last check-in. Use as the post-ex landing query. |
+| `empire_agents_per_host`        | Per-host agent census (total / active / offline). Catch hosts with stale or duplicate implants.   |
+| `empire_modules_recent`         | Last 50 module invocations across every agent, with `argv_digest` / `output_digest` SHA-256.      |
+| `empire_creds_harvested`        | `loot` rows with `metadata.realm = 'empire-loot'`, joined to the agent on the same host. `value_sha256` only — plaintext stays in `out/<host>/loot/`. |
+| `empire_listener_summary`       | Listener inventory + per-listener agent count (total + active).                                   |
+| `empire_lifecycle_audit`        | Server start/stop timeline. `lifecycle='running'` while `stopped_at IS NULL`.                     |
+| `empire_host_compromise_chain`  | CTE-based per-host chain: recon findings → exploit runs (+ successes) → empire agents (+ active) → modules executed → empire-loot creds. Triage anchor for "where did we land?" |
+
+#### Joins to remember
+
+- `empire_agents.host_id → hosts.id` — when Empire resolves the implant
+  back to a recon host row. Use this to chain Empire activity to
+  CVEs / services / notes.
+- `loot.target = hosts.address` — `loot` doesn't carry `host_id`; the
+  Empire creds query bridges via the address string, then to
+  `empire_agents.host_id`.
+- `exploit_runs.target = hosts.address` — same pattern; used by
+  `empire_host_compromise_chain` to chain initial access → implant.
+- Realm filter: `json_extract(loot.metadata, '$.realm') = 'empire-loot'`
+  is what distinguishes Empire-harvested loot from other sources.
+
+#### Facets on the Empire tables
+
+- `empire_servers` — facet on `status`, search on `host`.
+- `empire_listeners` — facet on `type`.
+- `empire_agents` — facets on `status`, `os`, `language`. Foreign keys
+  resolve to `empire_servers`, `empire_listeners`, and `hosts` so the
+  row page shows server host / listener name / host address inline.
+- `empire_modules_executed` — search on `module_name`; foreign key
+  resolves to `empire_agents`.
+
+<!-- /empire-datasette-queries -->
+
 > **Offensive-harness tables not yet faceted.** `exploit_runs`,
 > `sessions`, and `loot` are served by Datasette with default column
 > views and no metadata facets / canned queries. Filter ad-hoc via
