@@ -35,6 +35,9 @@ public sealed class HostFinding
     [JsonPropertyName("ftp_anon")] public List<FtpAnonResult> FtpAnon { get; set; } = new();
     [JsonPropertyName("ldap_rootdse")] public List<LdapRootDseResult> LdapRootDse { get; set; } = new();
     [JsonPropertyName("errors")] public List<string> Errors { get; set; } = new();
+    // --- htb-smtp-enum --- (GAP-011)
+    [JsonPropertyName("smtp_enum")] public List<SmtpEnumResult> SmtpEnum { get; set; } = new();
+    // --- end htb-smtp-enum ---
     // --- s3 --- (GAP-037)
     [JsonPropertyName("s3")] public List<S3Finding> S3 { get; set; } = new();
     // --- cms fingerprint --- (GAP-036)
@@ -606,6 +609,21 @@ public sealed record DomainUser(
     [property: JsonPropertyName("user_account_control")] string? UserAccountControl,
     [property: JsonPropertyName("member_of")] IReadOnlyList<string> MemberOf);
 
+
+// --- htb-smtp-enum --- (GAP-011: SMTP enumeration result shape)
+public sealed class SmtpEnumResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("banner")] public string? Banner { get; set; }
+    [JsonPropertyName("ehlo_capabilities")] public List<string> EhloCapabilities { get; set; } = new();
+    [JsonPropertyName("starttls_supported")] public bool StartTlsSupported { get; set; }
+    [JsonPropertyName("starttls_negotiated")] public bool StartTlsNegotiated { get; set; }
+    [JsonPropertyName("auth_methods")] public List<string> AuthMethods { get; set; } = new();
+    [JsonPropertyName("enum_mode")] public string? EnumMode { get; set; }
+    [JsonPropertyName("discovered_users")] public List<string> DiscoveredUsers { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+// --- end htb-smtp-enum ---
 
 // --- phpinfo additions (GAP-054) ---
 public sealed record PhpInfoFinding

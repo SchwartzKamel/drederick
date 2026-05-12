@@ -1,0 +1,16 @@
+S: 220 mail.lab.local ESMTP Postfix
+C: EHLO drederick.local
+S: 250-mail.lab.local
+S: 250-PIPELINING
+S: 250-SIZE 10485760
+S: 250-VRFY
+S: 250-ETRN
+S: 250-STARTTLS
+S: 250-AUTH PLAIN LOGIN
+S: 250 HELP
+C: VRFY admin
+S: 550 5.1.1 <admin>: Recipient address rejected: User unknown
+C: VRFY root
+S: 252 2.0.0 root
+C: QUIT
+S: 221 2.0.0 Bye

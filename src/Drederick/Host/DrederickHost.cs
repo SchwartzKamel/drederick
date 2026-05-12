@@ -358,6 +358,9 @@ public sealed class DrederickHost
         var dnsAxfr = new DnsZoneTransferTool(scope, audit);
         var httpContentDiscovery = new HttpContentDiscoveryTool(scope, audit);
         var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
+        // --- htb-smtp-enum ---
+        var smtpEnum = new SmtpEnumTool(scope, audit);
+        // --- end htb-smtp-enum ---
 
         return new ReconToolbox(
             new IReconTool[]
@@ -365,6 +368,9 @@ public sealed class DrederickHost
                 nmap, http, tls, dns,
                 smb, ftp, ssh, snmp, ldap, rpc, kerberos,
                 dnsAxfr, httpContentDiscovery, tlsCipherEnum,
+                // --- htb-smtp-enum ---
+                smtpEnum,
+                // --- end htb-smtp-enum ---
             },
             audit);
     }

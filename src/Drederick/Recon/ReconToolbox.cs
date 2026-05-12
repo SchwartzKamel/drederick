@@ -33,6 +33,9 @@ public sealed class ReconToolbox
     private readonly S3MinioProbeTool? _s3;
     private readonly CmsFingerprintTool? _cmsFingerprint;
     private readonly Drederick.Recon.Ad.SmbNullSessionTool? _smbNullSession;
+    // --- htb-smtp-enum ---
+    private readonly SmtpEnumTool? _smtpEnum;
+    // --- end htb-smtp-enum ---
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -80,6 +83,9 @@ public sealed class ReconToolbox
         _s3 = materialized.OfType<S3MinioProbeTool>().SingleOrDefault();
         _cmsFingerprint = materialized.OfType<CmsFingerprintTool>().SingleOrDefault();
         _smbNullSession = materialized.OfType<Drederick.Recon.Ad.SmbNullSessionTool>().SingleOrDefault();
+        // --- htb-smtp-enum ---
+        _smtpEnum = materialized.OfType<SmtpEnumTool>().SingleOrDefault();
+        // --- end htb-smtp-enum ---
 
         _tools = materialized;
         _audit = audit;
@@ -513,6 +519,25 @@ public sealed class ReconToolbox
         finding.Fingerprint.AddRange(reports);
         return System.Text.Json.JsonSerializer.Serialize(reports);
     }
+
+    // --- htb-smtp-enum --- (GAP-011)
+    [Description("Enumerate SMTP on a port (25/465/587/2525): banner, EHLO capabilities, " +
+                 "STARTTLS upgrade when advertised, and unauthenticated user discovery via " +
+                 "VRFY/EXPN/RCPT TO against a small admin wordlist. Read-only, no credential brute-force.")]
+    public async Task<string> EnumerateSmtpAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (default 25).")] int port = 25,
+        [Description("Optional path to a newline-delimited wordlist of usernames. When omitted a built-in 20-name admin list is used.")] string? wordlistPath = null,
+        CancellationToken ct = default)
+    {
+        var tool = _smtpEnum ?? throw new InvalidOperationException("SmtpEnumTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "smtp-enum");
+        var r = await tool.EnumerateAsync(target, port, wordlistPath, ct: ct).ConfigureAwait(false);
+        GetOrCreate(target).SmtpEnum.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-smtp-enum ---
 
 
     private static void ValidatePort(int port)

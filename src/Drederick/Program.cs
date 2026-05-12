@@ -815,6 +815,9 @@ var smbNullSession = new Drederick.Recon.Ad.SmbNullSessionTool(
         scope, audit, samr: new Drederick.Recon.Ad.SmbSamrEnumerator(scope, audit)),
     ldapBackendFactory: () => new Drederick.Recon.Ad.SmbLibraryLdapBackend(scope, audit),
     connectTimeout: TimeSpan.FromSeconds(10));
+// --- htb-smtp-enum --- (GAP-011)
+var smtpEnum = new SmtpEnumTool(scope, audit);
+// --- end htb-smtp-enum ---
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
@@ -858,6 +861,9 @@ var toolbox = new ReconToolbox(
         s3Probe,
         cmsFingerprint,
         smbNullSession,
+        // --- htb-smtp-enum ---
+        smtpEnum,
+        // --- end htb-smtp-enum ---
     },
     audit,
     reconBudget);
