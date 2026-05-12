@@ -480,4 +480,48 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         if (!Uri.TryCreate(hr.Url, UriKind.Absolute, out var u)) return false;
         return u.Port == port;
     }
+
+    // --- empire-adaptive-extend ---
+    /// <summary>
+    /// Empire Wave C — capability snapshot consumed by
+    /// <see cref="PlanEmpireCandidates"/>. When
+    /// <see cref="EmpireInjectionCapabilities.EmpireAutopilotEnabled"/>
+    /// is false (the default), Empire candidates are never injected.
+    /// Wired by <c>Program.cs</c> / <c>DrederickHost</c> when
+    /// <c>--empire-autopilot</c> is set.
+    /// </summary>
+    public EmpireInjectionCapabilities? EmpireCapabilities { get; set; }
+
+    /// <summary>
+    /// Empire Wave C — active Empire sessions visible to this run, used by
+    /// <see cref="PlanEmpireCandidates"/> to emit post-ex module
+    /// candidates against already-landed agents. Empty by default.
+    /// </summary>
+    public IReadOnlyList<Drederick.Exploit.Empire.EmpireSession> EmpireSessions { get; set; }
+        = Array.Empty<Drederick.Exploit.Empire.EmpireSession>();
+
+    /// <summary>
+    /// Empire Wave C — pure planning helper. Given a host's findings plus
+    /// any existing candidate chain, returns the Empire stager / module
+    /// candidates the adaptive plan should consider. The injector itself
+    /// performs no I/O and never escapes scope — every executor that
+    /// ultimately consumes a candidate re-validates the target through
+    /// <c>_scope.Require</c> (see
+    /// <c>@invariant-id:scope-in-every-tool</c>).
+    /// </summary>
+    public IReadOnlyList<EmpireCandidate> PlanEmpireCandidates(
+        string host,
+        HostFinding? findings,
+        IReadOnlyList<EmpireCandidate>? existingChain = null)
+    {
+        if (EmpireCapabilities is null)
+            return Array.Empty<EmpireCandidate>();
+        return EmpireCandidateInjector.Inject(
+            host,
+            findings,
+            EmpireSessions,
+            EmpireCapabilities,
+            existingChain);
+    }
+    // --- end empire-adaptive-extend ---
 }
