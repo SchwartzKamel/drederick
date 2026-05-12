@@ -118,6 +118,38 @@ public sealed class CveAnnotator
                     }
                 }
 
+                // --- htb-pterodactyl-fingerprint ---
+                // GAP-052: in-code PterodactylCveCorpus backstop. NVD lags
+                // upstream Pterodactyl GHSAs and the on-disk curated/
+                // directory may not be present in every environment, so
+                // any CMS-fingerprint candidate whose (vendor, product)
+                // resolves to Pterodactyl is unconditionally enriched
+                // with the built-in pack.
+                if (Recon.Cms.PterodactylCveCorpus.AppliesTo(cand.Vendor, cand.Product))
+                {
+                    foreach (var pcm in Recon.Cms.PterodactylCveCorpus.Match(cand.Version))
+                    {
+                        if (!emitted.Add((cand.Port, pcm.CveId))) continue;
+
+                        report.UpsertCve(pcm.CveId, pcm.Cvss, pcm.Summary, null);
+                        cveCount++;
+
+                        foreach (var url in pcm.RefUrls)
+                        {
+                            try { report.UpsertPocRef(pcm.CveId, "builtin-pterodactyl", url: url); } catch { }
+                        }
+
+                        var pterPayload = JsonSerializer.Serialize(new CveFindingPayload(
+                            pcm.CveId, pcm.Cvss, cand.Product, cand.Version, cand.Source, "curated",
+                            "builtin-pterodactyl", pcm.Severity, pcm.GhsaId));
+                        if (InsertCveFinding(conn, hostId.Value, serviceId, pterPayload, now))
+                        {
+                            findingCount++;
+                        }
+                    }
+                }
+                // --- end htb-pterodactyl-fingerprint ---
+
                 if (!cacheLoaded) continue;
 
                 var matches = matcher.Match(vendor: null, product: cand.Product, version: cand.Version);

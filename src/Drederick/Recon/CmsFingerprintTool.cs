@@ -536,11 +536,36 @@ public sealed class CmsFingerprintTool : IReconTool
         var asm = typeof(CmsFingerprintTool).Assembly;
         var name = asm.GetManifestResourceNames()
             .FirstOrDefault(n => n.EndsWith("cms-fingerprints.yaml", StringComparison.OrdinalIgnoreCase));
-        if (name is null) return Array.Empty<CmsFingerprintEntry>();
-        using var stream = asm.GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException("Failed to open cms-fingerprints.yaml resource stream.");
-        using var reader = new StreamReader(stream);
-        return ParseYaml(reader.ReadToEnd());
+        IReadOnlyList<CmsFingerprintEntry> parsed;
+        if (name is null)
+        {
+            parsed = Array.Empty<CmsFingerprintEntry>();
+        }
+        else
+        {
+            using var stream = asm.GetManifestResourceStream(name)
+                ?? throw new InvalidOperationException("Failed to open cms-fingerprints.yaml resource stream.");
+            using var reader = new StreamReader(stream);
+            parsed = ParseYaml(reader.ReadToEnd());
+        }
+
+        // --- htb-pterodactyl-fingerprint ---
+        // GAP-052: Programmatic Pterodactyl Panel signature is appended to
+        // the corpus chain when the embedded YAML did not provide one
+        // (resource stripped, trimmed build, custom corpus, etc.). The
+        // YAML entry usually wins on order — this block is a backstop,
+        // not a duplicate.
+        if (!parsed.Any(e => string.Equals(
+                e.Name, Cms.PterodactylSignature.EntryName, StringComparison.OrdinalIgnoreCase)))
+        {
+            var augmented = new List<CmsFingerprintEntry>(parsed.Count + 1);
+            augmented.AddRange(parsed);
+            augmented.Add(Cms.PterodactylSignature.BuildEntry());
+            parsed = augmented;
+        }
+        // --- end htb-pterodactyl-fingerprint ---
+
+        return parsed;
     }
 
     internal static IReadOnlyList<CmsFingerprintEntry> ParseYaml(string yaml)
