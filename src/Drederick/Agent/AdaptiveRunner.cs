@@ -92,11 +92,22 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         ServiceWorkerPool svcPool,
         CancellationToken ct)
     {
-        _audit.Record("runner.plan", new Dictionary<string, object?>
+        // --- htb-structured-plan-prior --- (GAP-054)
+        // Emit the structured PlanPrior alongside a human-readable summary.
+        // The prose digest moves to the optional `summary` field; the
+        // authoritative shape is the typed PlanPrior.
+        var planPrior = PlanPriorBuilder.Build(
+            kb: prior,
+            audit: _audit,
+            budget: null,
+            targets: new[] { target },
+            summary: prior.Digest(target));
+        var planFields = new Dictionary<string, object?>(planPrior.ToAuditFields())
         {
             ["target"] = target,
-            ["prior"] = prior.Digest(target),
-        });
+        };
+        _audit.Record("runner.plan.prior", planFields);
+        // --- end htb-structured-plan-prior ---
 
         // Step 1: DNS + initial nmap in parallel. If prior knowledge exists, we
         // bias the first scan toward previously observed ports plus the top list
