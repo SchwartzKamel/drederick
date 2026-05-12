@@ -14,7 +14,9 @@ internal static class LlmToolCatalog
         LlmExploitTools? exploitTools,
         LlmNotebookTool? notebook = null,
         FuzzToolbox? fuzz = null,
-        AuditLog? audit = null)
+        AuditLog? audit = null,
+        // --- htb-llm-vhost-fuzz-surface ---
+        Scope.Scope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -66,6 +68,36 @@ internal static class LlmToolCatalog
             aiTools.AddRange(llmFuzz.BuildAiFunctions());
         }
 
+        // --- htb-llm-vhost-fuzz-surface ---
+        // GAP-051 follow-up: when a Scope is also supplied, expose the
+        // enriched LlmFuzzToolWrappers surface that adds explicit scope
+        // resolution + `llm.fuzz.<name>.invoked` audit events keyed by
+        // SHA-256 of the canonical arg blob. The legacy LlmFuzzTools
+        // registration above stays in place when no Scope is supplied
+        // (back-compat for callers that haven't been migrated). The new
+        // surface uses the same six AIFunction names, so we register
+        // EXACTLY ONE of the two paths to avoid duplicate name binding.
+        if (fuzz is not null && scope is not null && audit is not null)
+        {
+            // Pop the legacy LlmFuzzTools registrations we just added and
+            // replace with the enriched wrappers. This preserves the
+            // existing 6-name contract while upgrading the per-call
+            // behavior.
+            var legacyCount = 0;
+            if (fuzz.GetByName("vhost-fuzz") is VhostFuzzTool) legacyCount++;
+            if (fuzz.GetByName("subdomain-fuzz") is SubdomainFuzzTool) legacyCount++;
+            if (fuzz.GetByName("header-fuzz") is HeaderFuzzTool) legacyCount++;
+            if (fuzz.GetByName("web-param-fuzz") is WebParamFuzzTool) legacyCount++;
+            if (fuzz.GetByName("api-endpoint-fuzz") is ApiEndpointFuzzTool) legacyCount++;
+            if (fuzz.GetByName("graphql-fuzz") is GraphqlFuzzTool) legacyCount++;
+            if (legacyCount > 0 && aiTools.Count >= legacyCount)
+            {
+                aiTools.RemoveRange(aiTools.Count - legacyCount, legacyCount);
+            }
+            var wrappers = new LlmFuzzToolWrappers(scope, audit, fuzz);
+            aiTools.AddRange(wrappers.BuildAiFunctions());
+        }
+
         return aiTools;
     }
 
@@ -74,8 +106,10 @@ internal static class LlmToolCatalog
         LlmExploitTools? exploitTools,
         LlmNotebookTool? notebook = null,
         FuzzToolbox? fuzz = null,
-        AuditLog? audit = null) =>
-        BuildAiFunctions(tools, exploitTools, notebook, fuzz, audit).Cast<AITool>().ToArray();
+        AuditLog? audit = null,
+        // --- htb-llm-vhost-fuzz-surface ---
+        Scope.Scope? scope = null) =>
+        BuildAiFunctions(tools, exploitTools, notebook, fuzz, audit, scope).Cast<AITool>().ToArray();
 }
 
 /// <summary>

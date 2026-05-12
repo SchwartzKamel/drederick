@@ -359,9 +359,17 @@ public sealed class AdaptiveRunner : IReconAgentRunner
                 if (header is not null) await Try("header-fuzz", () => header.ProbeAsync(url, options: null, ct: ct));
                 if (webparam is not null) await Try("web-param-fuzz", () => webparam.ProbeAsync(url, options: null, ct: ct));
 
+                // --- htb-llm-vhost-fuzz-surface ---
                 // GAP-051: vhost-fuzz auto-schedule. When http_probe detected
                 // a Host-header redirect, derive apex and queue one vhost
                 // brute per (apex,port) per pass. Tool re-checks scope on apex.
+                // The same scheduling policy is exposed as a standalone
+                // `Drederick.Recon.Fuzz.VhostAutoScheduler` for callers
+                // outside this runner (e.g. LLM tool invocations) — see
+                // VhostAutoScheduler.DeriveApex / ScheduleAsync. The
+                // inline path below is preserved so existing tests
+                // (AdaptiveRunnerVhostAutoScheduleTests) keep asserting
+                // on the `vhost-fuzz.start` / `runner.fuzz.error` events.
                 if (vhost is not null && f.Http is not null)
                 {
                     foreach (var hr in f.Http)
