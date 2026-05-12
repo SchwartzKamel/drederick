@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head><title>Locale fixture</title></head>
+<body>
+<a href="/index.php?lang=en&amp;page=home">English</a>
+<a href="/index.php?lang=fr&amp;page=home">French</a>
+<a href="/about.php?locale=en_US&amp;view=team">About</a>
+<a href="/static/logo.png">Logo</a>
+<form action="/render.php" method="get">
+  <input type="hidden" name="template" value="default" />
+  <input type="text" name="username" />
+  <select name="region">
+    <option value="us">US</option>
+    <option value="eu">EU</option>
+  </select>
+  <button type="submit">Go</button>
+</form>
+<a href="/search.php?q=hello&amp;color=red">Unfiltered params</a>
+</body>
+</html>
