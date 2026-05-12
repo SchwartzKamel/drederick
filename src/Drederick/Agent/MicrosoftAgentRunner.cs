@@ -278,6 +278,63 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
             Console.WriteLine("---------------------");
         }
 
+        // --- htb-llm-stops-after-enum-tighten ---
+        // GAP-053: If the LLM signaled completion but CVE leads remain
+        // unexploited in the knowledge base, force exactly one more
+        // turn instructing it to call llm_exploit_plan. Per-target
+        // flag file prevents loops.
+        try
+        {
+            var nudge = new EnumExploitNudge(_audit);
+            var outRoot = Path.GetDirectoryName(_audit.Path);
+            if (!string.IsNullOrEmpty(outRoot))
+            {
+                foreach (var target in targets)
+                {
+                    if (nudge.HasNudged(outRoot, target)) continue;
+                    if (!nudge.ShouldNudge(prior, response.Text, target)) continue;
+                    var unexploited = nudge.UnexploitedCveIds(prior, target);
+                    nudge.MarkNudged(outRoot, target, unexploited.Count);
+                    var nudgeMessage = nudge.BuildNudgePrompt(unexploited);
+                    try
+                    {
+                        var nudgeResponse = await agent.RunAsync(nudgeMessage, session, options: null, ct)
+                            .ConfigureAwait(false);
+                        _audit.Record("llm.nudge.response", new Dictionary<string, object?>
+                        {
+                            ["target"] = target,
+                            ["text_len"] = nudgeResponse.Text?.Length ?? 0,
+                            ["finish_reason"] = nudgeResponse.FinishReason?.ToString(),
+                        });
+                        if (!string.IsNullOrEmpty(nudgeResponse.Text))
+                        {
+                            Console.WriteLine();
+                            Console.WriteLine($"--- agent nudge ({target}) ---");
+                            Console.WriteLine(nudgeResponse.Text);
+                            Console.WriteLine("------------------------------");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _audit.Record("llm.nudge.error", new Dictionary<string, object?>
+                        {
+                            ["target"] = target,
+                            ["error"] = ex.Message,
+                        });
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Nudge is best-effort. Never let it fail a finished run.
+            _audit.Record("llm.nudge.skipped", new Dictionary<string, object?>
+            {
+                ["error"] = ex.Message,
+            });
+        }
+        // --- end htb-llm-stops-after-enum-tighten ---
+
         tools.Finalize(targets);
         _audit.Record("runner.finish", new Dictionary<string, object?>
         {
