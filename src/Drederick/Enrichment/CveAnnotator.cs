@@ -327,6 +327,48 @@ public sealed class CveAnnotator
         return r is null or DBNull ? null : Convert.ToInt64(r);
     }
 
+    // --- htb-cve-lead-actions-resolve ---
+    /// <summary>
+    /// GAP-033 — enumerate CVE ids in <paramref name="outputDir"/>'s
+    /// <c>findings.db</c> that have no cached PoC artefact yet
+    /// (no <c>poc_refs.local_path</c> row). <see cref="CveLeadResolver"/>
+    /// consumes this to drive on-demand
+    /// <see cref="PocAggregator.FetchOnDemandAsync"/> calls after
+    /// annotation finishes, closing the loop between
+    /// <c>cve.annotate</c> and exploit-side PoC consumption.
+    /// </summary>
+    public static IReadOnlyList<string> LoadUnmatchedCveLeads(string outputDir)
+    {
+        if (string.IsNullOrWhiteSpace(outputDir))
+            throw new ArgumentException("outputDir required", nameof(outputDir));
+        var dbPath = Path.Combine(outputDir, "findings.db");
+        var ids = new List<string>();
+        if (!File.Exists(dbPath)) return ids;
+        using var conn = new SqliteConnection($"Data Source={dbPath}");
+        conn.Open();
+        using (var probe = conn.CreateCommand())
+        {
+            probe.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('cves','poc_refs');";
+            var n = Convert.ToInt64(probe.ExecuteScalar() ?? 0L);
+            if (n < 2) return ids;
+        }
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"SELECT c.cve_id FROM cves c
+WHERE NOT EXISTS (
+  SELECT 1 FROM poc_refs p
+  WHERE p.cve_id = c.cve_id AND p.local_path IS NOT NULL AND TRIM(p.local_path) != ''
+)
+ORDER BY c.cve_id;";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var v = reader.GetString(0);
+            if (!string.IsNullOrWhiteSpace(v)) ids.Add(v);
+        }
+        return ids;
+    }
+    // --- end htb-cve-lead-actions-resolve ---
+
     private static bool InsertCveFinding(SqliteConnection conn, long hostId, long? serviceId,
         string dataJson, string now)
     {

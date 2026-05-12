@@ -51,6 +51,18 @@ public sealed class AdaptiveRunner : IReconAgentRunner
     /// </summary>
     public ScaffoldingContext? Scaffolding { get; set; }
 
+    // --- htb-cve-lead-actions-resolve ---
+    /// <summary>
+    /// GAP-033 — optional hook invoked at the tail of <see cref="RunAsync"/>
+    /// after the worker pool drains and <c>tools.Finalize</c> has run.
+    /// Orchestrators wire this to <see cref="Drederick.Enrichment.CveLeadResolver"/>
+    /// so that CVEs annotated post-recon but lacking cached PoC artefacts
+    /// are pursued via <c>PocAggregator.FetchOnDemandAsync</c> before the
+    /// run reports out. Null by default — leaves AdaptiveRunner pure recon.
+    /// </summary>
+    public Func<CancellationToken, Task>? PostRunHookAsync { get; set; }
+    // --- end htb-cve-lead-actions-resolve ---
+
     public async Task RunAsync(
         IReadOnlyList<string> targets,
         ReconToolbox tools,
@@ -83,6 +95,34 @@ public sealed class AdaptiveRunner : IReconAgentRunner
         {
             ["tool_calls"] = tools.ToolCallsTotal,
         });
+
+        // --- htb-cve-lead-actions-resolve ---
+        // GAP-033 — optional post-recon hook so orchestrators can dispatch
+        // Drederick.Enrichment.CveLeadResolver after CveAnnotator runs,
+        // pursuing CVEs that were matched during annotation but had no
+        // cached PoC artefact. Hook is null/no-op when unset, so wiring
+        // remains the responsibility of the call site (Program.cs /
+        // DrederickHost) and this runner stays single-purpose.
+        if (PostRunHookAsync is { } hook)
+        {
+            try
+            {
+                await hook(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _audit.Record("runner.post_hook.error", new Dictionary<string, object?>
+                {
+                    ["hook"] = "cve_lead_resolver",
+                    ["error"] = ex.Message,
+                });
+            }
+        }
+        // --- end htb-cve-lead-actions-resolve ---
     }
 
     private async Task RunOneAsync(
