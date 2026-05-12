@@ -88,6 +88,15 @@ public sealed class CommandLineOptions
     public Dictionary<string, int> BudgetPerToolOverrides { get; } = new();
     // --- end gap-029 budget tuning ---
 
+    // --- htb-budget-rebalance ---
+    /// <summary>GAP-058: difficulty-adaptive budget profile. Selected via
+    /// <c>--difficulty {easy|medium|hard|insane}</c>. Null = medium
+    /// (backwards-compatible default). When set, <c>Program.cs</c>
+    /// applies the profile to <see cref="Drederick.Agent.Budgets.ToolBudget"/>
+    /// and uses its caps as the baseline before per-flag CLI overrides.</summary>
+    public Drederick.Agent.Budgets.Difficulty? Difficulty { get; set; }
+    // --- end htb-budget-rebalance ---
+
     public int Parallelism { get; set; } = 4;
 
     /// <summary>
@@ -777,6 +786,17 @@ public sealed class CommandLineOptions
                 continue;
             }
             // --- end gap-029 budget shorthand ---
+            // --- htb-budget-rebalance ---
+            if (a.StartsWith("--difficulty=", StringComparison.Ordinal))
+            {
+                var v = a.Substring("--difficulty=".Length);
+                if (!Drederick.Agent.Budgets.DifficultyProfile.TryParse(v, out var p))
+                    throw new ArgumentException(
+                        $"--difficulty must be one of easy|medium|hard|insane, got '{v}'.");
+                o.Difficulty = p.Difficulty;
+                continue;
+            }
+            // --- end htb-budget-rebalance ---
             // --- cred-spray-timeout shorthand: --cred-spray-timeout=N ---
             if (a.StartsWith("--cred-spray-timeout=", StringComparison.Ordinal))
             {
@@ -1224,6 +1244,17 @@ public sealed class CommandLineOptions
                         break;
                     }
                 // --- end gap-029 budget tuning flag parse ---
+                // --- htb-budget-rebalance ---
+                case "--difficulty":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!Drederick.Agent.Budgets.DifficultyProfile.TryParse(v, out var p))
+                            throw new ArgumentException(
+                                $"--difficulty must be one of easy|medium|hard|insane, got '{v}'.");
+                        o.Difficulty = p.Difficulty;
+                        break;
+                    }
+                // --- end htb-budget-rebalance ---
                 // ANCHOR: vpn-preflight-flag-parse (owned by vpn-htb-ergonomics task)
                 case "--require-vpn":
                     o.RequireVpn = true; break;

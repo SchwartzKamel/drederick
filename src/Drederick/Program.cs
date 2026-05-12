@@ -859,6 +859,26 @@ var cloudStorage = new CloudStorageEnumTool(scope, audit, opts.OutputDir);
 // overrides on top. The budget is a runaway-loop rate-limit; scope is
 // enforced inside every tool so adjusting caps does not weaken
 // authorization.
+// --- htb-budget-rebalance ---
+// GAP-058: difficulty-adaptive agent budget. Constructed (and logged)
+// regardless of whether the operator passed --difficulty so the audit
+// trail always records which profile shaped the run. The Recon/Exploit
+// record budgets below remain the binding constraint for the
+// deterministic toolboxes; the agent ToolBudget is consumed by the
+// LLM/adaptive planners.
+var difficultyProfile = opts.Difficulty is { } diff
+    ? Drederick.Agent.Budgets.DifficultyProfile.For(diff)
+    : Drederick.Agent.Budgets.DifficultyProfile.Medium;
+var agentToolBudget = new Drederick.Agent.Budgets.ToolBudget(difficultyProfile);
+audit.Record("budget.difficulty", new Dictionary<string, object?>
+{
+    ["difficulty"] = difficultyProfile.Difficulty.ToString().ToLowerInvariant(),
+    ["global"] = difficultyProfile.GlobalBudget,
+    ["per_tool"] = difficultyProfile.PerToolBudget,
+    ["per_target"] = difficultyProfile.PerTargetBudget,
+    ["explicit"] = opts.Difficulty.HasValue,
+});
+// --- end htb-budget-rebalance ---
 var reconBudgetBase = opts.UseAgent
     ? Drederick.Recon.ToolBudget.LlmDefault
     : Drederick.Recon.ToolBudget.Default;
@@ -1096,6 +1116,31 @@ var phishingDelivery = new Drederick.Exploit.Phishing.PhishingDelivery(
 var phishingToolbox = new Drederick.Exploit.Phishing.PhishingToolbox(
     new Drederick.Exploit.Phishing.IPhishingTool[] { phishingGenerator, phishingDelivery },
     audit);
+
+// --- htb-phish-macro-tooling ---
+// Offline payload builders (GAP-046). Master gate is --allow-payloads on
+// RunPermissions; the LNK builder additionally requires --allow-destructive.
+// Each builder re-checks scope + the Payloads category on its BuildAsync
+// entry point, so this registration is plumbing, not the authorization
+// boundary.
+var macroDocBuilder = new Drederick.Exploit.Payloads.MacroDocBuilder(
+    scope, audit, permissions, opts.OutputDir);
+var htaStager = new Drederick.Exploit.Payloads.HtaStager(
+    scope, audit, permissions, opts.OutputDir);
+var lnkStager = new Drederick.Exploit.Payloads.LnkStager(
+    scope, audit, permissions, opts.OutputDir);
+audit.Record("payload.builders.ready", new Dictionary<string, object?>
+{
+    ["tools"] = new[] {
+        Drederick.Exploit.Payloads.MacroDocBuilder.Name,
+        Drederick.Exploit.Payloads.HtaStager.Name,
+        Drederick.Exploit.Payloads.LnkStager.Name,
+    },
+    ["allow_payloads"] = permissions.AllowPayloads,
+    ["allow_destructive"] = permissions.AllowDestructive,
+});
+_ = macroDocBuilder; _ = htaStager; _ = lnkStager;
+// --- end htb-phish-macro-tooling ---
 
 audit.Record("exploit.toolbox.ready", new Dictionary<string, object?>
 {
