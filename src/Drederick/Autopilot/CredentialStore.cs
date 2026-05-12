@@ -169,6 +169,41 @@ public sealed class CredentialStore
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(s ?? ""));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
+
+    // --- htb-ssh-key-passphrase-crack ---
+    /// <summary>
+    /// GAP-038 — record an SSH private-key passphrase recovered by
+    /// <see cref="Drederick.Exploit.Cred.SshKeyCracker"/>. Stored in the
+    /// same secrets map as every other captured credential; the "user"
+    /// slot is the key id (typically the looted filename, e.g.
+    /// <c>id_rsa</c>) and the "realm" is the fixed sentinel
+    /// <c>ssh-key</c> so the autopilot chooser can distinguish
+    /// key-passphrases from interactive account passwords. NEVER logs
+    /// the plaintext — only its SHA-256.
+    /// </summary>
+    public bool AddSshKeyPassphrase(string keyId, string passphrase, string source = "ssh-key-crack")
+    {
+        if (string.IsNullOrWhiteSpace(keyId))
+            throw new ArgumentException("keyId required", nameof(keyId));
+        if (passphrase is null)
+            throw new ArgumentException("passphrase required", nameof(passphrase));
+        const string realm = "ssh-key";
+        var key = Key(realm, keyId);
+        var added = _secrets.TryAdd(key, passphrase);
+        if (added)
+        {
+            _audit.Record("autopilot.cred.sshkey_passphrase", new Dictionary<string, object?>
+            {
+                ["key_id"] = keyId,
+                ["realm"] = realm,
+                ["passphrase_sha256"] = Sha256Hex(passphrase),
+                ["source"] = source,
+                ["total"] = _secrets.Count,
+            });
+        }
+        return added;
+    }
+    // --- end htb-ssh-key-passphrase-crack ---
 }
 
 internal sealed record AttemptRecord(
