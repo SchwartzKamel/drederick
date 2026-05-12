@@ -89,6 +89,49 @@ if (opts.DoctorSubcommand)
     }
     // --- end recon-doctor-wiring ---
 
+    // --- empire-doctor ---
+    // When --category=empire is passed, run the Empire-specific check
+    // suite. Each check is an independent IDoctorCheck; none short-circuit
+    // their siblings. Doctor modifies the operator workstation only — the
+    // network-reachable check is scope-gated.
+    if (string.Equals(opts.DoctorCategory, Drederick.Doctor.EmpireDoctorChecks.CategoryName, StringComparison.OrdinalIgnoreCase))
+    {
+        Scope? empScope = null;
+        try
+        {
+            if (!string.IsNullOrEmpty(opts.ScopePath) && File.Exists(opts.ScopePath))
+            {
+                empScope = ScopeLoader.LoadFile(opts.ScopePath, allowBroad: opts.AllowBroad, labMode: opts.LabMode);
+            }
+        }
+        catch (ScopeException ex)
+        {
+            Console.Error.WriteLine($"doctor --category=empire: scope load failed: {ex.Message}");
+        }
+        var empDeps = new Drederick.Doctor.EmpireDoctorDeps(
+            Audit: docAudit,
+            Runner: new Drederick.Doctor.DefaultProcessRunner(),
+            Locator: new Drederick.Doctor.PathToolLocator(),
+            Fs: new Drederick.Doctor.DefaultFileSystem(),
+            Tcp: new Drederick.Doctor.DefaultTcpProbe(),
+            Env: new Drederick.Doctor.ProcessEnvReader(),
+            Scope: empScope);
+        var empResults = await Drederick.Doctor.EmpireDoctorChecks.RunAllAsync(
+            empDeps, install: opts.DoctorInstall, assumeYes: opts.AssumeYes,
+            Console.In, Console.Out, CancellationToken.None);
+        if (opts.DoctorInstall && empResults.Any(r => r.Id == "empire.installed" && r.Status == Drederick.Doctor.DoctorCheckStatus.Fail))
+        {
+            var pm = Drederick.Doctor.PackageManagerDetection.Detect(new Drederick.Doctor.PathToolLocator());
+            var installer = new Drederick.Doctor.EmpireInstaller(
+                docAudit,
+                new Drederick.Doctor.DefaultProcessRunner(),
+                new Drederick.Doctor.PathToolLocator());
+            await installer.InstallAsync(pm, opts.AssumeYes, Console.In, Console.Out, CancellationToken.None);
+        }
+        return empResults.Any(r => r.Status == Drederick.Doctor.DoctorCheckStatus.Fail) ? 1 : 0;
+    }
+    // --- end empire-doctor ---
+
     var doctor = new DoctorRunner(docAudit);
     var tools = doctor.Detect();
     var pm = PackageManagerDetection.Detect(new PathToolLocator());
@@ -672,6 +715,33 @@ Console.WriteLine(opts.LabMode
 }
 
 var kb = KnowledgeBase.Load(opts.MemoryPath);
+
+// --- htb-briefing-loader-recon-seed ---
+// Seed the knowledge base from the operator-supplied briefing.md
+// (targets, users, credentials, constraints, notes) BEFORE the
+// AdaptiveRunner / MicrosoftAgentRunner pool starts. Targets in the
+// briefing are hints only — Scope.Require still gates every tool.
+// Plaintext passwords are hashed to SHA-256; never stored verbatim.
+if (!string.IsNullOrEmpty(opts.BriefingPath))
+{
+    try
+    {
+        var briefingSeed = Drederick.Memory.BriefingLoader.Load(opts.BriefingPath, scope, audit);
+        kb.MergeFromBriefing(briefingSeed);
+    }
+    catch (Exception ex)
+    {
+        audit.Record("briefing.error", new Dictionary<string, object?>
+        {
+            ["path"] = opts.BriefingPath,
+            ["reason"] = "load_failed",
+            ["error"] = ex.GetType().Name,
+            ["message"] = ex.Message,
+        });
+        Console.Error.WriteLine($"briefing: {ex.Message}");
+    }
+}
+// --- end htb-briefing-loader-recon-seed ---
 
 // --- tenable-import-wiring ---
 // Log the import outcome and seed the knowledge base with service data so the
