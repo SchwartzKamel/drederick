@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Test fixture: minimal stand-in for `python3 empire.py server`. Opens a
+# TCP listener on the port supplied via `--port <N>` so that
+# `EmpireServer.StartAsync`'s TCP port-open probe completes. Stays alive
+# until killed via SIGTERM/SIGKILL on the recorded PID — exercises the
+# `EmpireServer.StopAsync` PID-kill fallback. Does NOT speak HTTP; the
+# REST surface is exercised separately with a mocked HttpClient.
+#
+# Usage:
+#   fake-empire-server server --port 13370
+#
+# Notes:
+#   * Uses python3's socketserver so we don't depend on `nc`.
+#   * If python3 is unavailable, the script exits 127 and the test
+#     gates accordingly.
+
+set -eu
+
+port=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port)
+      port="$2"; shift 2 ;;
+    *)
+      shift ;;
+  esac
+done
+
+if [[ -z "${port}" ]]; then
+  echo "fake-empire-server: --port <N> is required" >&2
+  exit 2
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "fake-empire-server: python3 not available" >&2
+  exit 127
+fi
+
+exec python3 -c '
+import socket, sys, time
+port = int(sys.argv[1])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", port))
+s.listen(8)
+while True:
+    try:
+        c, _ = s.accept()
+        try:
+            c.recv(1024)
+            c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        finally:
+            try: c.close()
+            except Exception: pass
+    except Exception:
+        time.sleep(0.05)
+' "${port}"

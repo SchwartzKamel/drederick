@@ -1,0 +1,24 @@
+{
+  "records": [
+    {
+      "session_id": "AB12CD34",
+      "name": "AB12CD34",
+      "internal_ip": "10.10.10.50",
+      "external_ip": "203.0.113.10",
+      "username": "WIN10\\bob",
+      "hostname": "WIN10",
+      "listener": "lab-http",
+      "checkin_time": "2025-04-20T17:24:00Z"
+    },
+    {
+      "session_id": "EF56GH78",
+      "name": "EF56GH78",
+      "internal_ip": "10.10.10.51",
+      "external_ip": "203.0.113.10",
+      "username": "WIN10\\admin",
+      "hostname": "FILE01",
+      "listener": "lab-https",
+      "checkin_time": "2025-04-20T17:31:15Z"
+    }
+  ]
+}

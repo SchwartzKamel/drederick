@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "id": 1,
+      "name": "lab-http",
+      "module": "http",
+      "enabled": true,
+      "options": {
+        "Host": "10.10.14.5",
+        "Port": "8080",
+        "Name": "lab-http"
+      }
+    },
+    {
+      "id": 2,
+      "name": "lab-https",
+      "module": "http",
+      "enabled": true,
+      "options": {
+        "Host": "10.10.14.5",
+        "Port": "8443",
+        "Name": "lab-https"
+      }
+    }
+  ]
+}
