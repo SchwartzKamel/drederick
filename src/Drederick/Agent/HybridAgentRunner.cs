@@ -61,10 +61,19 @@ public sealed class HybridAgentRunner : IReconAgentRunner
 
         if (_llm is null)
         {
+            // --- htb-hybrid-fallback-transparency ---
             _audit.Record("hybrid.llm_unavailable", new Dictionary<string, object?>
             {
                 ["reason"] = "null_llm_runner",
             });
+            EmitFallbackEvent(new HybridFallbackEvent(
+                Timestamp: DateTimeOffset.UtcNow,
+                Stage: HybridFallbackEvent.Stages.Init,
+                Reason: HybridFallbackEvent.Reasons.NoApiKey,
+                ExceptionType: null,
+                MessageHash: null,
+                RetryHintSeconds: null,
+                FellBackTo: HybridFallbackEvent.FellBack.DeterministicRunner));
             await _deterministic.RunAsync(targets, tools, priorKnowledge, ct).ConfigureAwait(false);
             _audit.Record("hybrid.finish", new Dictionary<string, object?>
             {
@@ -100,17 +109,33 @@ public sealed class HybridAgentRunner : IReconAgentRunner
         }
         catch (Exception ex)
         {
+            // --- htb-hybrid-fallback-transparency ---
             _audit.Record("hybrid.llm_fallback", new Dictionary<string, object?>
             {
                 ["exception_type"] = ex.GetType().FullName,
                 ["message_sha256"] = Sha256(ex.Message),
             });
+            var (stage, reason) = HybridFallbackEvent.Classify(ex);
+            EmitFallbackEvent(new HybridFallbackEvent(
+                Timestamp: DateTimeOffset.UtcNow,
+                Stage: stage,
+                Reason: reason,
+                ExceptionType: ex.GetType().FullName,
+                MessageHash: HybridFallbackEvent.Sha256Tail(ex.Message),
+                RetryHintSeconds: HybridFallbackEvent.ExtractRetryHintSeconds(ex),
+                FellBackTo: HybridFallbackEvent.FellBack.DeterministicRunner));
             await _deterministic.RunAsync(targets, tools, priorKnowledge, ct).ConfigureAwait(false);
             _audit.Record("hybrid.finish", new Dictionary<string, object?>
             {
                 ["path"] = "deterministic_after_fallback",
             });
         }
+    }
+
+    // --- htb-hybrid-fallback-transparency ---
+    private void EmitFallbackEvent(HybridFallbackEvent ev)
+    {
+        _audit.Record(HybridFallbackEvent.EventName, ev.ToAuditFields());
     }
 
     private static string Sha256(string? s)
