@@ -278,6 +278,29 @@ public sealed class KnowledgeBase
         return false;
     }
 
+    // --- htb-briefing-delta-proposed --- (GAP-051)
+    /// <summary>
+    /// Fired when a high-signal finding is observed (severity &gt;= High
+    /// or a CVE match was added). Subscribers — typically
+    /// <see cref="Drederick.Briefing.DeltaEmitter"/> — turn the delta
+    /// into a <c>briefing.delta.proposed</c> audit event. Additive
+    /// hook: invocation is opt-in via <see cref="RaiseHighSignal"/>
+    /// and does not change <see cref="Merge"/> semantics.
+    /// </summary>
+    public event Action<Drederick.Briefing.BriefingDelta>? OnHighSignalFinding;
+
+    /// <summary>
+    /// Notify subscribers of a high-signal delta. No-op when no
+    /// listeners are attached. Callers are responsible for ensuring
+    /// the delta carries only metadata (no plaintext credentials).
+    /// </summary>
+    public void RaiseHighSignal(Drederick.Briefing.BriefingDelta delta)
+    {
+        ArgumentNullException.ThrowIfNull(delta);
+        OnHighSignalFinding?.Invoke(delta);
+    }
+    // --- end htb-briefing-delta-proposed ---
+
     /// <summary>Record the successful execution of an Empire module on a target.</summary>
     public void RecordEmpireModuleSuccess(string host, string moduleName, string output)
     {
