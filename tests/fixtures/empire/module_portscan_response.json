@@ -1,0 +1,6 @@
+{
+  "task_id": "task-portscan-1",
+  "status": "completed",
+  "module": "powershell/situational_awareness/network/portscan",
+  "output": "[*] Empire portscan starting\n[+] 10.10.10.5:22 - Open\n[+] 10.10.10.5:80 - Open\n[+] 10.10.10.5:445 - Open\n[+] 10.10.10.7:445 - Open\n[+] 10.10.10.7:3389 - Open\n[-] 10.10.10.9:22 - Closed\n[*] Portscan complete: 5 open / 1 closed\n"
+}

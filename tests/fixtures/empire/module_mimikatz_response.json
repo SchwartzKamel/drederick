@@ -1,0 +1,6 @@
+{
+  "task_id": "task-mimikatz-1",
+  "status": "completed",
+  "module": "powershell/credentials/mimikatz/logonpasswords",
+  "output": "Hostname: WIN10-LAB / S-1-5-21-1234-5678-9012\n\n  .#####.   mimikatz 2.2.0 (x64) #19041 Aug 10 2021 17:19:53\n .## ^ ##.\n\nAuthentication Id : 0 ; 999 (00000000:000003e7)\nSession           : Interactive from 1\nUser Name         : alice\nDomain            : CORP\nLogon Server      : DC01\nLogon Time        : 4/1/2024 9:00:00 AM\nSID               : S-1-5-21-1\n\tmsv :\n\t [00000003] Primary\n\t * Username : alice\n\t * Domain   : CORP\n\t * NTLM     : 5d41402abc4b2a76b9719d911017c592\n\t * SHA1     : aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d\n\twdigest :\n\t * Username : alice\n\t * Domain   : CORP\n\t * Password : CANARY_PLAINTEXT_DO_NOT_LOG\n\nAuthentication Id : 0 ; 500 (00000000:000001f4)\nSession           : Service from 0\nUser Name         : svc_backup\nDomain            : CORP\n\tmsv :\n\t [00000003] Primary\n\t * Username : svc_backup\n\t * Domain   : CORP\n\t * NTLM     : 8846f7eaee8fb117ad06bdd830b7586c\n\t * AES256   : 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n\twdigest :\n\t * Username : svc_backup\n\t * Domain   : CORP\n\t * Password : (null)\n"
+}
