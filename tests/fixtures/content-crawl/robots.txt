@@ -1,0 +1,10 @@
+User-agent: *
+Disallow: /admin
+Disallow: /secret-export/
+Disallow: /backups
+Allow: /public
+# A comment line
+Sitemap: http://%HOST%/sitemap-main.xml
+
+User-agent: BadBot
+Disallow: /

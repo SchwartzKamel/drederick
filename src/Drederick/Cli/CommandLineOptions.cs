@@ -270,7 +270,21 @@ public sealed class CommandLineOptions
     /// CLI: <c>--locale-lfi-extra-params &lt;csv&gt;</c>.</summary>
     public string? LocaleLfiExtraParams { get; set; }
     // --- end htb-locale-lfi-probe ---
-    // --- htb-cloud-storage-enum --- (GAP-018)
+    // --- htb-content-discovery-crawl --- (GAP-022)
+    /// <summary>Max crawl depth for the GAP-022 HTML+sitemap+robots crawler.
+    /// CLI: <c>--crawl-depth &lt;int&gt;</c>. Default 2.</summary>
+    public int CrawlDepth { get; set; } = Drederick.Recon.Http.HtmlSitemapCrawler.DefaultDepth;
+    /// <summary>Max URLs to HEAD-probe for the GAP-022 crawler.
+    /// CLI: <c>--crawl-max-urls &lt;int&gt;</c>. Default 500.</summary>
+    public int CrawlMaxUrls { get; set; } = Drederick.Recon.Http.HtmlSitemapCrawler.DefaultMaxUrls;
+    /// <summary>Crawler rate-limit (requests per second).
+    /// CLI: <c>--crawl-rps &lt;int&gt;</c>. Default 10.</summary>
+    public int CrawlRps { get; set; } = Drederick.Recon.Http.HtmlSitemapCrawler.DefaultRatePerSecond;
+    /// <summary>Honour robots.txt <c>Disallow:</c> as crawl boundaries. By
+    /// default disallowed paths are treated as HIGH-SIGNAL seeds (sites
+    /// disclose secret paths via robots.txt). CLI: <c>--respect-robots</c>.</summary>
+    public bool RespectRobots { get; set; }
+    // --- end htb-content-discovery-crawl ---
     /// <summary>Operator-supplied newline-delimited bucket-name wordlist
     /// for <see cref="Drederick.Recon.CloudStorageEnumTool"/>. When unset
     /// the built-in 200-name default list is used. CLI:
@@ -453,6 +467,26 @@ public sealed class CommandLineOptions
     public bool WindowsVulnsVerbose { get; set; }
     // --- end htb-windows-vulns-feeder ---
     // --- end windows-vulns subcommand ----------------------------------------
+
+    // --- htb-zerologon-direct ---
+    /// <summary>`drederick exploit zerologon` subcommand selected. Drives
+    /// the existing <see cref="Drederick.Exploit.ZeroLogonTool"/> against
+    /// a known DC IP without requiring the full recon pipeline. Closes
+    /// GAP-021.</summary>
+    public bool ZerologonSubcommand { get; set; }
+    /// <summary>--dc-name &lt;NETBIOS&gt;: DC NetBIOS computer name.
+    /// Validated against <c>^[A-Z0-9\-]{1,15}$</c>.</summary>
+    public string? ZerologonDcName { get; set; }
+    /// <summary>--reset-machine-pw: actually run the destructive password
+    /// reset. Without it, the subcommand only probes (and reports
+    /// vulnerable/not-vulnerable). Default off.</summary>
+    public bool ZerologonResetMachinePw { get; set; }
+    /// <summary>--dump-secrets: chain secretsdump.py after the reset.
+    /// Implies --reset-machine-pw. Default off.</summary>
+    public bool ZerologonDumpSecrets { get; set; }
+    /// <summary>--json: machine-readable output only.</summary>
+    public bool ZerologonJson { get; set; }
+    // --- end htb-zerologon-direct ---
 
     /// <summary>Bind host for `drederick serve`. Default 127.0.0.1.</summary>
     public string ServeHost { get; set; } = "127.0.0.1";
@@ -681,6 +715,15 @@ public sealed class CommandLineOptions
             start = 1;
         }
         // --- end web-cli-subcommand-dispatch ---
+        // --- htb-zerologon-direct ---
+        // `drederick exploit zerologon …` — standalone CVE-2020-1472 driver
+        // that skips the recon pipeline. Two positional tokens consumed.
+        else if (args.Length > 1 && args[0] == "exploit" && args[1] == "zerologon")
+        {
+            o.ZerologonSubcommand = true;
+            start = 2;
+        }
+        // --- end htb-zerologon-direct ---
         // --- chain-reasoner-cli-subcommand-dispatch ---
         else if (args.Length > 0 && args[0] == "chain")
         {
@@ -876,6 +919,14 @@ public sealed class CommandLineOptions
                         throw new ArgumentException("--top requires a positive integer");
                     o.ChainTopN = topN; break;
                 // --- end chain-reasoner-flag-parse ---
+                // --- htb-zerologon-direct ---
+                case "--dc-name":
+                    o.ZerologonDcName = RequireNext(args, ref i, a); break;
+                case "--reset-machine-pw":
+                    o.ZerologonResetMachinePw = true; break;
+                case "--dump-secrets":
+                    o.ZerologonDumpSecrets = true; break;
+                // --- end htb-zerologon-direct ---
                 case "--allow-broad":
                     o.AllowBroad = true; break;
                 case "--lab":
@@ -949,7 +1000,34 @@ public sealed class CommandLineOptions
                         o.LocaleLfiExtraParams = v; break;
                     }
                 // --- end htb-locale-lfi-probe ---
-                // --- htb-cloud-storage-enum --- (GAP-018)
+                // --- htb-content-discovery-crawl --- (GAP-022)
+                case "--crawl-depth":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 0)
+                            throw new ArgumentException(
+                                $"--crawl-depth must be a non-negative integer, got '{v}'.");
+                        o.CrawlDepth = n; break;
+                    }
+                case "--crawl-max-urls":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1)
+                            throw new ArgumentException(
+                                $"--crawl-max-urls must be a positive integer, got '{v}'.");
+                        o.CrawlMaxUrls = n; break;
+                    }
+                case "--crawl-rps":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1)
+                            throw new ArgumentException(
+                                $"--crawl-rps must be a positive integer, got '{v}'.");
+                        o.CrawlRps = n; break;
+                    }
+                case "--respect-robots":
+                    o.RespectRobots = true; break;
+                // --- end htb-content-discovery-crawl ---
                 case "--cloud-bucket-wordlist":
                     o.CloudBucketWordlist = RequireNext(args, ref i, a); break;
                 case "--cloud-max-harvest-bytes":
@@ -1231,6 +1309,12 @@ public sealed class CommandLineOptions
                     {
                         o.ChainJson = true;
                     }
+                    // --- htb-zerologon-direct ---
+                    else if (o.ZerologonSubcommand)
+                    {
+                        o.ZerologonJson = true;
+                    }
+                    // --- end htb-zerologon-direct ---
                     else
                     {
                         throw new ArgumentException($"Unknown argument: {a}");

@@ -230,6 +230,19 @@ if (opts.WindowsVulnsSubcommand)
 }
 // --- end windows-vulns subcommand wiring --------------------------------------
 
+// --- htb-zerologon-direct ---
+// `drederick exploit zerologon` — standalone CVE-2020-1472 driver. Loads
+// scope, builds permissions from the per-run flags, and drives the
+// existing ZeroLogonTool through ZerologonCommand. Closes GAP-021.
+if (opts.ZerologonSubcommand)
+{
+    using var zlCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; zlCts.Cancel(); };
+    var zlCmd = new ZerologonCommand(Console.Out, Console.Error);
+    return await zlCmd.ExecuteAsync(opts, zlCts.Token);
+}
+// --- end htb-zerologon-direct ---
+
 // ANCHOR: note-subcommand-wiring
 if (!string.IsNullOrEmpty(opts.NoteSubcommand))
 {
@@ -831,6 +844,10 @@ var nfsEnum = new NfsEnumTool(scope, audit,
 var localeLfi = new Drederick.Recon.Http.LocaleLfiProbe(scope, audit);
 // --- end htb-locale-lfi-probe ---
 
+// --- htb-content-discovery-crawl --- (GAP-022)
+var htmlSitemap = new Drederick.Recon.Http.HtmlSitemapCrawler(scope, audit);
+// --- end htb-content-discovery-crawl ---
+
 // --- htb-cloud-storage-enum --- (GAP-018)
 var cloudStorage = new CloudStorageEnumTool(scope, audit, opts.OutputDir);
 // --- end htb-cloud-storage-enum ---
@@ -886,6 +903,9 @@ var toolbox = new ReconToolbox(
         // --- htb-locale-lfi-probe ---
         localeLfi,
         // --- end htb-locale-lfi-probe ---
+        // --- htb-content-discovery-crawl --- (GAP-022)
+        htmlSitemap,
+        // --- end htb-content-discovery-crawl ---
         // --- htb-cloud-storage-enum --- (GAP-018)
         cloudStorage,
         // --- end htb-cloud-storage-enum ---
