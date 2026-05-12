@@ -245,6 +245,25 @@ public sealed class CommandLineOptions
     /// <summary>Permit modules/scripts flagged destructive (filesystem
     /// mutation, reboot, wipe). CLI: <c>--allow-destructive</c>.</summary>
     public bool AllowDestructive { get; set; }
+
+    // --- htb-flag-submission ---
+    /// <summary>Submit detected high-confidence flags to the platform
+    /// grading API at end-of-run. Default OFF. CLI: <c>--submit-flag</c>.</summary>
+    public bool SubmitFlag { get; set; }
+    /// <summary>HackTheBox v4 API bearer token. Env: <c>HTB_API_TOKEN</c>.
+    /// CLI: <c>--htb-api-token</c>.</summary>
+    public string? HtbApiToken { get; set; }
+    /// <summary>Machine id for HTB machine flag submission.
+    /// CLI: <c>--htb-machine-id</c>.</summary>
+    public int? HtbMachineId { get; set; }
+    /// <summary>Difficulty rating (1–100) accompanying the machine flag.
+    /// CLI: <c>--htb-difficulty</c>. Default 50.</summary>
+    public int HtbDifficulty { get; set; } = 50;
+    /// <summary>CTFd challenge id (optional; client can auto-detect).
+    /// CLI: <c>--ctfd-challenge-id</c>. CTFd URL + token are reused from
+    /// the jeopardy subcommand options (<c>--ctfd-url</c>, <c>--ctfd-token</c>).</summary>
+    public int? CtfdChallengeId { get; set; }
+    // --- end htb-flag-submission ---
     /// <summary>Permit NSE <c>dos</c>/<c>malware</c> categories and anything
     /// intentionally denial-of-service. CLI: <c>--allow-dos</c>.</summary>
     public bool AllowDos { get; set; }
@@ -965,6 +984,33 @@ public sealed class CommandLineOptions
                     o.AllowDestructive = true; break;
                 case "--allow-dos":
                     o.AllowDos = true; break;
+                // --- htb-flag-submission ---
+                case "--submit-flag":
+                    o.SubmitFlag = true; break;
+                case "--htb-api-token":
+                    o.HtbApiToken = RequireNext(args, ref i, a); break;
+                case "--htb-machine-id":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 0)
+                            throw new ArgumentException($"--htb-machine-id requires a non-negative integer; got '{v}'");
+                        o.HtbMachineId = n; break;
+                    }
+                case "--htb-difficulty":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1 || n > 100)
+                            throw new ArgumentException($"--htb-difficulty must be in 1..100; got '{v}'");
+                        o.HtbDifficulty = n; break;
+                    }
+                case "--ctfd-challenge-id":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 0)
+                            throw new ArgumentException($"--ctfd-challenge-id requires a non-negative integer; got '{v}'");
+                        o.CtfdChallengeId = n; break;
+                    }
+                // --- end htb-flag-submission ---
                 // --- htb-loot-collector ---
                 case "--no-loot":
                     o.NoLoot = true; break;
@@ -1424,11 +1470,15 @@ public sealed class CommandLineOptions
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.CtfdUrl = RequireNext(args, ref i, a);
                     break;
+                // --- htb-flag-submission --- (alias --ctfd-url; shared with ctf-solve subcommand)
+                case "--ctfd-url":
+                    o.CtfdUrl = RequireNext(args, ref i, a); break;
+                // --- end htb-flag-submission ---
                 case "--ctfd-token":
-                    if (!o.CtfSolveSubcommand)
-                        throw new ArgumentException($"Unknown argument: {a}");
+                    // --- htb-flag-submission --- (shared with ctf-solve; gate relaxed)
                     o.CtfdToken = RequireNext(args, ref i, a);
                     break;
+                    // --- end htb-flag-submission ---
                 case "--models":
                     if (!o.CtfSolveSubcommand)
                         throw new ArgumentException($"Unknown argument: {a}");

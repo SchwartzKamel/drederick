@@ -1549,6 +1549,91 @@ if (opts.Autopilot)
 kb.Merge(allFindings);
 kb.Save(opts.MemoryPath);
 
+// --- htb-flag-submission ---
+// Optional: when --submit-flag is set and a platform token has been
+// supplied (either via CLI or env), submit any flags collected during
+// the run to the operator's grading API. The platform endpoint is the
+// operator's reporting back-channel and is intentionally NOT scope-
+// checked. Plaintext flags and tokens are never audited — flags are
+// recorded by SHA-256 only.
+if (opts.SubmitFlag)
+{
+    var htbToken = opts.HtbApiToken ?? Environment.GetEnvironmentVariable("HTB_API_TOKEN");
+    var ctfdToken = opts.CtfdToken ?? Environment.GetEnvironmentVariable("CTFD_TOKEN");
+
+    // Best-effort discovery: scan output dir for flag-shaped artifacts
+    // already collected by PostExLoot / autopilot. Pair task
+    // htb-flag-filter (FlagDetector with confidence ≥ 0.85) feeds this
+    // path; here we use the existing FlagExtractor as a stable source.
+    var flagExtractor = new Drederick.Autopilot.FlagExtractor(audit);
+    var capturedFlags = flagExtractor.ScanDirectory(opts.OutputDir);
+
+    if (capturedFlags.Count == 0)
+    {
+        audit.Record("flag.submit.skip", new Dictionary<string, object?>
+        {
+            ["reason"] = "no_flags_detected",
+        });
+    }
+    else
+    {
+        var flagJsonPath = Path.Combine(opts.OutputDir, "flag-submissions.json");
+        var flagDbPath = Path.Combine(opts.OutputDir, "findings.db");
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(htbToken) && opts.HtbMachineId is int machineId)
+            {
+                using var htb = new Drederick.Ops.FlagSubmission.HtbFlagClient(
+                    token: htbToken!, audit: audit);
+                foreach (var f in capturedFlags)
+                {
+                    var r = await htb.SubmitMachineFlagAsync(machineId, f.Value, opts.HtbDifficulty);
+                    Drederick.Ops.FlagSubmission.FlagSubmissionResult.AppendToJson(flagJsonPath, r);
+                    Drederick.Ops.FlagSubmission.FlagSubmissionResult.PersistToSqlite(flagDbPath, r);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(ctfdToken) && !string.IsNullOrWhiteSpace(opts.CtfdUrl))
+            {
+                using var ctfd = new Drederick.Ops.FlagSubmission.CtfdFlagClient(
+                    baseUrl: opts.CtfdUrl!, token: ctfdToken!, audit: audit);
+                if (opts.CtfdChallengeId is int chId)
+                {
+                    foreach (var f in capturedFlags)
+                    {
+                        var r = await ctfd.SubmitFlagAsync(chId, f.Value);
+                        Drederick.Ops.FlagSubmission.FlagSubmissionResult.AppendToJson(flagJsonPath, r);
+                        Drederick.Ops.FlagSubmission.FlagSubmissionResult.PersistToSqlite(flagDbPath, r);
+                    }
+                }
+                else
+                {
+                    audit.Record("flag.submit.skip", new Dictionary<string, object?>
+                    {
+                        ["reason"] = "no_ctfd_challenge_id",
+                    });
+                }
+            }
+            else
+            {
+                audit.Record("flag.submit.skip", new Dictionary<string, object?>
+                {
+                    ["reason"] = "no_token_or_target",
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            audit.Record("flag.submit.error", new Dictionary<string, object?>
+            {
+                ["error"] = ex.Message,
+            });
+            Console.Error.WriteLine($"flag-submission: {ex.Message}");
+        }
+    }
+}
+// --- end htb-flag-submission ---
+
 audit.Record("session.end", new Dictionary<string, object?>
 {
     ["host_count"] = allFindings.Count,
