@@ -173,6 +173,9 @@ CREATE INDEX IF NOT EXISTS idx_phpinfo_target ON phpinfo_findings(target);
         // columns exist on loot tables created by older builds (GAP-008/9).
         EnsureLootDetectorColumns(conn);
         // --- end htb-flag-filter ---
+        // --- empire-sqlite-schema ---
+        EmpireSchemaExtension.Apply(conn);
+        // --- end empire-sqlite-schema ---
     }
 
     // --- htb-flag-filter ---
