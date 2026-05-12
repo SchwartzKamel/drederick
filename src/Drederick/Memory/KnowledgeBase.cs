@@ -60,6 +60,20 @@ public sealed class KnowledgeBase
     [JsonPropertyName("globals")]
     public Dictionary<string, string> Globals { get; set; } = new(StringComparer.Ordinal);
 
+    // --- htb-briefing-loader-recon-seed ---
+    /// <summary>
+    /// Operator-supplied briefing seed (targets, users, credentials,
+    /// constraints, notes). Populated by
+    /// <see cref="MergeFromBriefing"/> before recon starts. Targets in
+    /// the briefing are hints — they do NOT grant scope; tools still
+    /// re-check via <c>_scope.Require</c>. Plaintext passwords are
+    /// never stored — only SHA-256 digests. See
+    /// <see cref="BriefingLoader"/>.
+    /// </summary>
+    [JsonPropertyName("briefing")]
+    public BriefingSeed? Briefing { get; set; }
+    // --- end htb-briefing-loader-recon-seed ---
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
@@ -300,6 +314,39 @@ public sealed class KnowledgeBase
         OnHighSignalFinding?.Invoke(delta);
     }
     // --- end htb-briefing-delta-proposed ---
+
+    // --- htb-briefing-loader-recon-seed ---
+    /// <summary>
+    /// Merge a <see cref="BriefingSeed"/> into the knowledge base. The
+    /// seed replaces any previously-stored briefing for this run. Users
+    /// and constraints are also surfaced into <see cref="Globals"/>
+    /// under <c>briefing.users.*</c> / <c>briefing.constraints.*</c>
+    /// so chain-template KB substitution can reach them via the
+    /// existing globals tier. The seed itself is the authoritative
+    /// store.
+    /// </summary>
+    public void MergeFromBriefing(BriefingSeed seed)
+    {
+        ArgumentNullException.ThrowIfNull(seed);
+        lock (_gate)
+        {
+            Briefing = seed;
+            Globals["briefing.source_path"] = seed.SourcePath;
+            Globals["briefing.sha256"] = seed.Sha256;
+            Globals["briefing.target_count"] = seed.Targets.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Globals["briefing.user_count"] = seed.Users.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            Globals["briefing.cred_count"] = seed.Credentials.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            for (int i = 0; i < seed.Users.Count; i++)
+            {
+                Globals[$"briefing.users.{i}"] = seed.Users[i];
+            }
+            for (int i = 0; i < seed.Constraints.Count; i++)
+            {
+                Globals[$"briefing.constraints.{i}"] = seed.Constraints[i];
+            }
+        }
+    }
+    // --- end htb-briefing-loader-recon-seed ---
 
     /// <summary>Record the successful execution of an Empire module on a target.</summary>
     public void RecordEmpireModuleSuccess(string host, string moduleName, string output)

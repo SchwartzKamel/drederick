@@ -10,6 +10,12 @@ public sealed class CommandLineOptions
     public string MemoryPath { get; set; } = "memory/findings.json";
 
     // --- in-fight scaffolding (LOADER_SPEC) ---------------------------------
+    // --- htb-briefing-loader-recon-seed ---
+    // The --briefing flag is shared with the in-fight scaffolding loader
+    // and with the Memory briefing loader (Drederick.Memory.BriefingLoader,
+    // GAP-049 supplement) which seeds KnowledgeBase with targets, users,
+    // credentials (SHA-256), constraints, and notes before recon starts.
+    // --- end htb-briefing-loader-recon-seed ---
     /// <summary>Override path to <c>briefing.md</c>. Defaults to
     /// <c>&lt;dir(scope.yaml)&gt;/briefing.md</c>. See
     /// <c>machines/SCAFFOLDING/LOADER_SPEC.md</c> §2.</summary>
