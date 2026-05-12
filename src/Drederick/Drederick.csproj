@@ -31,6 +31,11 @@
       <LogicalName>Drederick.Enrichment.windows-build-fingerprints.json</LogicalName>
     </EmbeddedResource>
     <!-- htb-windows-vulns-feeder:end -->
+    <!-- htb-msf-rc-generator:start -->
+    <EmbeddedResource Include="..\..\data\msf-module-catalog.json" LinkBase="Exploit\Msf">
+      <LogicalName>Drederick.Exploit.Msf.msf-module-catalog.json</LogicalName>
+    </EmbeddedResource>
+    <!-- htb-msf-rc-generator:end -->
   </ItemGroup>
 
   <ItemGroup>
