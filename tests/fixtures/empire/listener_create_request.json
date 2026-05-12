@@ -1,0 +1,13 @@
+{
+  "record": {
+    "id": 42,
+    "name": "integ-listener",
+    "module": "http",
+    "enabled": true,
+    "options": {
+      "Name": "integ-listener",
+      "Host": "10.10.14.5",
+      "Port": "8081"
+    }
+  }
+}
