@@ -8,6 +8,7 @@ using Drederick.Exploit;
 using Drederick.Exploit.Empire;
 using Drederick.PostEx;
 using Drederick.Scope;
+using EmpireModuleResult = Drederick.PostEx.EmpireModuleResult;
 
 namespace Drederick.Autopilot;
 
@@ -161,7 +162,7 @@ public sealed class EmpireAutopilotPhase
             {
                 ["reason"] = "disabled",
             });
-            return EmpireAutopilotReport.Skipped("disabled");
+            return EmpireAutopilotReport.SkippedReport("disabled");
         }
 
         // --- gate 2: payloads opt-in ----------------------------------------
@@ -171,7 +172,7 @@ public sealed class EmpireAutopilotPhase
             {
                 ["reason"] = "allow_payloads_required",
             });
-            return EmpireAutopilotReport.Skipped("allow_payloads_required");
+            return EmpireAutopilotReport.SkippedReport("allow_payloads_required");
         }
 
         // --- compromised-host set ------------------------------------------
@@ -182,7 +183,7 @@ public sealed class EmpireAutopilotPhase
             {
                 ["reason"] = "no_compromised_hosts",
             });
-            return EmpireAutopilotReport.Skipped("no_compromised_hosts");
+            return EmpireAutopilotReport.SkippedReport("no_compromised_hosts");
         }
 
         _audit.Record("autopilot.empire.phase.start", new Dictionary<string, object?>
@@ -514,7 +515,7 @@ public sealed record EmpireAutopilotReport(
     string? ListenerName,
     IReadOnlyList<EmpireHostPhaseResult> HostResults)
 {
-    public static EmpireAutopilotReport Skipped(string reason) =>
+    public static EmpireAutopilotReport SkippedReport(string reason) =>
         new(false, true, reason, null, 0, null, Array.Empty<EmpireHostPhaseResult>());
 
     public static EmpireAutopilotReport Failed(string error) =>
