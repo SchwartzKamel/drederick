@@ -44,6 +44,12 @@ public sealed class HostFinding
     // --- htb-ssl-cert-hosts --- (GAP-006)
     [JsonPropertyName("ssl_cert_hosts")] public List<SslCertHostsResult> SslCertHosts { get; set; } = new();
     // --- end htb-ssl-cert-hosts ---
+    // --- htb-locale-lfi-probe --- (GAP-035)
+    [JsonPropertyName("locale_lfi")] public List<LocaleLfiResult> LocaleLfi { get; set; } = new();
+    // --- end htb-locale-lfi-probe ---
+    // --- htb-cloud-storage-enum --- (GAP-018)
+    [JsonPropertyName("cloud_storage")] public List<CloudStorageEnumResult> CloudStorage { get; set; } = new();
+    // --- end htb-cloud-storage-enum ---
     // --- s3 --- (GAP-037)
     [JsonPropertyName("s3")] public List<S3Finding> S3 { get; set; } = new();
     // --- cms fingerprint --- (GAP-036)
@@ -681,6 +687,36 @@ public sealed class EtcHostsProposal
 }
 // --- end htb-ssl-cert-hosts ---
 
+// --- htb-locale-lfi-probe --- (GAP-035: locale-parameter LFI probe result shape)
+public sealed class LocaleLfiResult
+{
+    [System.Text.Json.Serialization.JsonPropertyName("probed_urls")]
+    public List<string> ProbedUrls { get; set; } = new();
+    [System.Text.Json.Serialization.JsonPropertyName("findings")]
+    public List<LocaleLfiFinding> Findings { get; set; } = new();
+    [System.Text.Json.Serialization.JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
+
+public sealed class LocaleLfiFinding
+{
+    [System.Text.Json.Serialization.JsonPropertyName("url")]
+    public string Url { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("parameter")]
+    public string Parameter { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("payload")]
+    public string Payload { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("evidence")]
+    public string Evidence { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("confidence")]
+    public double Confidence { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("status_code")]
+    public int StatusCode { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("body_sample_sha256")]
+    public string? BodySampleSha256 { get; set; }
+}
+// --- end htb-locale-lfi-probe ---
+
 // --- phpinfo additions (GAP-054) ---
 public sealed record PhpInfoFinding
 {
@@ -701,3 +737,37 @@ public sealed record PhpInfoFinding
     [System.Text.Json.Serialization.JsonPropertyName("user_ini_injection_likely")] public bool UserIniInjectionLikely { get; init; }
     [System.Text.Json.Serialization.JsonPropertyName("source_path")] public string SourcePath { get; init; } = "";
 }
+
+// --- htb-cloud-storage-enum --- (GAP-018)
+/// <summary>
+/// Result of <see cref="CloudStorageEnumTool.EnumerateAsync"/>. Holds the
+/// probed endpoint, optional provider tag, and per-bucket findings.
+/// </summary>
+public sealed class CloudStorageEnumResult
+{
+    [JsonPropertyName("provider")] public string? Provider { get; set; }
+    [JsonPropertyName("endpoint")] public string Endpoint { get; set; } = "";
+    [JsonPropertyName("buckets")] public List<CloudStorageBucket> Buckets { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class CloudStorageBucket
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("listable")] public bool Listable { get; set; }
+    [JsonPropertyName("exists_but_403")] public bool ExistsButForbidden { get; set; }
+    [JsonPropertyName("objects")] public List<CloudStorageObject> Objects { get; set; } = new();
+    [JsonPropertyName("harvested_count")] public int HarvestedCount { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class CloudStorageObject
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("size")] public long Size { get; set; }
+    [JsonPropertyName("last_modified")] public string? LastModified { get; set; }
+    [JsonPropertyName("harvested")] public bool Harvested { get; set; }
+    [JsonPropertyName("sha256")] public string? Sha256 { get; set; }
+    [JsonPropertyName("local_path")] public string? LocalPath { get; set; }
+}
+// --- end htb-cloud-storage-enum ---

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>backup</Name>
+  <Prefix></Prefix>
+  <Marker></Marker>
+  <MaxKeys>1000</MaxKeys>
+  <IsTruncated>false</IsTruncated>
+  <Contents>
+    <Key>.env</Key>
+    <LastModified>2024-09-01T10:11:12.000Z</LastModified>
+    <Size>120</Size>
+    <ETag>"abc"</ETag>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+  <Contents>
+    <Key>readme.txt</Key>
+    <LastModified>2024-09-02T10:11:12.000Z</LastModified>
+    <Size>42</Size>
+    <ETag>"def"</ETag>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+  <Contents>
+    <Key>backup-2024.tar.gz</Key>
+    <LastModified>2024-09-03T10:11:12.000Z</LastModified>
+    <Size>2048</Size>
+    <ETag>"ghi"</ETag>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+</ListBucketResult>

@@ -62,6 +62,12 @@ public sealed class ReconToolbox
     // --- htb-ssl-cert-hosts ---
     private readonly SslCertHostsTool? _sslCertHosts;
     // --- end htb-ssl-cert-hosts ---
+    // --- htb-locale-lfi-probe ---
+    private readonly Drederick.Recon.Http.LocaleLfiProbe? _localeLfi;
+    // --- end htb-locale-lfi-probe ---
+    // --- htb-cloud-storage-enum --- (GAP-018)
+    private readonly CloudStorageEnumTool? _cloudStorage;
+    // --- end htb-cloud-storage-enum ---
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -118,6 +124,12 @@ public sealed class ReconToolbox
         // --- htb-ssl-cert-hosts ---
         _sslCertHosts = materialized.OfType<SslCertHostsTool>().SingleOrDefault();
         // --- end htb-ssl-cert-hosts ---
+        // --- htb-locale-lfi-probe ---
+        _localeLfi = materialized.OfType<Drederick.Recon.Http.LocaleLfiProbe>().SingleOrDefault();
+        // --- end htb-locale-lfi-probe ---
+        // --- htb-cloud-storage-enum --- (GAP-018)
+        _cloudStorage = materialized.OfType<CloudStorageEnumTool>().SingleOrDefault();
+        // --- end htb-cloud-storage-enum ---
 
         _tools = materialized;
         _audit = audit;
@@ -589,6 +601,76 @@ public sealed class ReconToolbox
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
     // --- end htb-ssl-cert-hosts ---
+
+    // --- htb-locale-lfi-probe --- (GAP-035 / CVE-2025-49132 shape)
+    [Description("Generic locale-parameter LFI probe: discovers query parameters " +
+                 "whose names match a locale-shaped allow-list (lang, locale, page, " +
+                 "file, template, include, …) from operator-supplied HTML or an " +
+                 "explicit candidate list, then replaces each value with a curated " +
+                 "set of path-traversal / PHP-wrapper payloads (../etc/passwd, " +
+                 "php://filter/convert.base64-encode, null-byte truncation, Unicode " +
+                 "bypasses). Detects confirmed file-read via passwd/win.ini markers, " +
+                 "PHP source leakage, base64 blobs (filter wrapper), and length " +
+                 "anomalies vs a baseline sentinel request. Read-only GET; never " +
+                 "follows redirects off scope. Body content is never logged — only a " +
+                 "SHA-256 fingerprint of the first 8 KiB.")]
+    public async Task<string> ProbeLocaleLfiAsync(
+        [Description("Absolute base URL, e.g. 'http://10.0.0.5:8080/'. Host must be an in-scope IP.")] string baseUrl,
+        [Description("Optional operator-supplied HTML to discover locale-shaped params from.")] string? discoveryHtml = null,
+        [Description("Comma-separated additional parameter names to include in the locale-shaped allow-list.")] string? extraParams = null,
+        [Description("Max probe requests per host (default 100).")] int maxProbes = Drederick.Recon.Http.LocaleLfiProbe.DefaultMaxProbes,
+        CancellationToken ct = default)
+    {
+        var tool = _localeLfi ?? throw new InvalidOperationException("LocaleLfiProbe is not registered.");
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new ArgumentException("baseUrl must not be empty.", nameof(baseUrl));
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+            throw new ArgumentException($"baseUrl '{baseUrl}' must be absolute.", nameof(baseUrl));
+        Charge(baseUri.Host, "locale-lfi");
+        IEnumerable<string>? extras = null;
+        if (!string.IsNullOrWhiteSpace(extraParams))
+        {
+            extras = extraParams.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+        var r = await tool.ProbeAsync(
+            baseUrl,
+            candidates: null,
+            discoveryHtml: discoveryHtml,
+            extraParams: extras,
+            maxProbes: maxProbes,
+            ct: ct).ConfigureAwait(false);
+        GetOrCreate(baseUri.Host).LocaleLfi.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-locale-lfi-probe ---
+
+    // --- htb-cloud-storage-enum --- (GAP-018)
+    [Description("Probe a target's S3-compatible endpoint for anonymous bucket listing. " +
+                 "Accepts a single bucket name or walks a built-in 200-name wordlist. For " +
+                 "listable buckets, parses object keys + sizes and (when harvest is enabled) " +
+                 "downloads high-signal artifacts (.env, id_rsa, credentials, *.bak, " +
+                 "*.sqlite, wp-config.php) into out/loot/<host>/cloud-bucket-<name>/. " +
+                 "Local-only loot — never exfiltrated.")]
+    public async Task<string> EnumerateCloudStorageAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (default 443).")] int port = 443,
+        [Description("Use TLS (https) instead of plain http. Default true.")] bool useTls = true,
+        [Description("Optional single bucket name to probe; when omitted the built-in 200-name wordlist is walked.")] string? bucketName = null,
+        [Description("Disable harvesting of matching objects; record listings only.")] bool noHarvest = false,
+        CancellationToken ct = default)
+    {
+        var tool = _cloudStorage ?? throw new InvalidOperationException("CloudStorageEnumTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "cloud-storage");
+        var r = await tool.EnumerateAsync(
+            target, port, useTls, bucketName,
+            bucketWordlist: null,
+            harvestEnabled: !noHarvest,
+            ct: ct).ConfigureAwait(false);
+        GetOrCreate(target).CloudStorage.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-cloud-storage-enum ---
 
 
     private static void ValidatePort(int port)

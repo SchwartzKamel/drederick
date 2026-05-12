@@ -368,6 +368,18 @@ public sealed class DrederickHost
         // --- htb-ssl-cert-hosts ---
         var sslCertHosts = new SslCertHostsTool(scope, audit);
         // --- end htb-ssl-cert-hosts ---
+        // --- htb-locale-lfi-probe --- (GAP-035)
+        var localeLfi = new Drederick.Recon.Http.LocaleLfiProbe(scope, audit);
+        // --- end htb-locale-lfi-probe ---
+        // --- htb-cloud-storage-enum --- (GAP-018)
+        // Loot artifacts land under <outputDir>/loot/<host>/cloud-bucket-<name>/.
+        // The DrederickHost builder doesn't have direct access to the runtime
+        // outputDir here; consumers using BuildToolbox alone (legacy entry
+        // point) get a tool rooted at the CWD which is fine for tests. The
+        // primary Program.cs entrypoint constructs its own instance with the
+        // real output dir.
+        var cloudStorage = new CloudStorageEnumTool(scope, audit, Directory.GetCurrentDirectory());
+        // --- end htb-cloud-storage-enum ---
 
         return new ReconToolbox(
             new IReconTool[]
@@ -384,6 +396,12 @@ public sealed class DrederickHost
                 // --- htb-ssl-cert-hosts ---
                 sslCertHosts,
                 // --- end htb-ssl-cert-hosts ---
+                // --- htb-locale-lfi-probe ---
+                localeLfi,
+                // --- end htb-locale-lfi-probe ---
+                // --- htb-cloud-storage-enum --- (GAP-018)
+                cloudStorage,
+                // --- end htb-cloud-storage-enum ---
             },
             audit);
     }

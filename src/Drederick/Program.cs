@@ -827,6 +827,13 @@ var smtpEnum = new SmtpEnumTool(scope, audit);
 var nfsEnum = new NfsEnumTool(scope, audit,
     allowWriteProbe: opts.LabMode || opts.AllowDestructive);
 // --- end htb-nfs-enum ---
+// --- htb-locale-lfi-probe --- (GAP-035)
+var localeLfi = new Drederick.Recon.Http.LocaleLfiProbe(scope, audit);
+// --- end htb-locale-lfi-probe ---
+
+// --- htb-cloud-storage-enum --- (GAP-018)
+var cloudStorage = new CloudStorageEnumTool(scope, audit, opts.OutputDir);
+// --- end htb-cloud-storage-enum ---
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
@@ -876,6 +883,12 @@ var toolbox = new ReconToolbox(
         // --- htb-nfs-enum ---
         nfsEnum,
         // --- end htb-nfs-enum ---
+        // --- htb-locale-lfi-probe ---
+        localeLfi,
+        // --- end htb-locale-lfi-probe ---
+        // --- htb-cloud-storage-enum --- (GAP-018)
+        cloudStorage,
+        // --- end htb-cloud-storage-enum ---
     },
     audit,
     reconBudget);

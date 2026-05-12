@@ -261,6 +261,29 @@ public sealed class CommandLineOptions
     /// 100 MiB.</summary>
     public long LootMaxBytesTotal { get; set; } = Drederick.Exploit.PostEx.PostExLootTool.DefaultMaxBytesTotal;
     // --- end htb-loot-collector ---
+    // --- htb-locale-lfi-probe --- (GAP-035)
+    /// <summary>Cap on probe requests per host for the GAP-035 locale-parameter
+    /// LFI probe. CLI: <c>--locale-lfi-max &lt;int&gt;</c>. Default 100.</summary>
+    public int LocaleLfiMaxProbes { get; set; } = Drederick.Recon.Http.LocaleLfiProbe.DefaultMaxProbes;
+    /// <summary>Comma-separated additional parameter names to test in the
+    /// GAP-035 locale-parameter LFI probe (extends the built-in allow-list).
+    /// CLI: <c>--locale-lfi-extra-params &lt;csv&gt;</c>.</summary>
+    public string? LocaleLfiExtraParams { get; set; }
+    // --- end htb-locale-lfi-probe ---
+    // --- htb-cloud-storage-enum --- (GAP-018)
+    /// <summary>Operator-supplied newline-delimited bucket-name wordlist
+    /// for <see cref="Drederick.Recon.CloudStorageEnumTool"/>. When unset
+    /// the built-in 200-name default list is used. CLI:
+    /// <c>--cloud-bucket-wordlist &lt;path&gt;</c>.</summary>
+    public string? CloudBucketWordlist { get; set; }
+    /// <summary>Total byte cap for cloud-storage harvest per run. Default
+    /// 100 MiB. CLI: <c>--cloud-max-harvest-bytes &lt;bytes&gt;</c>.</summary>
+    public long CloudMaxHarvestBytes { get; set; } =
+        Drederick.Recon.CloudStorageEnumTool.DefaultMaxHarvestBytes;
+    /// <summary>Discover buckets but skip object download. CLI:
+    /// <c>--no-cloud-harvest</c>.</summary>
+    public bool NoCloudHarvest { get; set; }
+    // --- end htb-cloud-storage-enum ---
     // --- htb-crash-resilient-nmap --- (GAP-053)
     /// <summary>Permit TCP-connect fallback sweep when nmap crashes /
     /// truncates / sigfaults mid-scan. Default: lab mode ON, strict
@@ -911,6 +934,35 @@ public sealed class CommandLineOptions
                         o.LootMaxBytesTotal = n; break;
                     }
                 // --- end htb-loot-collector ---
+                // --- htb-locale-lfi-probe --- (GAP-035)
+                case "--locale-lfi-max":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 1)
+                            throw new ArgumentException(
+                                $"--locale-lfi-max must be a positive integer, got '{v}'.");
+                        o.LocaleLfiMaxProbes = n; break;
+                    }
+                case "--locale-lfi-extra-params":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        o.LocaleLfiExtraParams = v; break;
+                    }
+                // --- end htb-locale-lfi-probe ---
+                // --- htb-cloud-storage-enum --- (GAP-018)
+                case "--cloud-bucket-wordlist":
+                    o.CloudBucketWordlist = RequireNext(args, ref i, a); break;
+                case "--cloud-max-harvest-bytes":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!long.TryParse(v, out var n) || n < 0)
+                            throw new ArgumentException(
+                                $"--cloud-max-harvest-bytes must be a non-negative integer, got '{v}'.");
+                        o.CloudMaxHarvestBytes = n; break;
+                    }
+                case "--no-cloud-harvest":
+                    o.NoCloudHarvest = true; break;
+                // --- end htb-cloud-storage-enum ---
                 // --- htb-crash-resilient-nmap --- (GAP-053)
                 case "--allow-fallback-connect":
                     o.AllowFallbackConnect = true; break;
