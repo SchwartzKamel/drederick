@@ -121,12 +121,12 @@ if (opts.DoctorSubcommand)
             Console.In, Console.Out, CancellationToken.None);
         if (opts.DoctorInstall && empResults.Any(r => r.Id == "empire.installed" && r.Status == Drederick.Doctor.DoctorCheckStatus.Fail))
         {
-            var pm = Drederick.Doctor.PackageManagerDetection.Detect(new Drederick.Doctor.PathToolLocator());
+            var pmEmp = Drederick.Doctor.PackageManagerDetection.Detect(new Drederick.Doctor.PathToolLocator());
             var installer = new Drederick.Doctor.EmpireInstaller(
                 docAudit,
                 new Drederick.Doctor.DefaultProcessRunner(),
                 new Drederick.Doctor.PathToolLocator());
-            await installer.InstallAsync(pm, opts.AssumeYes, Console.In, Console.Out, CancellationToken.None);
+            await installer.InstallAsync(pmEmp, opts.AssumeYes, Console.In, Console.Out, CancellationToken.None);
         }
         return empResults.Any(r => r.Status == Drederick.Doctor.DoctorCheckStatus.Fail) ? 1 : 0;
     }
@@ -649,6 +649,35 @@ audit.Record("session.start", new Dictionary<string, object?>
     ["lab_mode"] = opts.LabMode,
 });
 
+// --- htb-socks-proxy-scanning ---
+// GAP-049: resolve the typed pivot proxy config once from --proxy.
+// Reverse-safety (proxy host in scope) is enforced inside Resolve();
+// strict-mode non-loopback proxies require --allow-external-proxy.
+// When non-null, env vars are set on the current process so every
+// subprocess we spawn inherits HTTP_PROXY / HTTPS_PROXY / ALL_PROXY
+// automatically.
+var socksProxyResolver = new Drederick.Ops.SocksProxyResolver(scope, audit);
+Drederick.Ops.SocksProxyConfig? socksProxyConfig;
+try
+{
+    socksProxyConfig = socksProxyResolver.Resolve(
+        opts.ProxyUri,
+        labMode: opts.LabMode,
+        allowExternalProxy: opts.AllowExternalProxy);
+}
+catch (Exception socksEx) when (socksEx is ArgumentException or InvalidOperationException)
+{
+    Console.Error.WriteLine($"error: --proxy: {socksEx.Message}");
+    audit.Record("proxy.config.refused", new Dictionary<string, object?>
+    {
+        ["reason"] = socksEx.Message,
+        ["raw"] = opts.ProxyUri,
+    });
+    return 2;
+}
+socksProxyResolver.ApplyToCurrentProcessEnv(socksProxyConfig);
+// --- end htb-socks-proxy-scanning ---
+
 // --- learning -----------------------------------------------------------
 // Read-only access to the operator-curated fight corpus
 // (~/HTB/fight-log.yaml). Discovery precedence: --fight-corpus > env
@@ -865,9 +894,15 @@ var permissions = new RunPermissions(
 
 var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions,
     // --- htb-crash-resilient-nmap --- (GAP-053)
-    allowFallbackConnect: opts.AllowFallbackConnect);
+    allowFallbackConnect: opts.AllowFallbackConnect,
     // --- end htb-crash-resilient-nmap ---
-var http = new HttpProbeTool(scope, audit);
+    // --- htb-socks-proxy-scanning ---
+    socksConfig: socksProxyConfig,
+    socksResolver: socksProxyResolver);
+    // --- end htb-socks-proxy-scanning ---
+// --- htb-socks-proxy-scanning ---
+var http = new HttpProbeTool(scope, audit, socksProxyConfig, socksProxyResolver);
+// --- end htb-socks-proxy-scanning ---
 var tls = new TlsProbeTool(scope, audit);
 var dns = new DnsProbeTool(scope, audit);
 var smb = new SmbTool(scope, audit);
@@ -878,7 +913,11 @@ var ldap = new LdapTool(scope, audit);
 var rpc = new RpcTool(scope, audit);
 var kerberos = new KerberosTool(scope, audit);
 var dnsAxfr = new DnsZoneTransferTool(scope, audit);
-var httpContentDiscovery = new HttpContentDiscoveryTool(scope, audit);
+var httpContentDiscovery = new HttpContentDiscoveryTool(scope, audit,
+    // --- htb-socks-proxy-scanning ---
+    socksConfig: socksProxyConfig,
+    socksResolver: socksProxyResolver);
+    // --- end htb-socks-proxy-scanning ---
 var tlsCipherEnum = new TlsCipherEnumTool(scope, audit);
 // --- recon tools ---
 var nativeScanner = new NativeScannerTool(scope, audit);
@@ -1015,7 +1054,12 @@ var empireModuleLibrary = new EmpireModuleLibrary(audit);
 // per-run opt-in category on its own entry point — the toolbox is a registry,
 // not the authorization boundary. Permissions are built above (shared with
 // the recon toolbox for NSE category selection).
-var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir);
+var exploitRunner = new ExploitRunner(scope, audit, opts.OutputDir,
+    // --- htb-socks-proxy-scanning ---
+    runner: null,
+    socksConfig: socksProxyConfig,
+    socksResolver: socksProxyResolver);
+    // --- end htb-socks-proxy-scanning ---
 var nuclei = new NucleiRunner(scope, audit, permissions, exploitRunner);
 var msf = new MsfRcRunner(scope, audit, permissions, exploitRunner);
 var spray = new PasswordSprayTool(

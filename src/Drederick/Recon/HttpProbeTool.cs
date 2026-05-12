@@ -52,11 +52,35 @@ public sealed partial class HttpProbeTool : IReconTool
     private readonly AuditLog _audit;
     private readonly Func<string, CancellationToken, Task<IPAddress[]>> _dnsResolver;
     private readonly Func<IPAddress, HttpMessageHandler>? _handlerFactory;
+    // --- htb-socks-proxy-scanning ---
+    // GAP-049: optional SOCKS5/SOCKS5h/HTTP/HTTPS pivot. When non-null
+    // (and no test handler factory is set), ProbeAsync builds a
+    // WebProxy-wired handler instead of the scope-pinning
+    // ConnectCallback — the proxy owns the dial. Scope is still
+    // authorized target-side via _scope.Require at probe time.
+    private readonly Drederick.Ops.SocksProxyConfig? _socksConfig;
+    private readonly Drederick.Ops.SocksProxyResolver? _socksResolver;
+    // --- end htb-socks-proxy-scanning ---
 
     public HttpProbeTool(Scope.Scope scope, AuditLog audit)
-        : this(scope, audit, null, null)
+        : this(scope, audit, (Func<string, CancellationToken, Task<IPAddress[]>>?)null, (Func<IPAddress, HttpMessageHandler>?)null)
     {
     }
+
+    // --- htb-socks-proxy-scanning ---
+    /// <summary>GAP-049 — DI ctor used by <c>Program.cs</c> when a
+    /// <c>--proxy</c> was resolved.</summary>
+    public HttpProbeTool(
+        Scope.Scope scope,
+        AuditLog audit,
+        Drederick.Ops.SocksProxyConfig? socksConfig,
+        Drederick.Ops.SocksProxyResolver? socksResolver)
+        : this(scope, audit, (Func<string, CancellationToken, Task<IPAddress[]>>?)null, (Func<IPAddress, HttpMessageHandler>?)null)
+    {
+        _socksConfig = socksConfig;
+        _socksResolver = socksResolver;
+    }
+    // --- end htb-socks-proxy-scanning ---
 
     internal HttpProbeTool(
         Scope.Scope scope,
@@ -162,9 +186,21 @@ public sealed partial class HttpProbeTool : IReconTool
             ["all_resolved"] = resolved.AllResolved.Select(a => a.ToString()).ToArray(),
         });
 
+        // --- htb-socks-proxy-scanning ---
+        // GAP-049: when a pivot is configured (and tests haven't
+        // overridden the handler factory), route through it. The
+        // proxy owns the dial; scope was authorized target-side
+        // above via _scope.Require.
         var handler = _handlerFactory is not null
             ? _handlerFactory(resolved.ResolvedIp)
-            : BuildSocketsHandler(resolved.ResolvedIp);
+            : _socksConfig is not null
+                ? BuildProxiedHandler(_socksConfig)
+                : BuildSocketsHandler(resolved.ResolvedIp);
+        if (_socksConfig is not null && _handlerFactory is null)
+        {
+            _socksResolver?.RecordApplied("http", _socksConfig);
+        }
+        // --- end htb-socks-proxy-scanning ---
 
         using var http = new HttpClient(handler, disposeHandler: true)
         {
@@ -370,6 +406,32 @@ public sealed partial class HttpProbeTool : IReconTool
             },
         };
     }
+
+    // --- htb-socks-proxy-scanning ---
+    /// <summary>GAP-049 — build a SocketsHttpHandler that routes through
+    /// the configured pivot. ConnectCallback is intentionally omitted:
+    /// the proxy itself performs the dial against the resolved target.
+    /// Scope was authorized target-side before this handler is built.</summary>
+    private static SocketsHttpHandler BuildProxiedHandler(Drederick.Ops.SocksProxyConfig cfg)
+    {
+        var webProxy = new WebProxy(new Uri(cfg.ToRedactedUri()));
+        if (!string.IsNullOrEmpty(cfg.Username))
+        {
+            webProxy.Credentials = new NetworkCredential(cfg.Username, cfg.Password ?? string.Empty);
+        }
+        return new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            },
+            Proxy = webProxy,
+            UseProxy = true,
+        };
+    }
+    // --- end htb-socks-proxy-scanning ---
 
     /// <summary>
     /// GAP-034: map a thrown exception from the HTTP send pipeline to a

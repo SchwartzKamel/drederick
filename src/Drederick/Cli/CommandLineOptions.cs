@@ -1718,6 +1718,17 @@ public sealed class CommandLineOptions
                 // --- proxy flag parse ---
                 case "--proxy":
                     o.ProxyUri = RequireNext(args, ref i, a);
+                    // --- htb-socks-proxy-scanning ---
+                    // GAP-049: fail fast at parse time so a malformed
+                    // URI never reaches Resolve / scope-attached
+                    // dispatch. Resolver in Program.cs re-validates
+                    // alongside reverse-safety and lab/strict gates.
+                    try { _ = Drederick.Ops.SocksProxyConfig.TryValidate(o.ProxyUri); }
+                    catch (ArgumentException ex)
+                    {
+                        throw new ArgumentException($"--proxy: {ex.Message}");
+                    }
+                    // --- end htb-socks-proxy-scanning ---
                     break;
                 case "--allow-external-proxy":
                     o.AllowExternalProxy = true; break;

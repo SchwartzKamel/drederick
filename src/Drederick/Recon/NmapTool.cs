@@ -40,6 +40,14 @@ public sealed class NmapTool : IReconTool
     // --- htb-crash-resilient-nmap --- (GAP-053)
     private readonly bool _allowFallbackConnect;
     // --- end htb-crash-resilient-nmap ---
+    // --- htb-socks-proxy-scanning ---
+    // GAP-049: parallel typed pivot proxy. When set (and the legacy
+    // _proxy ProxyContext is null), BuildArgs emits "-sT --proxies
+    // <socks5h-or-http>://host:port" and records a per-spawn audit
+    // breadcrumb via RecordApplied.
+    private readonly Drederick.Ops.SocksProxyConfig? _socksConfig;
+    private readonly Drederick.Ops.SocksProxyResolver? _socksResolver;
+    // --- end htb-socks-proxy-scanning ---
 
     // Strict (non-lab) NSE categories. Safe + default only.
     // safe    : scripts that do not attempt anything unsafe against the target
@@ -71,8 +79,13 @@ public sealed class NmapTool : IReconTool
         RunPermissions? permissions = null,
         ProxyContext? proxy = null,
         // --- htb-crash-resilient-nmap --- (GAP-053)
-        bool? allowFallbackConnect = null)
+        bool? allowFallbackConnect = null,
         // --- end htb-crash-resilient-nmap ---
+        // --- htb-socks-proxy-scanning ---
+        Drederick.Ops.SocksProxyConfig? socksConfig = null,
+        Drederick.Ops.SocksProxyResolver? socksResolver = null
+        // --- end htb-socks-proxy-scanning ---
+        )
     {
         _scope = scope;
         _audit = audit;
@@ -86,6 +99,10 @@ public sealed class NmapTool : IReconTool
         // --no-fallback-connect through to this constructor).
         _allowFallbackConnect = allowFallbackConnect ?? labMode;
         // --- end htb-crash-resilient-nmap ---
+        // --- htb-socks-proxy-scanning ---
+        _socksConfig = socksConfig;
+        _socksResolver = socksResolver;
+        // --- end htb-socks-proxy-scanning ---
     }
 
     public string NseCategories => BuildNseCategories(_labMode, _permissions);
@@ -117,6 +134,25 @@ public sealed class NmapTool : IReconTool
                 ["note"] = "nmap --proxies supports SOCKS4/HTTP for TCP connect scans only; UDP/SYN probes bypass the proxy.",
             });
         }
+        // --- htb-socks-proxy-scanning ---
+        else if (_socksConfig is not null)
+        {
+            // Force TCP CONNECT scan; nmap's --proxies cannot tunnel
+            // raw SYN/UDP probes (they would silently bypass the
+            // pivot and leak the operator's source IP).
+            args.Insert(0, "-sT");
+            args.Add("--proxies");
+            args.Add(Drederick.Ops.SocksProxyResolver.BuildNmapProxiesArg(_socksConfig));
+            _audit.Record("nmap.proxy.unsupported_scan_type", new Dictionary<string, object?>
+            {
+                ["target"] = target,
+                ["proxy_endpoint"] = $"{_socksConfig.Host}:{_socksConfig.Port}",
+                ["proxy_scheme"] = _socksConfig.SchemeString,
+                ["note"] = "nmap --proxies degraded to TCP CONNECT; SYN/UDP probes bypass pivot.",
+            });
+            _socksResolver?.RecordApplied("nmap", _socksConfig);
+        }
+        // --- end htb-socks-proxy-scanning ---
         args.Add("--script");
         args.Add(NseCategories);
         args.Add("-oX");

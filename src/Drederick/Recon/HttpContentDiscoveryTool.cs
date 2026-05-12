@@ -84,6 +84,17 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
     private readonly IReadOnlyList<string> _extensions;
     private readonly string _profileName;
     private readonly int _rateLimitRps;
+    // --- htb-socks-proxy-scanning ---
+    // GAP-049: optional pivot proxy + audit hook. Wired into the
+    // self-owned HttpClient's handler when caller didn't pass one.
+    private readonly Drederick.Ops.SocksProxyConfig? _socksConfig;
+    private readonly Drederick.Ops.SocksProxyResolver? _socksResolver;
+    /// <summary>GAP-049 — per-dispatch breadcrumb. Callers invoke this
+    /// from the top of public discovery methods so the audit log
+    /// reflects which dispatches routed through the pivot.</summary>
+    public void RecordProxyApplied()
+        => _socksResolver?.RecordApplied("http-content-discovery", _socksConfig);
+    // --- end htb-socks-proxy-scanning ---
 
     public HttpContentDiscoveryTool(
         Scope.Scope scope,
@@ -92,7 +103,12 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
         IEnumerable<string>? wordlist = null,
         int rateLimitRps = 10,
         IEnumerable<string>? extensions = null,
-        string? wordlistProfile = null)
+        string? wordlistProfile = null,
+        // --- htb-socks-proxy-scanning ---
+        Drederick.Ops.SocksProxyConfig? socksConfig = null,
+        Drederick.Ops.SocksProxyResolver? socksResolver = null
+        // --- end htb-socks-proxy-scanning ---
+        )
     {
         _scope = scope;
         _audit = audit;
@@ -103,6 +119,10 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
                 nameof(rateLimitRps), rateLimitRps, "rateLimitRps must be positive.");
         }
         _rateLimitRps = rateLimitRps;
+        // --- htb-socks-proxy-scanning ---
+        _socksConfig = socksConfig;
+        _socksResolver = socksResolver;
+        // --- end htb-socks-proxy-scanning ---
 
         if (httpClient is null)
         {
@@ -112,6 +132,19 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
                 ServerCertificateCustomValidationCallback = (_, _, _, _) => true,
                 SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
             };
+            // --- htb-socks-proxy-scanning ---
+            if (_socksConfig is not null)
+            {
+                var webProxy = new System.Net.WebProxy(new Uri(_socksConfig.ToRedactedUri()));
+                if (!string.IsNullOrEmpty(_socksConfig.Username))
+                {
+                    webProxy.Credentials = new System.Net.NetworkCredential(
+                        _socksConfig.Username, _socksConfig.Password ?? string.Empty);
+                }
+                handler.Proxy = webProxy;
+                handler.UseProxy = true;
+            }
+            // --- end htb-socks-proxy-scanning ---
             _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("drederick/0.1 (+lab-recon)");
             _ownsHttpClient = true;
