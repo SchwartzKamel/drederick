@@ -451,6 +451,30 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
     {
         if (_ownsHttpClient) _http.Dispose();
     }
+
+    // --- htb-content-discovery-vhost-aware ---
+    /// <summary>
+    /// GAP-057: build a vhost-keyed base URL for content discovery
+    /// re-probe. Used by
+    /// <see cref="Http.VhostContentDiscoveryScheduler"/> to convert a
+    /// detected vhost into a deterministic URL the existing
+    /// <see cref="ProbeAsync"/> entrypoint can consume. Default ports
+    /// (80 for http, 443 for https) are elided to match the canonical
+    /// shape emitted by <see cref="HttpContentDiscoveryAutoRouter"/>.
+    /// </summary>
+    public static string BuildVhostBaseUrl(string vhost, int port, bool useTls)
+    {
+        if (string.IsNullOrWhiteSpace(vhost))
+            throw new ArgumentException("vhost must not be empty.", nameof(vhost));
+        var trimmed = vhost.Trim().Trim('.').ToLowerInvariant();
+        var scheme = useTls ? "https" : "http";
+        var isDefaultPort = (useTls && port == 443) || (!useTls && port == 80);
+        var authority = isDefaultPort
+            ? trimmed
+            : trimmed + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return scheme + "://" + authority + "/";
+    }
+    // --- end htb-content-discovery-vhost-aware ---
 }
 
 /// <summary>

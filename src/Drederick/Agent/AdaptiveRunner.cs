@@ -63,6 +63,21 @@ public sealed class AdaptiveRunner : IReconAgentRunner
     public Func<CancellationToken, Task>? PostRunHookAsync { get; set; }
     // --- end htb-cve-lead-actions-resolve ---
 
+    // --- htb-content-discovery-vhost-aware ---
+    /// <summary>
+    /// GAP-057 — optional hook that re-queues
+    /// <see cref="Drederick.Recon.HttpContentDiscoveryTool"/> against
+    /// vhosts surfaced by upstream HTTP probes
+    /// (<c>http.vhost.detected</c> events). When set, callers /
+    /// orchestrators can invoke this scheduler in response to vhost
+    /// detections without AdaptiveRunner taking a hard dependency on
+    /// the scheduler type. Wired by <c>Program.cs</c> when
+    /// <c>--vhost-content-discovery</c> is opted in. Null by default
+    /// — leaves AdaptiveRunner's dispatch plan unchanged.
+    /// </summary>
+    public Drederick.Recon.Http.VhostContentDiscoveryScheduler? VhostContentDiscoveryScheduler { get; set; }
+    // --- end htb-content-discovery-vhost-aware ---
+
     public async Task RunAsync(
         IReadOnlyList<string> targets,
         ReconToolbox tools,

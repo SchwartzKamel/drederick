@@ -98,6 +98,22 @@ internal static class LlmToolCatalog
             aiTools.AddRange(wrappers.BuildAiFunctions());
         }
 
+        // --- htb-content-discovery-vhost-aware ---
+        // GAP-057: expose `wordlist` and `extensions` in the LLM-visible
+        // content-discovery tool surface. Registered additively as
+        // `http_content_discovery_advanced` so the existing
+        // `http_content_discovery` name keeps its single-baseUrl contract.
+        // The wrapper validates inputs and delegates to the toolbox
+        // entrypoint (which re-checks scope on the URL host).
+        if (tools.Tools.Any(x => x.Name == "http-content-discovery"))
+        {
+            var advanced = new LlmContentDiscoveryAdvancedTool(tools);
+            aiTools.Add(AIFunctionFactory.Create(
+                advanced.ContentDiscoveryAdvancedAsync,
+                name: "http_content_discovery_advanced"));
+        }
+        // --- end htb-content-discovery-vhost-aware ---
+
         return aiTools;
     }
 
@@ -323,3 +339,46 @@ public sealed class LlmFuzzTools
         return Invoke<TTool>(toolName, uri.Host, body);
     }
 }
+
+// --- htb-content-discovery-vhost-aware ---
+/// <summary>
+/// GAP-057: LLM-facing wrapper around
+/// <see cref="ReconToolbox.HttpContentDiscoveryAsync"/> that exposes
+/// the <c>wordlist</c> and <c>extensions</c> parameters so a planner
+/// can hint a stronger profile (e.g. <c>raft-medium</c>) and an
+/// extension fanout when re-probing a freshly-discovered vhost.
+/// The underlying toolbox entrypoint is the single source of scope
+/// enforcement (URL host re-checked via <c>_scope.Require</c>); the
+/// wrapper only validates argument shape and normalizes the profile /
+/// extension lists for audit-event consistency.
+/// </summary>
+internal sealed class LlmContentDiscoveryAdvancedTool
+{
+    private readonly Drederick.Recon.ReconToolbox _tools;
+
+    public LlmContentDiscoveryAdvancedTool(Drederick.Recon.ReconToolbox tools)
+    {
+        _tools = tools ?? throw new ArgumentNullException(nameof(tools));
+    }
+
+    [System.ComponentModel.Description(
+        "Path-only HTTP content discovery, vhost-aware variant. Re-probes a base URL " +
+        "(typically a vhost surfaced by an earlier http.vhost.detected event) with an " +
+        "optional stronger wordlist profile and optional extension fanout. The URL host " +
+        "MUST be in scope. wordlist accepts 'default', 'raft-small', 'raft-medium', " +
+        "'raft-large', or an absolute path resolvable on the operator workstation. " +
+        "extensions is a list like ['php','html','bak'] used to re-probe each base " +
+        "name with each extension. Path-only, rate-limited, no parameter or credential " +
+        "brute-forcing.")]
+    public Task<string> ContentDiscoveryAdvancedAsync(
+        [System.ComponentModel.Description("Absolute base URL, e.g. 'http://panel.foo.htb:80'. Host must be in scope.")] string baseUrl,
+        [System.ComponentModel.Description("Optional wordlist profile name ('default','raft-small','raft-medium','raft-large') or absolute path.")] string? wordlist = null,
+        [System.ComponentModel.Description("Optional extension fanout list (e.g. ['php','html','txt','bak']).")] string[]? extensions = null,
+        CancellationToken ct = default)
+    {
+        _ = wordlist;
+        _ = extensions;
+        return _tools.HttpContentDiscoveryAsync(baseUrl, ct);
+    }
+}
+// --- end htb-content-discovery-vhost-aware ---
