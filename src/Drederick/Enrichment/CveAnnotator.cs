@@ -150,6 +150,39 @@ public sealed class CveAnnotator
                 }
                 // --- end htb-pterodactyl-fingerprint ---
 
+                // --- htb-cms-fingerprint-pack ---
+                // GAP-034: in-code curated pack for WordPress / Joomla /
+                // Drupal / Magento / SuiteCRM. NVD CPE matching alone
+                // misses HTB-tier headliners (Drupalgeddon, CosmicSting,
+                // Joomla CVE-2023-23752) when the fingerprint pass
+                // didn't recover a precise version, so this backstop
+                // always fires when the (vendor, product) tuple
+                // resolves to one of the five supported CMS products.
+                if (Recon.Cms.CmsCveCorpus.AppliesTo(cand.Vendor, cand.Product))
+                {
+                    foreach (var ccm in Recon.Cms.CmsCveCorpus.Match(cand.Vendor, cand.Product, cand.Version))
+                    {
+                        if (!emitted.Add((cand.Port, ccm.CveId))) continue;
+
+                        report.UpsertCve(ccm.CveId, ccm.Cvss, ccm.Summary, null);
+                        cveCount++;
+
+                        foreach (var url in ccm.RefUrls)
+                        {
+                            try { report.UpsertPocRef(ccm.CveId, "builtin-cms", url: url); } catch { }
+                        }
+
+                        var cmsPayload = JsonSerializer.Serialize(new CveFindingPayload(
+                            ccm.CveId, ccm.Cvss, cand.Product, cand.Version, cand.Source, "curated",
+                            "builtin-cms", ccm.Severity, ccm.GhsaId));
+                        if (InsertCveFinding(conn, hostId.Value, serviceId, cmsPayload, now))
+                        {
+                            findingCount++;
+                        }
+                    }
+                }
+                // --- end htb-cms-fingerprint-pack ---
+
                 if (!cacheLoaded) continue;
 
                 var matches = matcher.Match(vendor: null, product: cand.Product, version: cand.Version);

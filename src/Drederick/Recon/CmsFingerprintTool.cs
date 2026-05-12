@@ -565,6 +565,32 @@ public sealed class CmsFingerprintTool : IReconTool
         }
         // --- end htb-pterodactyl-fingerprint ---
 
+        // --- htb-cms-fingerprint-pack ---
+        // GAP-034: programmatic WordPress / Joomla / Drupal / Magento /
+        // SuiteCRM signatures. Each one is appended only when the
+        // embedded YAML did not provide an entry of the same name, so
+        // the YAML still wins on order for environments that ship a
+        // richer corpus.
+        var pack = new (string Name, Func<CmsFingerprintEntry> Build)[]
+        {
+            (Cms.WordPressSignature.EntryName, Cms.WordPressSignature.BuildEntry),
+            (Cms.JoomlaSignature.EntryName, Cms.JoomlaSignature.BuildEntry),
+            (Cms.DrupalSignature.EntryName, Cms.DrupalSignature.BuildEntry),
+            (Cms.MagentoSignature.EntryName, Cms.MagentoSignature.BuildEntry),
+            (Cms.SuiteCrmSignature.EntryName, Cms.SuiteCrmSignature.BuildEntry),
+        };
+        var augmentedPack = new List<CmsFingerprintEntry>(parsed.Count + pack.Length);
+        augmentedPack.AddRange(parsed);
+        foreach (var (entryName, build) in pack)
+        {
+            if (!augmentedPack.Any(e => string.Equals(e.Name, entryName, StringComparison.OrdinalIgnoreCase)))
+            {
+                augmentedPack.Add(build());
+            }
+        }
+        parsed = augmentedPack;
+        // --- end htb-cms-fingerprint-pack ---
+
         return parsed;
     }
 
