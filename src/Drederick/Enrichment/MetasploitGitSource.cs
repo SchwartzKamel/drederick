@@ -49,16 +49,28 @@ public sealed class MetasploitGitSource : IPocSource
     private readonly long _maxArtifactBytes;
     private readonly long _maxTotalBytes;
     private readonly GitPocCacheWriter _writer;
+    // --- htb-poc-fetch-diagnostics ---
+    private readonly PocFetchDiagnostics? _diag;
+    private readonly PocOfflineBundle? _offlineBundle;
+    // --- end htb-poc-fetch-diagnostics ---
 
     public MetasploitGitSource(
         IGitClient? git = null,
         long? maxArtifactBytes = null,
-        long? maxTotalBytes = null)
+        long? maxTotalBytes = null,
+        // --- htb-poc-fetch-diagnostics ---
+        PocFetchDiagnostics? diagnostics = null,
+        PocOfflineBundle? offlineBundle = null)
+        // --- end htb-poc-fetch-diagnostics ---
     {
         _git = git ?? new ProcessGitClient();
         _maxArtifactBytes = maxArtifactBytes ?? DefaultMaxArtifactBytes;
         _maxTotalBytes = maxTotalBytes ?? DefaultMaxTotalBytes;
         _writer = new GitPocCacheWriter(_maxArtifactBytes, _maxTotalBytes);
+        // --- htb-poc-fetch-diagnostics ---
+        _diag = diagnostics;
+        _offlineBundle = offlineBundle;
+        // --- end htb-poc-fetch-diagnostics ---
     }
 
     public string Name => SourceName;
@@ -77,6 +89,38 @@ public sealed class MetasploitGitSource : IPocSource
             ["source"] = Name,
             ["cve_id"] = cveId,
         });
+
+        // --- htb-poc-fetch-diagnostics ---
+        // GAP-053: Offline bundle short-circuits the clone entirely.
+        // If <bundle>/<source>/<cve>/ has staged content, copy each file
+        // through the writer (so SHA-256 / poc.fetch.artifact / SQLite
+        // rows still fire) and return without touching the network.
+        if (_offlineBundle is not null)
+        {
+            var hit = _offlineBundle.TryResolve(Name, cveId, ctx.Audit);
+            if (hit is not null)
+            {
+                var bundleRefs = new List<PocRef>(hit.RelativePaths.Count);
+                foreach (var rel in hit.RelativePaths)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var absSrc = Path.Combine(hit.BundleDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                    var basename = Path.GetFileName(rel);
+                    var sourceUrl = $"offline-bundle://{Name}/{cveId}/{rel}";
+                    var local = _writer.WriteCopy(
+                        source: Name,
+                        cveId: cveId,
+                        sourcePath: absSrc,
+                        relativeDestPath: basename,
+                        sourceUrl: sourceUrl,
+                        contentTypeHint: "text/x-ruby",
+                        ctx: ctx);
+                    bundleRefs.Add(new PocRef(Name, Url: sourceUrl, ExternalId: basename, LocalPath: local));
+                }
+                return bundleRefs;
+            }
+        }
+        // --- end htb-poc-fetch-diagnostics ---
 
         var repoDir = Path.Combine(ctx.CacheRoot, Name, "_repo");
         var sem = RepoCacheLock.For(repoDir);
@@ -97,6 +141,19 @@ public sealed class MetasploitGitSource : IPocSource
                     repoDir,
                     SparsePaths,
                     ct).ConfigureAwait(false);
+                // --- htb-poc-fetch-diagnostics ---
+                // GAP-053: when wired, emit poc.fetch.error.diagnosed with
+                // git-presence / DNS / HTTPS-reachability surface so failures
+                // are triagable from audit.jsonl without re-running verbose.
+                if (!cloneResult.Success && _diag is not null)
+                {
+                    await _diag.WrapAsync(
+                        ctx.Audit, Name, cveId,
+                        GitPocAllowlist.MetasploitFramework,
+                        _ => Task.FromResult(cloneResult),
+                        ct).ConfigureAwait(false);
+                }
+                // --- end htb-poc-fetch-diagnostics ---
                 if (!cloneResult.Success)
                 {
                     await GitPocDiagnostics.RecordCloneFailureAsync(

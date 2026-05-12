@@ -43,18 +43,30 @@ public sealed class PocInGitHubSource : IPocSource
     private readonly IGitHubHttpClient _http;
     private readonly GitPocCacheWriter _writer;
     private bool _rateLimitedThisRun;
+    // --- htb-poc-fetch-diagnostics ---
+    private readonly PocFetchDiagnostics? _diag;
+    private readonly PocOfflineBundle? _offlineBundle;
+    // --- end htb-poc-fetch-diagnostics ---
 
     public PocInGitHubSource(
         IGitClient? git = null,
         IGitHubHttpClient? http = null,
         long? maxArtifactBytes = null,
-        long? maxTotalBytes = null)
+        long? maxTotalBytes = null,
+        // --- htb-poc-fetch-diagnostics ---
+        PocFetchDiagnostics? diagnostics = null,
+        PocOfflineBundle? offlineBundle = null)
+        // --- end htb-poc-fetch-diagnostics ---
     {
         _git = git ?? new ProcessGitClient();
         _http = http ?? new DefaultGitHubHttpClient();
         _writer = new GitPocCacheWriter(
             maxArtifactBytes ?? DefaultMaxArtifactBytes,
             maxTotalBytes ?? DefaultMaxTotalBytes);
+        // --- htb-poc-fetch-diagnostics ---
+        _diag = diagnostics;
+        _offlineBundle = offlineBundle;
+        // --- end htb-poc-fetch-diagnostics ---
     }
 
     public string Name => SourceName;
@@ -77,6 +89,34 @@ public sealed class PocInGitHubSource : IPocSource
             ["cve_id"] = canonicalCve,
         });
 
+        // --- htb-poc-fetch-diagnostics ---
+        if (_offlineBundle is not null)
+        {
+            var hit = _offlineBundle.TryResolve(Name, canonicalCve, ctx.Audit);
+            if (hit is not null)
+            {
+                var bundleRefs = new List<PocRef>(hit.RelativePaths.Count);
+                foreach (var rel in hit.RelativePaths)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var absSrc = Path.Combine(hit.BundleDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                    var basename = Path.GetFileName(rel);
+                    var sourceUrl = $"offline-bundle://{Name}/{canonicalCve}/{rel}";
+                    var local = _writer.WriteCopy(
+                        source: Name,
+                        cveId: canonicalCve,
+                        sourcePath: absSrc,
+                        relativeDestPath: basename,
+                        sourceUrl: sourceUrl,
+                        contentTypeHint: null,
+                        ctx: ctx);
+                    bundleRefs.Add(new PocRef(Name, Url: sourceUrl, ExternalId: basename, LocalPath: local));
+                }
+                return bundleRefs;
+            }
+        }
+        // --- end htb-poc-fetch-diagnostics ---
+
         var repoDir = Path.Combine(ctx.CacheRoot, Name, "_repo");
         var sem = RepoCacheLock.For(repoDir);
         await sem.WaitAsync(ct).ConfigureAwait(false);
@@ -96,6 +136,16 @@ public sealed class PocInGitHubSource : IPocSource
                     repoDir,
                     new[] { year },
                     ct).ConfigureAwait(false);
+                // --- htb-poc-fetch-diagnostics ---
+                if (!cloneResult.Success && _diag is not null)
+                {
+                    await _diag.WrapAsync(
+                        ctx.Audit, Name, canonicalCve,
+                        GitPocAllowlist.PocInGitHub,
+                        _ => Task.FromResult(cloneResult),
+                        ct).ConfigureAwait(false);
+                }
+                // --- end htb-poc-fetch-diagnostics ---
                 if (!cloneResult.Success)
                 {
                     await GitPocDiagnostics.RecordCloneFailureAsync(

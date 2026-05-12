@@ -236,6 +236,18 @@ public sealed class CommandLineOptions
     public bool FetchPoc { get; set; } = true;
     // END ANCHOR: poc-aggregator-option
 
+    // --- htb-poc-fetch-diagnostics ---
+    /// <summary>
+    /// GAP-053 — optional pre-staged offline PoC bundle root. When set,
+    /// the git-clone PoC sources consult
+    /// <c>&lt;dir&gt;/&lt;source-name&gt;/&lt;cve-id&gt;/</c> for staged
+    /// content before any network call, and emit
+    /// <c>poc.fetch.offline_hit</c> on a hit. Designed for airgapped /
+    /// CTF-VPN environments where outbound HTTPS to github.com is blocked.
+    /// </summary>
+    public string? PocOfflineBundle { get; set; }
+    // --- end htb-poc-fetch-diagnostics ---
+
     // --- exploit opt-ins ----------------------------------------------------
     // Every category is OFF by default, even inside a lab scope. These flags
     // map 1:1 to Drederick.Exploit.ExploitCategory values and build the
@@ -993,6 +1005,10 @@ public sealed class CommandLineOptions
                 case "--no-fetch-poc":
                     o.FetchPoc = false; break;
                 // END ANCHOR: poc-aggregator-flag-parse
+                // --- htb-poc-fetch-diagnostics ---
+                case "--poc-offline-bundle":
+                    o.PocOfflineBundle = RequireNext(args, ref i, a); break;
+                // --- end htb-poc-fetch-diagnostics ---
                 // --- exploit opt-in flag parse ---
                 case "--allow-exec-pocs":
                     o.AllowExecPocs = true; break;
