@@ -255,9 +255,26 @@ CREATE INDEX IF NOT EXISTS idx_phpinfo_target ON phpinfo_findings(target);
                 }
             }
 
+            // --- htb-findings-db-service-persistence ---
+            // GAP-040 (pterodactyl-R1): also upsert services for ports that
+            // were discovered via non-nmap signals (HTTP banner, fingerprint
+            // stack, CMS fingerprint, TLS). Without this, hosts whose service
+            // info comes purely from those signals end up with a populated
+            // `findings` table (CveAnnotator runs against the candidates)
+            // but an empty `services` table, breaking the host→service→cve
+            // join Datasette and the planner rely on.
+            foreach (var tuple in ServicesPersistenceFix.HarvestNonNmapServiceTuples(host))
+            {
+                UpsertService(conn, tx, hostId, tuple.Port, tuple.Protocol,
+                    tuple.Service, tuple.Product, tuple.Version);
+            }
+            // --- end htb-findings-db-service-persistence ---
+
             foreach (var h in host.Http)
             {
-                InsertFinding(conn, tx, hostId, null, "http", JsonSerializer.Serialize(h), now);
+                var httpPort = ServicesPersistenceFix.PortFromUrl(h?.Url);
+                long? httpSvcId = httpPort > 0 ? FindServiceId(conn, tx, hostId, httpPort, "tcp") : null;
+                InsertFinding(conn, tx, hostId, httpSvcId, "http", JsonSerializer.Serialize(h), now);
             }
 
             foreach (var t in host.Tls)
