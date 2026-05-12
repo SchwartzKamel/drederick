@@ -248,6 +248,27 @@ public sealed class CommandLineOptions
     /// <summary>Permit NSE <c>dos</c>/<c>malware</c> categories and anything
     /// intentionally denial-of-service. CLI: <c>--allow-dos</c>.</summary>
     public bool AllowDos { get; set; }
+    // --- htb-loot-collector ---
+    /// <summary>Skip the GAP-004 post-ex loot harvest after a successful
+    /// session open. Default: harvest enabled. CLI: <c>--no-loot</c>.</summary>
+    public bool NoLoot { get; set; }
+    /// <summary>Cap on artifacts collected per session by
+    /// <see cref="Drederick.Exploit.PostEx.PostExLootTool"/>. CLI:
+    /// <c>--loot-max-artifacts &lt;int&gt;</c>. Default 200.</summary>
+    public int LootMaxArtifacts { get; set; } = Drederick.Exploit.PostEx.PostExLootTool.DefaultMaxArtifacts;
+    /// <summary>Cap on total bytes harvested per session by the loot
+    /// collector. CLI: <c>--loot-max-bytes-total &lt;bytes&gt;</c>. Default
+    /// 100 MiB.</summary>
+    public long LootMaxBytesTotal { get; set; } = Drederick.Exploit.PostEx.PostExLootTool.DefaultMaxBytesTotal;
+    // --- end htb-loot-collector ---
+    // --- htb-crash-resilient-nmap --- (GAP-053)
+    /// <summary>Permit TCP-connect fallback sweep when nmap crashes /
+    /// truncates / sigfaults mid-scan. Default: lab mode ON, strict
+    /// mode OFF — modelled as nullable so the per-mode default is
+    /// applied at use-site. CLI: <c>--allow-fallback-connect</c> /
+    /// <c>--no-fallback-connect</c>.</summary>
+    public bool? AllowFallbackConnect { get; set; }
+    // --- end htb-crash-resilient-nmap ---
     public bool AllowExecShell { get; set; }
     public bool AllowExecShellBash { get; set; }
     /// <summary>Master gate for the cve-lead → LLM-author fallback bridge
@@ -870,6 +891,32 @@ public sealed class CommandLineOptions
                     o.AllowDestructive = true; break;
                 case "--allow-dos":
                     o.AllowDos = true; break;
+                // --- htb-loot-collector ---
+                case "--no-loot":
+                    o.NoLoot = true; break;
+                case "--loot-max-artifacts":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!int.TryParse(v, out var n) || n < 0)
+                            throw new ArgumentException(
+                                $"--loot-max-artifacts must be a non-negative integer, got '{v}'.");
+                        o.LootMaxArtifacts = n; break;
+                    }
+                case "--loot-max-bytes-total":
+                    {
+                        var v = RequireNext(args, ref i, a);
+                        if (!long.TryParse(v, out var n) || n < 0)
+                            throw new ArgumentException(
+                                $"--loot-max-bytes-total must be a non-negative integer, got '{v}'.");
+                        o.LootMaxBytesTotal = n; break;
+                    }
+                // --- end htb-loot-collector ---
+                // --- htb-crash-resilient-nmap --- (GAP-053)
+                case "--allow-fallback-connect":
+                    o.AllowFallbackConnect = true; break;
+                case "--no-fallback-connect":
+                    o.AllowFallbackConnect = false; break;
+                // --- end htb-crash-resilient-nmap ---
                 case "--allow-exec-shell":
                     o.AllowExecShell = true; break;
                 case "--no-allow-exec-shell":

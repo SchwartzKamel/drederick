@@ -780,7 +780,10 @@ var permissions = new RunPermissions(
     // disable the family even inside lab.
     allowAdAttacks: opts.AllowAdAttacksExplicit ?? (opts.AllowAdAttacks || opts.LabMode));
 
-var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions);
+var nmap = new NmapTool(scope, audit, labMode: opts.LabMode, permissions: permissions,
+    // --- htb-crash-resilient-nmap --- (GAP-053)
+    allowFallbackConnect: opts.AllowFallbackConnect);
+    // --- end htb-crash-resilient-nmap ---
 var http = new HttpProbeTool(scope, audit);
 var tls = new TlsProbeTool(scope, audit);
 var dns = new DnsProbeTool(scope, audit);
@@ -818,6 +821,12 @@ var smbNullSession = new Drederick.Recon.Ad.SmbNullSessionTool(
 // --- htb-smtp-enum --- (GAP-011)
 var smtpEnum = new SmtpEnumTool(scope, audit);
 // --- end htb-smtp-enum ---
+// --- htb-nfs-enum --- (GAP-007)
+// Anonymous write probe is technically a write to the target; default on
+// in lab mode, gated by --allow-destructive in strict mode.
+var nfsEnum = new NfsEnumTool(scope, audit,
+    allowWriteProbe: opts.LabMode || opts.AllowDestructive);
+// --- end htb-nfs-enum ---
 
 // --- gap-029 budget construction ---
 // LLM-driven runs need substantially more headroom than deterministic
@@ -864,6 +873,9 @@ var toolbox = new ReconToolbox(
         // --- htb-smtp-enum ---
         smtpEnum,
         // --- end htb-smtp-enum ---
+        // --- htb-nfs-enum ---
+        nfsEnum,
+        // --- end htb-nfs-enum ---
     },
     audit,
     reconBudget);
@@ -938,6 +950,20 @@ var winrmExecutor = new Drederick.Exploit.PostEx.EvilWinrmSubprocessExecutor(
     workdirRoot: opts.OutputDir);
 var winrmPostEx = new Drederick.Exploit.PostEx.WinRmPostExTool(
     scope, audit, permissions, winrmExecutor);
+
+// --- htb-loot-collector ---
+// GAP-004: PostExLootTool — walks a live session foothold for curated
+// high-value credential / secret paths (LootCatalog corpus, embedded
+// from data/postex-loot-paths.json). Plaintext never logged; SHA-256
+// only into audit + SQLite. ISessionExecutor is unwired here (Program
+// has no live SessionManager-driven session abstraction yet); LLM /
+// future AutopilotRunner hook will inject the live executor at call
+// time. Registers as a normal IExploitTool so the LlmExploitTools
+// surface can list it. Master gate is ExploitCategory.ExecPocs.
+var lootExecutor = new Drederick.Exploit.PostEx.UnwiredSessionExecutor();
+var postExLoot = new Drederick.Exploit.PostEx.PostExLootTool(
+    scope, audit, permissions, lootExecutor, opts.OutputDir);
+// --- end htb-loot-collector ---
 
 // GAP-041: HTTP form-brute primitive that drives the cms_chain
 // cred_runner action (default-creds against WP/Drupal/Joomla/etc).
@@ -1022,7 +1048,7 @@ var exploitBudget = new Drederick.Exploit.ToolBudget(
         : null,
 };
 var exploitToolbox = new ExploitToolbox(
-    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sshKeyPassphraseBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump, zeroLogon },
+    new IExploitTool[] { nuclei, msf, spray, httpSpray, empireExecutor, dbPillage, asRepRoast, kerberoast, sshKeyBrute, sshKeyPassphraseBrute, sudoGtfoBins, winrmPostEx, ntdsSamDump, zeroLogon, /* --- htb-loot-collector --- */ postExLoot /* --- end htb-loot-collector --- */ },
     audit,
     exploitBudget);
 

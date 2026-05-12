@@ -15,6 +15,11 @@
     <EmbeddedResource Include="Exploit/PostEx/Resources/db-pillage-schemas.yaml" />
     <EmbeddedResource Include="Exploit/PostEx/Resources/gtfobins.yaml" />
     <EmbeddedResource Include="Exploit/PostEx/Resources/winrm-enum-commands.yaml" />
+    <!-- htb-loot-collector:start -->
+    <EmbeddedResource Include="..\..\data\postex-loot-paths.json" LinkBase="Exploit\PostEx\Resources">
+      <LogicalName>Drederick.Exploit.PostEx.Resources.postex-loot-paths.json</LogicalName>
+    </EmbeddedResource>
+    <!-- htb-loot-collector:end -->
     <EmbeddedResource Include="Exploit/Resources/cms-chain-templates.yaml" />
     <!-- htb-version-exploit-mapper:start -->
     <EmbeddedResource Include="..\..\data\version-exploits.json" LinkBase="Enrichment">

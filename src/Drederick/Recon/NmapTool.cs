@@ -37,6 +37,9 @@ public sealed class NmapTool : IReconTool
     private readonly bool _labMode;
     private readonly RunPermissions _permissions;
     private readonly ProxyContext? _proxy;
+    // --- htb-crash-resilient-nmap --- (GAP-053)
+    private readonly bool _allowFallbackConnect;
+    // --- end htb-crash-resilient-nmap ---
 
     // Strict (non-lab) NSE categories. Safe + default only.
     // safe    : scripts that do not attempt anything unsafe against the target
@@ -66,7 +69,10 @@ public sealed class NmapTool : IReconTool
         string? nmapPath = null,
         bool labMode = true,
         RunPermissions? permissions = null,
-        ProxyContext? proxy = null)
+        ProxyContext? proxy = null,
+        // --- htb-crash-resilient-nmap --- (GAP-053)
+        bool? allowFallbackConnect = null)
+        // --- end htb-crash-resilient-nmap ---
     {
         _scope = scope;
         _audit = audit;
@@ -74,6 +80,12 @@ public sealed class NmapTool : IReconTool
         _labMode = labMode;
         _permissions = permissions ?? RunPermissions.None;
         _proxy = proxy;
+        // --- htb-crash-resilient-nmap --- (GAP-053)
+        // Default: lab mode ON, strict mode OFF. Operator override wins
+        // either way (CLI plumbs --allow-fallback-connect /
+        // --no-fallback-connect through to this constructor).
+        _allowFallbackConnect = allowFallbackConnect ?? labMode;
+        // --- end htb-crash-resilient-nmap ---
     }
 
     public string NseCategories => BuildNseCategories(_labMode, _permissions);
@@ -205,7 +217,13 @@ public sealed class NmapTool : IReconTool
 
         var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
         var stderrTask = proc.StandardError.ReadToEndAsync(ct);
+        // --- htb-crash-resilient-nmap --- (GAP-053): measure elapsed so
+        // the recovery helper can decide whether the subprocess did real
+        // work before crashing.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+        stopwatch.Stop();
+        // --- end htb-crash-resilient-nmap ---
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
 
@@ -215,20 +233,88 @@ public sealed class NmapTool : IReconTool
             ["returncode"] = proc.ExitCode,
         });
 
-        if (proc.ExitCode != 0)
+        // --- htb-crash-resilient-nmap --- (GAP-053)
+        // Happy path: clean exit + parseable XML. Anything else routes to
+        // the recovery helper for partial-XML extraction and optional
+        // TCP-connect fallback.
+        if (proc.ExitCode == 0)
         {
-            return new NmapResult
+            var happy = new NmapResult { ReturnCode = 0 };
+            try
             {
-                ReturnCode = proc.ExitCode,
-                Stderr = Tail(stderr, 2000),
-            };
+                happy.OpenPorts.AddRange(ParseXml(stdout));
+                return happy;
+            }
+            catch (Exception ex)
+            {
+                happy.Stderr = "xml-parse: " + ex.Message;
+                // Exit was clean but XML is mangled. Per spec, do NOT
+                // engage the TCP-connect fallback here — only the
+                // partial-XML recovery — and surface the parse error.
+                var recovered0 = NmapCrashRecovery.RecoverPartialXml(stdout);
+                NmapCrashRecovery.RecordCrash(_audit, target, proc.ExitCode, stderr, recovered0.Count);
+                if (recovered0.Count > 0) happy.OpenPorts.AddRange(recovered0);
+                return happy;
+            }
         }
 
-        var result = new NmapResult { ReturnCode = 0 };
-        try { result.OpenPorts.AddRange(ParseXml(stdout)); }
-        catch (Exception ex) { result.Stderr = "xml-parse: " + ex.Message; }
+        // Non-zero exit (crash / sigfault / interrupted). Try to salvage
+        // any complete <host> blocks first.
+        var result = new NmapResult { ReturnCode = proc.ExitCode };
+        var recovered = NmapCrashRecovery.RecoverPartialXml(stdout);
+        NmapCrashRecovery.RecordCrash(_audit, target, proc.ExitCode, stderr, recovered.Count);
+        if (recovered.Count > 0)
+        {
+            result.OpenPorts.AddRange(recovered);
+            result.Stderr = $"crashed; recovered {recovered.Count} host(s) from partial XML. " +
+                NmapCrashRecovery.Tail(stderr, 2000);
+            return result;
+        }
+
+        // Zero hosts recovered. Escalate to TCP-connect fallback only if
+        // the subprocess did real work AND the operator allows it.
+        var stdoutBytes = stdout?.Length ?? 0;
+        if (!_allowFallbackConnect ||
+            !NmapCrashRecovery.ShouldAttemptConnectFallback(stopwatch.Elapsed, stdoutBytes))
+        {
+            result.Stderr = "nmap.error = \"crashed; recovery failed\"; " +
+                NmapCrashRecovery.Tail(stderr, 2000);
+            return result;
+        }
+
+        // Determine the fallback port list. Explicit -p wins; otherwise
+        // fall back to nmap's top-100 (closest analog to --top-ports 1000
+        // but bounded for a single-shot connect sweep).
+        var fallbackPorts = NmapCrashRecovery.ExpandPortSpec(portSpec);
+        if (fallbackPorts.Count == 0)
+            fallbackPorts = NmapCrashRecovery.TopPorts100.ToList();
+
+        List<int> openTcp;
+        try
+        {
+            openTcp = await NmapCrashRecovery.TcpConnectFallbackAsync(
+                _scope, target, fallbackPorts, ct: ct).ConfigureAwait(false);
+        }
+        catch (ScopeException)
+        {
+            // Scope is an authorization boundary; never swallow it.
+            throw;
+        }
+        catch (ArgumentException ex)
+        {
+            result.Stderr = "fallback rejected: " + ex.Message;
+            return result;
+        }
+
+        NmapCrashRecovery.RecordFallback(_audit, target, fallbackPorts.Count, openTcp.Count);
+        foreach (var p in openTcp)
+        {
+            result.OpenPorts.Add(new NmapPort { Port = p, Protocol = "tcp" });
+        }
+        result.Stderr = "nmap.error = \"crashed; recovered via tcp-connect\"";
         return result;
     }
+    // --- end htb-crash-resilient-nmap ---
 
     private static void RejectUnsafePortSpec(string portSpec)
     {

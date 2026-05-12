@@ -29,4 +29,7 @@ public sealed record RunOptions(
     bool VpnPreflight = true,
     bool RequireVpn = false,
     bool EnableFuzz = false,
-    bool EnableNseEnrichment = true);
+    bool EnableNseEnrichment = true,
+    // --- htb-crash-resilient-nmap --- (GAP-053)
+    bool? AllowFallbackConnect = null);
+// --- end htb-crash-resilient-nmap ---
