@@ -47,6 +47,7 @@ public class HttpContentDiscoveryToolHardeningTests
     }
 
     private static bool IsBaselinePath(string p) =>
+        p.StartsWith("/__drederick_404_", StringComparison.Ordinal) ||
         p.StartsWith("/__drederick_baseline_404_", StringComparison.Ordinal);
 
     // --- (1) SPA catch-all detection ----------------------------------------

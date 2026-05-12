@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using Drederick.Audit;
+using Drederick.Recon.Http;
 using Drederick.Scope;
 
 namespace Drederick.Recon;
@@ -320,27 +321,26 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
 
         var result = new HttpContentDiscoveryResult { BaseUrl = normalizedBase };
 
-        // SPA catch-all baseline probe (GAP-055): hit a guaranteed-404
-        // random path. If the target is a SPA the response is 200 with the
-        // shell HTML for any unknown route. Capture sha256 + length + type
-        // so the main loop can tag matching 200s as "spa_catch_all".
-        var baselineRand = Convert.ToHexString(
-            RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-        var baselinePath = "/__drederick_baseline_404_" + baselineRand;
+        // --- htb-spa-catchall-detection ---
+        // GAP-055: delegate SPA catch-all baseline probing to
+        // SpaCatchAllDetector (two randomized 404-bait requests +
+        // SHA / length / structural-marker fusion).
+        SpaBaseline? spaBaseline = null;
         try
         {
-            using var breq = new HttpRequestMessage(HttpMethod.Get, normalizedBase + baselinePath);
-            using var bcts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            bcts.CancelAfter(TimeSpan.FromSeconds(5));
-            using var bresp = await _http.SendAsync(
-                breq, HttpCompletionOption.ResponseContentRead, bcts.Token).ConfigureAwait(false);
-            var bbytes = await bresp.Content.ReadAsByteArrayAsync(bcts.Token).ConfigureAwait(false);
-            result.BaselineStatus = (int)bresp.StatusCode;
-            result.BaselineContentLength = bbytes.LongLength;
-            result.BaselineContentType = bresp.Content.Headers.ContentType?.MediaType;
-            result.BaselineSha256 = Convert.ToHexString(SHA256.HashData(bbytes)).ToLowerInvariant();
+            var detector = new SpaCatchAllDetector(_scope, _audit);
+            spaBaseline = await detector.ProbeAsync(normalizedBase, _http, ct).ConfigureAwait(false);
+            result.BaselineStatus = spaBaseline.PrimaryStatus;
+            result.BaselineContentLength = spaBaseline.PrimaryContentLength;
+            result.BaselineContentType = spaBaseline.PrimaryContentType;
+            result.BaselineSha256 = spaBaseline.BodySha256;
+            result.SpaCatchAllDetected = spaBaseline.IsLikelySpaCatchAll;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (ScopeException)
         {
             throw;
         }
@@ -349,23 +349,10 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
             _audit.Record("http-content-discovery.baseline_error", new Dictionary<string, object?>
             {
                 ["base_url"] = normalizedBase,
-                ["path"] = baselinePath,
                 ["error"] = ex.Message,
             });
         }
-
-        result.SpaCatchAllDetected =
-            result.BaselineStatus == 200 && !string.IsNullOrEmpty(result.BaselineSha256);
-        if (result.SpaCatchAllDetected)
-        {
-            _audit.Record("http.discovery.spa_catch_all_detected", new Dictionary<string, object?>
-            {
-                ["base_url"] = normalizedBase,
-                ["baseline_sha256"] = result.BaselineSha256,
-                ["baseline_content_length"] = result.BaselineContentLength,
-                ["baseline_content_type"] = result.BaselineContentType,
-            });
-        }
+        // --- end htb-spa-catchall-detection ---
 
         var minIntervalTicks = Stopwatch.Frequency / _rateLimitRps;
         long nextAllowedTick = Stopwatch.GetTimestamp();
@@ -410,11 +397,13 @@ public sealed class HttpContentDiscoveryTool : IReconTool, IDisposable
                     size = bytes.LongLength;
                     var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
                     entry.BodySha256 = sha;
-                    if (result.SpaCatchAllDetected
-                        && string.Equals(sha, result.BaselineSha256, StringComparison.Ordinal))
+                    // --- htb-spa-catchall-detection ---
+                    if (spaBaseline is not null
+                        && SpaCatchAllDetector.IsBodySpaCatchAllMatch(bytes, sha, spaBaseline))
                     {
                         entry.MatchKind = "spa_catch_all";
                     }
+                    // --- end htb-spa-catchall-detection ---
                 }
                 else if (resp.Content.Headers.ContentLength.HasValue)
                 {
