@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Sockets;
 using System.Text.Json;
 using Drederick.Agent;
@@ -187,7 +188,7 @@ public class FailureAwareRetryPolicyTests
         const string canary = "P@ssw0rdShouldNotAppear-XYZZY";
         await policy.ExecuteAsync<int>("hydra", "10.10.10.5", _ =>
         {
-            throw new SocketException($"connect failed with secret={canary}");
+            throw new IOException($"connect failed with secret={canary}", new SocketException(10061));
         });
         var entries = ReadAudit(audit).ToList();
         Assert.Equal(3, entries.Count(e => e["event"].GetString() == "retry.attempt"));

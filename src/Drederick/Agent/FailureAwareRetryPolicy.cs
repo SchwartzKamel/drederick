@@ -128,6 +128,7 @@ public sealed class FailureAwareRetryPolicy
 
         FailureClass? lastFailure = null;
         double factor = 1.0;
+        int attemptsUsed = 0;
         for (int attempt = 1; attempt <= _maxAttempts; attempt++)
         {
             ct.ThrowIfCancellationRequested();
@@ -165,6 +166,7 @@ public sealed class FailureAwareRetryPolicy
 
                 classification = MaybeEscalateToTargetDead(target, classification, toolName);
                 lastFailure = classification;
+                attemptsUsed = attempt;
 
                 _audit.Record("retry.attempt", new Dictionary<string, object?>
                 {
@@ -201,11 +203,11 @@ public sealed class FailureAwareRetryPolicy
         {
             ["tool"] = toolName,
             ["target"] = target,
-            ["attempts_used"] = _maxAttempts,
+            ["attempts_used"] = attemptsUsed,
             ["final_kind"] = lastFailure?.Kind,
             ["final_reason"] = lastFailure?.Reason,
         });
-        return new RetryOutcome<T>(default, false, _maxAttempts, lastFailure);
+        return new RetryOutcome<T>(default, false, attemptsUsed, lastFailure);
     }
 
     /// <summary>True if <paramref name="target"/> currently has an active lockout marker.</summary>
