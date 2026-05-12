@@ -158,6 +158,27 @@ public sealed class AutopilotRunner
             flagsSeen.TryAdd(m.ValueSha256, m);
         }
 
+        // --- htb-pfx-cert-awareness ---
+        // GAP-014 — PFX / cert / key / keytab / ccache awareness sweep over
+        // loot harvested into out/. Pure local-file inspection; no scope
+        // check needed (the containment check on _outputRoot guards against
+        // accidental traversal). Failures are non-fatal.
+        try
+        {
+            var pfxScanner = new PfxCertScanner(_audit);
+            var seed = _scope.Expand().FirstOrDefault() ?? "host";
+            await pfxScanner.ScanAsync(_outputRoot, seed, _outputRoot, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _audit.Record("pfx-cert-scan.failed", new Dictionary<string, object?>
+            {
+                ["error"] = ex.Message,
+            });
+        }
+        // --- end htb-pfx-cert-awareness ---
+
         var flags = flagsSeen.Values.ToList();
         _audit.Record("autopilot.finish", new Dictionary<string, object?>
         {
