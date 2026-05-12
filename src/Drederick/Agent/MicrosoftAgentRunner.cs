@@ -27,6 +27,11 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     private readonly string _modelId;
     private readonly LlmExploitTools? _exploitTools;
     private readonly LlmNotebookTool? _notebook;
+    // --- htb-llm-exploit-planning ---
+    // Optional GAP-052 LLM exploit planner. Surfaced to the agent as an
+    // AIFunction named `llm_exploit_plan` when wired. Null-gated.
+    private LlmExploitPlanner? _llmExploitPlanner;
+    // --- end htb-llm-exploit-planning ---
 
     public MicrosoftAgentRunner(
         AuditLog audit,
@@ -52,6 +57,22 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
     /// <summary>Attach / replace the LLM fight notebook tool.</summary>
     public MicrosoftAgentRunner WithNotebook(LlmNotebookTool notebook) =>
         new(_audit, _chatClient, _modelId, _exploitTools, notebook);
+
+    // --- htb-llm-exploit-planning ---
+    /// <summary>
+    /// Attach the GAP-052 LLM exploit planner. Exposes a single
+    /// <c>llm_exploit_plan</c> <see cref="AIFunction"/> to the agent that
+    /// wraps <see cref="LlmExploitPlanner.PlanAsync"/>. Scope and shell-
+    /// metachar validation live inside the planner; this surface is purely
+    /// registration.
+    /// </summary>
+    public MicrosoftAgentRunner WithLlmExploitPlanner(LlmExploitPlanner planner)
+    {
+        ArgumentNullException.ThrowIfNull(planner);
+        _llmExploitPlanner = planner;
+        return this;
+    }
+    // --- end htb-llm-exploit-planning ---
 
     /// <summary>
     /// In-fight scaffolding (briefing.md + attack-graph.yaml). When set,
@@ -205,6 +226,13 @@ public sealed class MicrosoftAgentRunner : IReconAgentRunner
         });
 
         IList<AITool> aiTools = LlmToolCatalog.BuildAiTools(tools, _exploitTools, _notebook);
+
+        // --- htb-llm-exploit-planning ---
+        if (_llmExploitPlanner is not null)
+        {
+            aiTools.Add(AIFunctionFactory.Create(_llmExploitPlanner.PlanAsync, name: "llm_exploit_plan"));
+        }
+        // --- end htb-llm-exploit-planning ---
 
         // Wrap the chat client with FunctionInvokingChatClient.
         // NOTE: AllowConcurrentInvocation disabled — Claude via Copilot API

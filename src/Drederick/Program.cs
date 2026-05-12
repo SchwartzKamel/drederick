@@ -1293,6 +1293,37 @@ if (opts.UseAgent)
     }
     else
     {
+        // --- htb-llm-exploit-planning ---
+        // GAP-052: attach the LLM-driven exploit planner to the agent
+        // runner. The planner shares the same Copilot/Azure/llama.cpp
+        // provider stack as the Jeopardy swarm via LlmProviderFactory.
+        // Null client falls back to the deterministic ordering at
+        // PlanAsync time; the AIFunction registration still occurs so
+        // the model has a stable surface to reason about.
+        if (agentRunner is MicrosoftAgentRunner msAgentRunner)
+        {
+            Drederick.Jeopardy.Llm.ICopilotLlmClient? plannerLlm = null;
+            try
+            {
+                plannerLlm = Drederick.Jeopardy.Llm.LlmProviderFactory.Create(
+                    opts.LlmProvider, opts, audit, Console.Error);
+            }
+            catch (Exception ex)
+            {
+                audit.Record("exploit_plan.client_init_error", new Dictionary<string, object?>
+                {
+                    ["error_type"] = ex.GetType().Name,
+                });
+            }
+            var llmExploitPlanner052 = new Drederick.Agent.LlmExploitPlanner(
+                scope, audit, permissions, plannerLlm);
+            msAgentRunner.WithLlmExploitPlanner(llmExploitPlanner052);
+            audit.Record("exploit_plan.planner.ready", new Dictionary<string, object?>
+            {
+                ["llm_wired"] = plannerLlm is not null,
+            });
+        }
+        // --- end htb-llm-exploit-planning ---
         runner = agentRunner;
     }
 }
