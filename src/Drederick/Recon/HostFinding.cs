@@ -38,6 +38,12 @@ public sealed class HostFinding
     // --- htb-smtp-enum --- (GAP-011)
     [JsonPropertyName("smtp_enum")] public List<SmtpEnumResult> SmtpEnum { get; set; } = new();
     // --- end htb-smtp-enum ---
+    // --- htb-nfs-enum --- (GAP-007)
+    [JsonPropertyName("nfs_enum")] public List<NfsEnumResult> NfsEnum { get; set; } = new();
+    // --- end htb-nfs-enum ---
+    // --- htb-ssl-cert-hosts --- (GAP-006)
+    [JsonPropertyName("ssl_cert_hosts")] public List<SslCertHostsResult> SslCertHosts { get; set; } = new();
+    // --- end htb-ssl-cert-hosts ---
     // --- s3 --- (GAP-037)
     [JsonPropertyName("s3")] public List<S3Finding> S3 { get; set; } = new();
     // --- cms fingerprint --- (GAP-036)
@@ -624,6 +630,56 @@ public sealed class SmtpEnumResult
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
 // --- end htb-smtp-enum ---
+
+// --- end htb-smtp-enum ---
+
+// --- htb-nfs-enum --- (GAP-007: NFS export enumeration result shape)
+public sealed class NfsEnumResult
+{
+    [JsonPropertyName("exports")] public List<NfsExport> Exports { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class NfsExport
+{
+    [JsonPropertyName("path")] public string Path { get; set; } = "";
+    [JsonPropertyName("allowed_clients")] public string? AllowedClients { get; set; }
+    [JsonPropertyName("mount_succeeded_v3")] public bool MountSucceededV3 { get; set; }
+    [JsonPropertyName("mount_succeeded_v4")] public bool MountSucceededV4 { get; set; }
+    [JsonPropertyName("anon_read")] public bool AnonRead { get; set; }
+    [JsonPropertyName("anon_write")] public bool AnonWrite { get; set; }
+    [JsonPropertyName("root_squash_disabled")] public bool RootSquashDisabled { get; set; }
+    [JsonPropertyName("interesting_files")] public List<string> InterestingFiles { get; set; } = new();
+    [JsonPropertyName("top_level_entries")] public List<string> TopLevelEntries { get; set; } = new();
+    [JsonPropertyName("file_count")] public int FileCount { get; set; }
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+// --- end htb-nfs-enum ---
+
+// --- htb-ssl-cert-hosts --- (GAP-006: SSL cert CN/SAN → /etc/hosts proposal result shape)
+public sealed class SslCertHostsResult
+{
+    [JsonPropertyName("port")] public int Port { get; set; }
+    [JsonPropertyName("cn")] public string? CommonName { get; set; }
+    [JsonPropertyName("sans")] public List<string> Sans { get; set; } = new();
+    [JsonPropertyName("issuer")] public string? Issuer { get; set; }
+    [JsonPropertyName("not_before")] public DateTime? NotBefore { get; set; }
+    [JsonPropertyName("not_after")] public DateTime? NotAfter { get; set; }
+    [JsonPropertyName("serial")] public string? Serial { get; set; }
+    [JsonPropertyName("signature_algorithm")] public string? SignatureAlgorithm { get; set; }
+    [JsonPropertyName("self_signed")] public bool SelfSigned { get; set; }
+    [JsonPropertyName("hosts_proposals")] public List<EtcHostsProposal> HostsProposals { get; set; } = new();
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class EtcHostsProposal
+{
+    [JsonPropertyName("hostname")] public string Hostname { get; set; } = "";
+    [JsonPropertyName("target_ip")] public string TargetIp { get; set; } = "";
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+    [JsonPropertyName("current_resolution")] public string? CurrentResolution { get; set; }
+}
+// --- end htb-ssl-cert-hosts ---
 
 // --- phpinfo additions (GAP-054) ---
 public sealed record PhpInfoFinding

@@ -361,6 +361,13 @@ public sealed class DrederickHost
         // --- htb-smtp-enum ---
         var smtpEnum = new SmtpEnumTool(scope, audit);
         // --- end htb-smtp-enum ---
+        // --- htb-nfs-enum ---
+        // Anon-write probe is a write to the target; lab mode = on, strict = off.
+        var nfsEnum = new NfsEnumTool(scope, audit, allowWriteProbe: labMode);
+        // --- end htb-nfs-enum ---
+        // --- htb-ssl-cert-hosts ---
+        var sslCertHosts = new SslCertHostsTool(scope, audit);
+        // --- end htb-ssl-cert-hosts ---
 
         return new ReconToolbox(
             new IReconTool[]
@@ -371,6 +378,12 @@ public sealed class DrederickHost
                 // --- htb-smtp-enum ---
                 smtpEnum,
                 // --- end htb-smtp-enum ---
+                // --- htb-nfs-enum ---
+                nfsEnum,
+                // --- end htb-nfs-enum ---
+                // --- htb-ssl-cert-hosts ---
+                sslCertHosts,
+                // --- end htb-ssl-cert-hosts ---
             },
             audit);
     }

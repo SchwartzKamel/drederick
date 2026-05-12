@@ -36,6 +36,32 @@ public sealed class ReconToolbox
     // --- htb-smtp-enum ---
     private readonly SmtpEnumTool? _smtpEnum;
     // --- end htb-smtp-enum ---
+
+    // --- htb-nfs-enum --- (GAP-007)
+    [Description("Enumerate NFS exports against a target on port 2049 / mountd RPC. " +
+                 "Lists exports via 'showmount -e', attempts a read-only mount at NFSv3 " +
+                 "(falling back to NFSv4), walks up to two directory levels, captures " +
+                 "uid/gid metadata, flags well-known sensitive files (id_rsa, *.kdbx, " +
+                 "*.env, wp-config.php, …), detects no_root_squash exports, and in lab " +
+                 "mode probes for anonymous write. Always unmounts cleanly.")]
+    public async Task<string> EnumerateNfsAsync(
+        [Description("Target IP or hostname (must be in scope).")] string target,
+        CancellationToken ct = default)
+    {
+        var tool = _nfsEnum ?? throw new InvalidOperationException("NfsEnumTool is not registered.");
+        Charge(target, "nfs-enum");
+        var r = await tool.EnumerateAsync(target, ct).ConfigureAwait(false);
+        GetOrCreate(target).NfsEnum.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-nfs-enum ---
+
+    // --- htb-nfs-enum ---
+    private readonly NfsEnumTool? _nfsEnum;
+    // --- end htb-nfs-enum ---
+    // --- htb-ssl-cert-hosts ---
+    private readonly SslCertHostsTool? _sslCertHosts;
+    // --- end htb-ssl-cert-hosts ---
     private readonly IReadOnlyCollection<IReconTool> _tools;
     private readonly AuditLog _audit;
     private readonly ConcurrentDictionary<string, HostFinding> _findings = new();
@@ -86,6 +112,12 @@ public sealed class ReconToolbox
         // --- htb-smtp-enum ---
         _smtpEnum = materialized.OfType<SmtpEnumTool>().SingleOrDefault();
         // --- end htb-smtp-enum ---
+        // --- htb-nfs-enum ---
+        _nfsEnum = materialized.OfType<NfsEnumTool>().SingleOrDefault();
+        // --- end htb-nfs-enum ---
+        // --- htb-ssl-cert-hosts ---
+        _sslCertHosts = materialized.OfType<SslCertHostsTool>().SingleOrDefault();
+        // --- end htb-ssl-cert-hosts ---
 
         _tools = materialized;
         _audit = audit;
@@ -538,6 +570,25 @@ public sealed class ReconToolbox
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
     // --- end htb-smtp-enum ---
+
+    // --- htb-ssl-cert-hosts --- (GAP-006)
+    [Description("Connect to a TLS port (e.g. 443, 8443, 993, 465, 636) and extract the X.509 " +
+                 "Common Name and Subject Alternative Names. Emits structured /etc/hosts " +
+                 "proposal records for hostnames that do not already resolve to the target IP. " +
+                 "Tool never writes /etc/hosts itself.")]
+    public async Task<string> EnumerateSslCertAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("TCP port number (default 443).")] int port = 443,
+        CancellationToken ct = default)
+    {
+        var tool = _sslCertHosts ?? throw new InvalidOperationException("SslCertHostsTool is not registered.");
+        ValidatePort(port);
+        Charge(target, "ssl-cert-hosts");
+        var r = await tool.EnumerateAsync(target, port, ct: ct).ConfigureAwait(false);
+        GetOrCreate(target).SslCertHosts.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-ssl-cert-hosts ---
 
 
     private static void ValidatePort(int port)

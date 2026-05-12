@@ -1,0 +1,4 @@
+Export list for nfs.lab.local:
+/srv/nfs/public      *
+/srv/nfs/home        10.10.0.0/16,192.168.50.0/24
+/srv/backup          (everyone)
