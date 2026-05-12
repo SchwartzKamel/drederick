@@ -397,6 +397,17 @@ public sealed class CommandLineOptions
     public string? WindowsVulnsPostExJson { get; set; }
     /// <summary>--json: emit machine-readable output (matches AnalyzeJson convention).</summary>
     public bool WindowsVulnsJson { get; set; }
+    // --- htb-windows-vulns-feeder ---
+    /// <summary>--findings-json &lt;path&gt;: HostFinding JSON to feed the
+    /// build-fingerprint matcher (slice-C). Complements --postex-json by
+    /// using live recon data (SMB negotiate, nmap scripts, LDAP rootDSE)
+    /// to collapse the noisy banner-only candidate list.</summary>
+    public string? WindowsVulnsFindingsJson { get; set; }
+    /// <summary>--verbose: include low-confidence banner-only candidates
+    /// in the windows-vulns analyze output. Off by default so the
+    /// operator sees only high-signal hits.</summary>
+    public bool WindowsVulnsVerbose { get; set; }
+    // --- end htb-windows-vulns-feeder ---
     // --- end windows-vulns subcommand ----------------------------------------
 
     /// <summary>Bind host for `drederick serve`. Default 127.0.0.1.</summary>
@@ -1127,6 +1138,13 @@ public sealed class CommandLineOptions
                     }
                     break;
                 case "--verbose":
+                    // --- htb-windows-vulns-feeder ---
+                    if (o.WindowsVulnsSubcommand)
+                    {
+                        o.WindowsVulnsVerbose = true;
+                        break;
+                    }
+                    // --- end htb-windows-vulns-feeder ---
                     if (!o.AnalyzeSubcommand)
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.AnalyzeVerbose = true;
@@ -1153,6 +1171,13 @@ public sealed class CommandLineOptions
                         throw new ArgumentException($"Unknown argument: {a}");
                     o.WindowsVulnsPostExJson = RequireNext(args, ref i, a);
                     break;
+                // --- htb-windows-vulns-feeder ---
+                case "--findings-json":
+                    if (!o.WindowsVulnsSubcommand)
+                        throw new ArgumentException($"Unknown argument: {a}");
+                    o.WindowsVulnsFindingsJson = RequireNext(args, ref i, a);
+                    break;
+                // --- end htb-windows-vulns-feeder ---
                 // --- end windows-vulns subcommand flags ---------
                 // ANCHOR: note-subcommand-flags
                 case "--title":

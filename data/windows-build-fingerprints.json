@@ -1,0 +1,313 @@
+{
+  "_comment": "htb-windows-vulns-fingerprint-feeder (PingPong writeup #3): curated Windows KB → CVE mapping for build-fingerprint suppression. Each entry: kb (primary patch KB), supersedes (list of KBs that this KB replaces and thus satisfies as well), fixes (CVE list), products (family tags: Win10, Win11, WinSrv-2016, WinSrv-2019, WinSrv-2022; or 'DC' for domain-controller-specific), min_build_revision ('CurrentBuild.UBR' threshold — boxes at or above this UBR are patched even without the explicit KB), feature_gate (optional gate: 'spooler', 'smbv1', 'smbv3-compression', 'domain-controller', 'adcs', 'outlook'), severity, title, references (MSRC advisory URLs). min_build_revision is checked per-product; the json schema keeps things simple by encoding it as 'CB.UBR' on the most common targeted product.",
+  "entries": [
+    {
+      "kb": "KB4012598",
+      "supersedes": ["KB4013389", "KB4012212", "KB4012213", "KB4012214", "KB4012215", "KB4012216", "KB4012217"],
+      "fixes": ["CVE-2017-0143", "CVE-2017-0144", "CVE-2017-0145", "CVE-2017-0146", "CVE-2017-0147", "CVE-2017-0148"],
+      "products": ["Win10", "WinSrv-2016"],
+      "min_build_revision": "14393.953",
+      "feature_gate": "smbv1",
+      "severity": "red",
+      "title": "EternalBlue / MS17-010 — SMBv1 RCE",
+      "references": ["https://learn.microsoft.com/en-us/security-updates/securitybulletins/2017/ms17-010"]
+    },
+    {
+      "kb": "KB4551762",
+      "supersedes": [],
+      "fixes": ["CVE-2020-0796"],
+      "products": ["Win10", "WinSrv-2019"],
+      "min_build_revision": "18362.720",
+      "feature_gate": "smbv3-compression",
+      "severity": "red",
+      "title": "SMBGhost — SMBv3 compression pre-auth RCE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2020-0796"]
+    },
+    {
+      "kb": "KB4565351",
+      "supersedes": ["KB4566782", "KB4571756"],
+      "fixes": ["CVE-2020-1472"],
+      "products": ["WinSrv-2016", "WinSrv-2019", "DC"],
+      "min_build_revision": "17763.1369",
+      "feature_gate": "domain-controller",
+      "severity": "red",
+      "title": "Zerologon — Netlogon ECDSA bypass to DC takeover",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2020-1472"]
+    },
+    {
+      "kb": "KB5004945",
+      "supersedes": ["KB5005565", "KB5005568", "KB5005566", "KB5005569", "KB5005573", "KB5005613", "KB5005623"],
+      "fixes": ["CVE-2021-1675", "CVE-2021-34527"],
+      "products": ["Win10", "Win11", "WinSrv-2016", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.2090",
+      "feature_gate": "spooler",
+      "severity": "red",
+      "title": "PrintNightmare — Print Spooler RCE/LPE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-34527"]
+    },
+    {
+      "kb": "KB5004237",
+      "supersedes": ["KB5004245"],
+      "fixes": ["CVE-2021-36934"],
+      "products": ["Win10", "Win11"],
+      "min_build_revision": "19041.1110",
+      "severity": "red",
+      "title": "HiveNightmare / SeriousSAM — readable SAM/SYSTEM/SECURITY",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-36934"]
+    },
+    {
+      "kb": "KB5005413",
+      "supersedes": [],
+      "fixes": ["CVE-2021-36942"],
+      "products": ["WinSrv-2016", "WinSrv-2019", "DC"],
+      "min_build_revision": "17763.2114",
+      "severity": "red",
+      "title": "PetitPotam — EFSRPC NTLM relay coercion",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-36942"]
+    },
+    {
+      "kb": "KB5008212",
+      "supersedes": [],
+      "fixes": ["CVE-2021-43883"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.2366",
+      "severity": "yellow",
+      "title": "Windows Installer LPE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-43883"]
+    },
+    {
+      "kb": "KB5009557",
+      "supersedes": [],
+      "fixes": ["CVE-2022-21849", "CVE-2022-21919", "CVE-2022-21916"],
+      "products": ["WinSrv-2019", "DC"],
+      "min_build_revision": "17763.2452",
+      "severity": "red",
+      "title": "January 2022 — User Profile / IKEv2 cluster",
+      "references": ["https://msrc.microsoft.com/update-guide/releasenote/2022-Jan"]
+    },
+    {
+      "kb": "KB5010342",
+      "supersedes": [],
+      "fixes": ["CVE-2022-21999", "CVE-2022-22718"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.2565",
+      "feature_gate": "spooler",
+      "severity": "red",
+      "title": "SpoolFool — Print Spooler LPE (CVE-2022-21999) + relay variant",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-21999"]
+    },
+    {
+      "kb": "KB5014692",
+      "supersedes": [],
+      "fixes": ["CVE-2022-30190"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.3046",
+      "severity": "red",
+      "title": "Follina — MSDT URL handler RCE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-30190"]
+    },
+    {
+      "kb": "KB5014754",
+      "supersedes": [],
+      "fixes": ["CVE-2022-26923"],
+      "products": ["WinSrv-2016", "WinSrv-2019", "DC", "ADCS"],
+      "min_build_revision": "17763.3046",
+      "feature_gate": "adcs",
+      "severity": "red",
+      "title": "Certifried — AD CS dNSHostName cert spoof to DA",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-26923"]
+    },
+    {
+      "kb": "KB5005413",
+      "supersedes": [],
+      "fixes": ["CVE-2022-26925"],
+      "products": ["WinSrv-2016", "WinSrv-2019", "DC"],
+      "min_build_revision": "17763.2989",
+      "severity": "red",
+      "title": "PetitPotam-2 — LSARPC EFSRPC NTLM coercion (re-fix)",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-26925"]
+    },
+    {
+      "kb": "KB5022282",
+      "supersedes": ["KB5022286"],
+      "fixes": ["CVE-2023-21768"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.3887",
+      "severity": "red",
+      "title": "afd.sys LPE — Ancillary Function Driver Winsock SYSTEM",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2023-21768"]
+    },
+    {
+      "kb": "KB5022845",
+      "supersedes": [],
+      "fixes": ["CVE-2023-23397"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.4010",
+      "feature_gate": "outlook",
+      "severity": "red",
+      "title": "Outlook NTLM leak via PidLidReminderFileParameter UNC",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2023-23397"]
+    },
+    {
+      "kb": "KB5025221",
+      "supersedes": ["KB5025229", "KB5025230"],
+      "fixes": ["CVE-2023-28252"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.4252",
+      "severity": "red",
+      "title": "CLFS Driver LPE — Nokoyawa ransomware in-the-wild",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2023-28252"]
+    },
+    {
+      "kb": "KB5028171",
+      "supersedes": [],
+      "fixes": ["CVE-2023-32019"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.4651",
+      "severity": "yellow",
+      "title": "Kernel Information Disclosure",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2023-32019"]
+    },
+    {
+      "kb": "KB5028168",
+      "supersedes": [],
+      "fixes": ["CVE-2023-32056", "CVE-2023-35365"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.4645",
+      "severity": "yellow",
+      "title": "July 2023 cumulative — kernel / win32k cluster",
+      "references": ["https://msrc.microsoft.com/update-guide/releasenote/2023-Jul"]
+    },
+    {
+      "kb": "KB5034441",
+      "supersedes": ["KB5034763", "KB5034765"],
+      "fixes": ["CVE-2024-21338"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.5458",
+      "severity": "red",
+      "title": "AppLocker Driver LPE — Lazarus FudModule",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-21338"]
+    },
+    {
+      "kb": "KB5036892",
+      "supersedes": ["KB5036893", "KB5036899"],
+      "fixes": ["CVE-2024-26229"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.5696",
+      "severity": "red",
+      "title": "csc.sys / Client Side Caching LPE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-26229"]
+    },
+    {
+      "kb": "KB5039212",
+      "supersedes": ["KB5039217", "KB5039227"],
+      "fixes": ["CVE-2024-30088"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.5936",
+      "severity": "red",
+      "title": "ntoskrnl TOCTOU LPE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-30088"]
+    },
+    {
+      "kb": "KB5041580",
+      "supersedes": ["KB5041578", "KB5041573"],
+      "fixes": ["CVE-2024-38063"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.6189",
+      "severity": "red",
+      "title": "tcpip.sys IPv6 pre-auth RCE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-38063"]
+    },
+    {
+      "kb": "KB5005033",
+      "supersedes": [],
+      "fixes": ["CVE-2021-31207", "CVE-2021-34473", "CVE-2021-34523"],
+      "products": ["Exchange"],
+      "min_build_revision": "15.2.792.15",
+      "severity": "red",
+      "title": "ProxyShell — Exchange chain to RCE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-34473"]
+    },
+    {
+      "kb": "KB5000871",
+      "supersedes": [],
+      "fixes": ["CVE-2021-26855", "CVE-2021-26857", "CVE-2021-26858", "CVE-2021-27065"],
+      "products": ["Exchange"],
+      "min_build_revision": "15.2.721.13",
+      "severity": "red",
+      "title": "ProxyLogon — Exchange pre-auth RCE chain",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-26855"]
+    },
+    {
+      "kb": "KB5021291",
+      "supersedes": [],
+      "fixes": ["CVE-2022-41040", "CVE-2022-41082"],
+      "products": ["Exchange"],
+      "min_build_revision": "15.2.1118.21",
+      "severity": "red",
+      "title": "ProxyNotShell — Exchange Autodiscover SSRF + RCE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-41040"]
+    },
+    {
+      "kb": "KB5043083",
+      "supersedes": ["KB5044615"],
+      "fixes": ["CVE-2024-43491"],
+      "products": ["Win10"],
+      "min_build_revision": "10240.20680",
+      "severity": "red",
+      "title": "Windows Update servicing-stack rollback re-enables old CVEs",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2024-43491"]
+    },
+    {
+      "kb": "KB5004442",
+      "supersedes": [],
+      "fixes": ["CVE-2021-33757"],
+      "products": ["WinSrv-2016", "WinSrv-2019", "DC"],
+      "min_build_revision": "17763.2061",
+      "feature_gate": "domain-controller",
+      "severity": "yellow",
+      "title": "Netlogon AES enforcement — downgrade hardening",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-33757"]
+    },
+    {
+      "kb": "KB5009566",
+      "supersedes": [],
+      "fixes": ["CVE-2022-21907"],
+      "products": ["WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.2452",
+      "severity": "red",
+      "title": "http.sys HTTP/2 trailer pre-auth RCE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-21907"]
+    },
+    {
+      "kb": "KB5019966",
+      "supersedes": [],
+      "fixes": ["CVE-2022-37969"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.3406",
+      "severity": "red",
+      "title": "CLFS LPE (Sept 2022 ITW)",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2022-37969"]
+    },
+    {
+      "kb": "KB5022840",
+      "supersedes": [],
+      "fixes": ["CVE-2023-21746"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.3887",
+      "severity": "red",
+      "title": "NTLM LocalPotato LPE",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2023-21746"]
+    },
+    {
+      "kb": "KB5028951",
+      "supersedes": [],
+      "fixes": ["CVE-2023-36874"],
+      "products": ["Win10", "Win11", "WinSrv-2019", "WinSrv-2022"],
+      "min_build_revision": "17763.4737",
+      "severity": "red",
+      "title": "Windows Error Reporting LPE (ITW)",
+      "references": ["https://msrc.microsoft.com/update-guide/vulnerability/CVE-2023-36874"]
+    }
+  ]
+}

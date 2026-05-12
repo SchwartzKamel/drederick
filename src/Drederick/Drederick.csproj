@@ -21,6 +21,11 @@
       <LogicalName>Drederick.Enrichment.version-exploits.json</LogicalName>
     </EmbeddedResource>
     <!-- htb-version-exploit-mapper:end -->
+    <!-- htb-windows-vulns-feeder:start -->
+    <EmbeddedResource Include="..\..\data\windows-build-fingerprints.json" LinkBase="Enrichment">
+      <LogicalName>Drederick.Enrichment.windows-build-fingerprints.json</LogicalName>
+    </EmbeddedResource>
+    <!-- htb-windows-vulns-feeder:end -->
   </ItemGroup>
 
   <ItemGroup>

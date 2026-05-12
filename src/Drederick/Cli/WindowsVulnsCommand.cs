@@ -1,5 +1,8 @@
 using System.Text.Json;
+using Drederick.Enrichment;
 using Drederick.Exploit;
+using Drederick.Recon;
+using Drederick.Recon.Windows;
 
 namespace Drederick.Cli;
 
@@ -95,9 +98,19 @@ public sealed class WindowsVulnsCommand
 
     private int RunAnalyze(CommandLineOptions opts)
     {
+        // --- htb-windows-vulns-feeder ---
+        // Slice-C path: when --findings-json is supplied, run the
+        // BuildFingerprintCollector over a captured HostFinding and feed
+        // the build/UBR/KB fingerprint into FingerprintMatcher. Returns
+        // suppression-aware high/medium/low-confidence candidates.
+        if (!string.IsNullOrEmpty(opts.WindowsVulnsFindingsJson))
+        {
+            return RunAnalyzeFromFindings(opts);
+        }
+        // --- end htb-windows-vulns-feeder ---
         if (string.IsNullOrEmpty(opts.WindowsVulnsPostExJson))
         {
-            _err.WriteLine("windows-vulns --analyze: --postex-json <path> is required.");
+            _err.WriteLine("windows-vulns --analyze: --postex-json <path> or --findings-json <path> is required.");
             return 2;
         }
         if (!File.Exists(opts.WindowsVulnsPostExJson))
@@ -197,4 +210,121 @@ public sealed class WindowsVulnsCommand
             Software = new WindowsInstalledSoftware(),
         };
     }
+
+    // --- htb-windows-vulns-feeder ---
+    /// <summary>Slice-C analyzer entry point: read a captured
+    /// <see cref="HostFinding"/> JSON, build a
+    /// <see cref="WindowsBuildFingerprint"/>, and emit suppression-aware
+    /// candidates via <see cref="FingerprintMatcher.MatchWindowsBuild"/>.
+    /// Pure data — the upstream recon already ran inside scope.</summary>
+    private int RunAnalyzeFromFindings(CommandLineOptions opts)
+    {
+        var path = opts.WindowsVulnsFindingsJson!;
+        if (!File.Exists(path))
+        {
+            _err.WriteLine($"windows-vulns --analyze: file not found: {path}");
+            return 2;
+        }
+
+        HostFinding? host;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            host = JsonSerializer.Deserialize<HostFinding>(stream);
+        }
+        catch (JsonException ex)
+        {
+            _err.WriteLine($"windows-vulns --analyze: failed to parse findings JSON: {ex.Message}");
+            return 2;
+        }
+        catch (IOException ex)
+        {
+            _err.WriteLine($"windows-vulns --analyze: I/O error reading {path}: {ex.Message}");
+            return 2;
+        }
+        if (host is null)
+        {
+            _err.WriteLine("windows-vulns --analyze: empty findings JSON.");
+            return 2;
+        }
+
+        var collector = new BuildFingerprintCollector();
+        var fp = collector.Build(host);
+        var matcher = FingerprintMatcher.LoadEmbedded();
+        var hits = matcher.MatchWindowsBuild(fp);
+
+        if (!opts.WindowsVulnsVerbose)
+        {
+            hits = hits.Where(h => h.Confidence != FingerprintMatchConfidence.Low).ToList();
+        }
+
+        if (opts.WindowsVulnsJson)
+        {
+            var payload = new
+            {
+                target = host.Target,
+                fingerprint_inputs = new
+                {
+                    product = fp.Product,
+                    current_build = fp.CurrentBuild,
+                    ubr = fp.Ubr,
+                    release_id = fp.ReleaseId,
+                    feature_pack = fp.FeaturePack,
+                    smb_dialect = fp.SmbDialect,
+                    ad_schema_version = fp.AdSchemaVersion,
+                    installed_kbs = fp.InstalledKbs,
+                    enabled_features = fp.EnabledFeatures,
+                    service_versions = fp.ServiceVersions,
+                },
+                candidates = hits.Select(h => new
+                {
+                    cve = h.Cve,
+                    title = h.Title,
+                    severity = h.Severity,
+                    confidence = h.Confidence.ToString().ToLowerInvariant(),
+                    missing_kb = h.MissingKb,
+                    feature_gate = h.FeatureGate,
+                    reason = h.Reason,
+                    source = h.Source,
+                    references = h.References,
+                }),
+            };
+            _out.WriteLine(JsonSerializer.Serialize(payload,
+                new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+
+        _out.WriteLine($"Target            : {host.Target}");
+        _out.WriteLine($"Product           : {fp.Product ?? "(unknown)"}");
+        _out.WriteLine($"Build             : {fp.CurrentBuild ?? "?"}.{fp.Ubr ?? "?"}");
+        _out.WriteLine($"Installed KBs     : {fp.InstalledKbs.Count}");
+        _out.WriteLine($"Enabled features  : {(fp.EnabledFeatures.Count == 0 ? "(none)" : string.Join(",", fp.EnabledFeatures))}");
+        _out.WriteLine($"SMB dialect       : {fp.SmbDialect ?? "(unknown)"}");
+        _out.WriteLine($"AD schema version : {fp.AdSchemaVersion ?? "(unknown)"}");
+        _out.WriteLine();
+
+        if (hits.Count == 0)
+        {
+            _out.WriteLine("No candidates surfaced. Either fully patched, or insufficient fingerprint data.");
+            return 0;
+        }
+
+        foreach (var band in new[] {
+            FingerprintMatchConfidence.High,
+            FingerprintMatchConfidence.Medium,
+            FingerprintMatchConfidence.Low })
+        {
+            var rows = hits.Where(h => h.Confidence == band).ToList();
+            if (rows.Count == 0) continue;
+            _out.WriteLine($"--- {band.ToString().ToUpperInvariant()} confidence ({rows.Count}) ---");
+            _out.WriteLine($"{"CVE",-18}{"SEV",-8}{"MISSING-KB",-14}TITLE");
+            foreach (var h in rows)
+            {
+                _out.WriteLine($"{h.Cve,-18}{h.Severity,-8}{h.MissingKb ?? "-",-14}{h.Title}");
+            }
+            _out.WriteLine();
+        }
+        return 0;
+    }
+    // --- end htb-windows-vulns-feeder ---
 }
