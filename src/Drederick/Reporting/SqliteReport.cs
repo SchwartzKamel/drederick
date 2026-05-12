@@ -200,6 +200,18 @@ CREATE INDEX IF NOT EXISTS idx_phpinfo_target ON phpinfo_findings(target);
             alt.CommandText = "ALTER TABLE loot ADD COLUMN rejection_reason TEXT;";
             alt.ExecuteNonQuery();
         }
+        // --- htb-loot-collector ---
+        // GAP-004 — post-ex loot collector annotates each row with a curated
+        // category (ssh-key/credential/config/database/cron/env/wallet/other)
+        // distinct from the existing `kind` column (which is the source-tool
+        // discriminator like "shadow"/"flag"). Additive, idempotent.
+        if (!existing.Contains("category"))
+        {
+            using var alt = conn.CreateCommand();
+            alt.CommandText = "ALTER TABLE loot ADD COLUMN category TEXT;";
+            alt.ExecuteNonQuery();
+        }
+        // --- end htb-loot-collector ---
     }
     // --- end htb-flag-filter ---
 
@@ -482,10 +494,11 @@ ON CONFLICT(session_id) DO UPDATE SET
         using var conn = OpenAndEnsureSchema();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-INSERT INTO loot(target, kind, value_sha256, source_tool, captured_at, metadata)
-VALUES($t, $k, $sha, $src, $ts, $meta)
+INSERT INTO loot(target, kind, value_sha256, source_tool, captured_at, metadata, category)
+VALUES($t, $k, $sha, $src, $ts, $meta, $cat)
 ON CONFLICT(target, kind, value_sha256) DO UPDATE SET
   metadata = COALESCE(excluded.metadata, loot.metadata),
+  category = COALESCE(excluded.category, loot.category),
   captured_at = excluded.captured_at;";
         cmd.Parameters.AddWithValue("$t", l.Target);
         cmd.Parameters.AddWithValue("$k", l.Kind);
@@ -493,6 +506,7 @@ ON CONFLICT(target, kind, value_sha256) DO UPDATE SET
         cmd.Parameters.AddWithValue("$src", l.SourceTool);
         cmd.Parameters.AddWithValue("$ts", l.CapturedAt);
         cmd.Parameters.AddWithValue("$meta", (object?)l.Metadata ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$cat", (object?)l.Category ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 
