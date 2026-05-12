@@ -32,6 +32,13 @@ public sealed class CredentialStore
     // (host, service, realm|user, pwdSha) → attempt record. Presence = attempted.
     private readonly ConcurrentDictionary<string, AttemptRecord> _attempts = new();
 
+    // --- empire-cred-bridge ---
+    private readonly ConcurrentDictionary<string, DigestRef> _digestRefs = new();
+
+    /// <summary>Raised whenever a new credential lands in the store.</summary>
+    public event EventHandler<CredentialAddedEventArgs>? CredentialAdded;
+    // --- end empire-cred-bridge ---
+
     public CredentialStore(AuditLog audit) { _audit = audit; }
 
     /// <summary>Number of distinct credentials currently known.</summary>
@@ -58,14 +65,82 @@ public sealed class CredentialStore
                 ["source"] = source,
                 ["total"] = _secrets.Count,
             });
+            // --- empire-cred-bridge ---
+            RaiseCredentialAdded(user, realm, Sha256Hex(password), source, sourceHost: null, hasPlaintext: true);
+            // --- end empire-cred-bridge ---
         }
         return added;
     }
 
+    // --- empire-cred-bridge ---
+    public bool AddCaptured(string user, string password, string? realm, string source, string? sourceHost)
+    {
+        if (string.IsNullOrWhiteSpace(user) || password is null)
+            throw new ArgumentException("user+password required");
+        var key = Key(realm, user);
+        var added = _secrets.TryAdd(key, password);
+        if (added)
+        {
+            _audit.Record("autopilot.cred.added", new Dictionary<string, object?>
+            {
+                ["user"] = user,
+                ["realm"] = realm,
+                ["password_sha256"] = Sha256Hex(password),
+                ["source"] = source,
+                ["source_host"] = sourceHost,
+                ["total"] = _secrets.Count,
+            });
+            RaiseCredentialAdded(user, realm, Sha256Hex(password), source, sourceHost, hasPlaintext: true);
+        }
+        return added;
+    }
+
+    public bool AddDigestOnly(string user, string passwordSha256, string? realm, string source, string? sourceHost)
+    {
+        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(passwordSha256))
+            throw new ArgumentException("user+sha required");
+        var sha = passwordSha256.ToLowerInvariant();
+        var digestKey = Key(realm, user) + "|" + sha;
+        var added = _digestRefs.TryAdd(digestKey, new DigestRef(user, realm, sha, source, sourceHost));
+        if (added)
+        {
+            _audit.Record("autopilot.cred.added", new Dictionary<string, object?>
+            {
+                ["user"] = user,
+                ["realm"] = realm,
+                ["password_sha256"] = sha,
+                ["source"] = source,
+                ["source_host"] = sourceHost,
+                ["digest_only"] = true,
+            });
+            RaiseCredentialAdded(user, realm, sha, source, sourceHost, hasPlaintext: false);
+        }
+        return added;
+    }
+
+    public bool Contains(string user, string? realm, string passwordSha256)
+    {
+        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(passwordSha256))
+            return false;
+        var sha = passwordSha256.ToLowerInvariant();
+        if (_secrets.TryGetValue(Key(realm, user), out var pwd) &&
+            string.Equals(Sha256Hex(pwd), sha, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return _digestRefs.ContainsKey(Key(realm, user) + "|" + sha);
+    }
+
+    private void RaiseCredentialAdded(string user, string? realm, string passwordSha256,
+        string source, string? sourceHost, bool hasPlaintext)
+    {
+        CredentialAdded?.Invoke(this,
+            new CredentialAddedEventArgs(user, realm, passwordSha256, source, sourceHost, hasPlaintext));
+    }
+    // --- end empire-cred-bridge ---
+
     /// <summary>Iterate over all known credentials as non-secret refs.</summary>
     public IReadOnlyList<CredentialRef> List()
     {
-        var list = new List<CredentialRef>(_secrets.Count);
+        var list = new List<CredentialRef>(_secrets.Count + _digestRefs.Count);
         foreach (var kv in _secrets)
         {
             var (realm, user) = SplitKey(kv.Key);
@@ -76,6 +151,17 @@ public sealed class CredentialStore
                 PasswordSha256 = Sha256Hex(kv.Value),
             });
         }
+        // --- empire-cred-bridge ---
+        foreach (var kv in _digestRefs)
+        {
+            list.Add(new CredentialRef
+            {
+                User = kv.Value.User,
+                Realm = kv.Value.Realm,
+                PasswordSha256 = kv.Value.PasswordSha256,
+            });
+        }
+        // --- end empire-cred-bridge ---
         return list;
     }
 
@@ -208,3 +294,30 @@ public sealed class CredentialStore
 
 internal sealed record AttemptRecord(
     string Host, string Service, CredentialRef Cred, bool Succeeded, DateTimeOffset At);
+
+// --- empire-cred-bridge ---
+internal sealed record DigestRef(
+    string User, string? Realm, string PasswordSha256, string Source, string? SourceHost);
+
+/// <summary>Event args raised by <see cref="CredentialStore.CredentialAdded"/>.
+/// Carries SHA-256 only — never the plaintext.</summary>
+public sealed class CredentialAddedEventArgs : EventArgs
+{
+    public CredentialAddedEventArgs(string user, string? realm, string passwordSha256,
+        string source, string? sourceHost, bool hasPlaintext)
+    {
+        User = user;
+        Realm = realm;
+        PasswordSha256 = passwordSha256;
+        Source = source;
+        SourceHost = sourceHost;
+        HasPlaintext = hasPlaintext;
+    }
+    public string User { get; }
+    public string? Realm { get; }
+    public string PasswordSha256 { get; }
+    public string Source { get; }
+    public string? SourceHost { get; }
+    public bool HasPlaintext { get; }
+}
+// --- end empire-cred-bridge ---
