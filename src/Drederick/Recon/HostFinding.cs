@@ -44,9 +44,15 @@ public sealed class HostFinding
     // --- htb-ssl-cert-hosts --- (GAP-006)
     [JsonPropertyName("ssl_cert_hosts")] public List<SslCertHostsResult> SslCertHosts { get; set; } = new();
     // --- end htb-ssl-cert-hosts ---
+    // --- htb-hosts-mutation --- (GAP-006 pair with batch 2)
+    [JsonPropertyName("etc_hosts_analysis")] public List<EtcHostsAnalysisResult> EtcHostsAnalysis { get; set; } = new();
+    // --- end htb-hosts-mutation ---
     // --- htb-locale-lfi-probe --- (GAP-035)
     [JsonPropertyName("locale_lfi")] public List<LocaleLfiResult> LocaleLfi { get; set; } = new();
     // --- end htb-locale-lfi-probe ---
+    // --- htb-content-discovery-crawl --- (GAP-022)
+    [JsonPropertyName("html_sitemap")] public List<Drederick.Recon.Http.HtmlSitemapResult> HtmlSitemap { get; set; } = new();
+    // --- end htb-content-discovery-crawl ---
     // --- htb-cloud-storage-enum --- (GAP-018)
     [JsonPropertyName("cloud_storage")] public List<CloudStorageEnumResult> CloudStorage { get; set; } = new();
     // --- end htb-cloud-storage-enum ---
@@ -686,6 +692,26 @@ public sealed class EtcHostsProposal
     [JsonPropertyName("current_resolution")] public string? CurrentResolution { get; set; }
 }
 // --- end htb-ssl-cert-hosts ---
+
+// --- htb-hosts-mutation --- (GAP-006 pair with batch 2: /etc/hosts diff + proposal analyzer)
+public sealed class EtcHostsAnalysisResult
+{
+    [JsonPropertyName("current_entries")] public Dictionary<string, string> CurrentEntries { get; set; } = new();
+    [JsonPropertyName("proposals")] public List<EtcHostsProposalDecision> Proposals { get; set; } = new();
+    [JsonPropertyName("suggested_snippet")] public string SuggestedSnippet { get; set; } = "";
+    [JsonPropertyName("error")] public string? Error { get; set; }
+}
+
+public sealed class EtcHostsProposalDecision
+{
+    [JsonPropertyName("hostname")] public string Hostname { get; set; } = "";
+    [JsonPropertyName("proposed_ip")] public string ProposedIp { get; set; } = "";
+    [JsonPropertyName("action")] public string Action { get; set; } = ""; // "add" | "conflict" | "info_only" | "skip"
+    [JsonPropertyName("current_ip")] public string? CurrentIp { get; set; }
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+    [JsonPropertyName("priority")] public int Priority { get; set; }
+}
+// --- end htb-hosts-mutation ---
 
 // --- htb-locale-lfi-probe --- (GAP-035: locale-parameter LFI probe result shape)
 public sealed class LocaleLfiResult

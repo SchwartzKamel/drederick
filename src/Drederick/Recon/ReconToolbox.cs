@@ -62,9 +62,15 @@ public sealed class ReconToolbox
     // --- htb-ssl-cert-hosts ---
     private readonly SslCertHostsTool? _sslCertHosts;
     // --- end htb-ssl-cert-hosts ---
+    // --- htb-hosts-mutation ---
+    private readonly EtcHostsManagerTool? _etcHostsManager;
+    // --- end htb-hosts-mutation ---
     // --- htb-locale-lfi-probe ---
     private readonly Drederick.Recon.Http.LocaleLfiProbe? _localeLfi;
     // --- end htb-locale-lfi-probe ---
+    // --- htb-content-discovery-crawl --- (GAP-022)
+    private readonly Drederick.Recon.Http.HtmlSitemapCrawler? _htmlSitemap;
+    // --- end htb-content-discovery-crawl ---
     // --- htb-cloud-storage-enum --- (GAP-018)
     private readonly CloudStorageEnumTool? _cloudStorage;
     // --- end htb-cloud-storage-enum ---
@@ -124,9 +130,15 @@ public sealed class ReconToolbox
         // --- htb-ssl-cert-hosts ---
         _sslCertHosts = materialized.OfType<SslCertHostsTool>().SingleOrDefault();
         // --- end htb-ssl-cert-hosts ---
+        // --- htb-hosts-mutation ---
+        _etcHostsManager = materialized.OfType<EtcHostsManagerTool>().SingleOrDefault();
+        // --- end htb-hosts-mutation ---
         // --- htb-locale-lfi-probe ---
         _localeLfi = materialized.OfType<Drederick.Recon.Http.LocaleLfiProbe>().SingleOrDefault();
         // --- end htb-locale-lfi-probe ---
+        // --- htb-content-discovery-crawl --- (GAP-022)
+        _htmlSitemap = materialized.OfType<Drederick.Recon.Http.HtmlSitemapCrawler>().SingleOrDefault();
+        // --- end htb-content-discovery-crawl ---
         // --- htb-cloud-storage-enum --- (GAP-018)
         _cloudStorage = materialized.OfType<CloudStorageEnumTool>().SingleOrDefault();
         // --- end htb-cloud-storage-enum ---
@@ -597,10 +609,36 @@ public sealed class ReconToolbox
         ValidatePort(port);
         Charge(target, "ssl-cert-hosts");
         var r = await tool.EnumerateAsync(target, port, ct: ct).ConfigureAwait(false);
-        GetOrCreate(target).SslCertHosts.Add(r);
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
     // --- end htb-ssl-cert-hosts ---
+
+    // --- htb-hosts-mutation --- (GAP-006 pair with batch 2)
+    [Description("Cross-cutting /etc/hosts analyzer: compare discovered vhost names " +
+                 "against the operator's local /etc/hosts and emit add/conflict/" +
+                 "info_only/skip proposals plus a copy-paste snippet. " +
+                 "Drederick never writes /etc/hosts — operator owns mutation.")]
+    public async Task<string> AnalyzeEtcHostsAsync(
+        [Description("Target IP address (must be in scope).")] string target,
+        [Description("Path to hosts file — defaults to /etc/hosts.")] string etcHostsPath = "/etc/hosts",
+        CancellationToken ct = default)
+    {
+        var tool = _etcHostsManager ?? throw new InvalidOperationException("EtcHostsManagerTool is not registered.");
+        Charge(target, "etc-hosts");
+
+        var finding = GetOrCreate(target);
+        var incoming = new List<EtcHostsProposal>();
+        foreach (var s in finding.SslCertHosts)
+        {
+            if (s.HostsProposals is null) continue;
+            incoming.AddRange(s.HostsProposals);
+        }
+
+        var r = await tool.AnalyzeAsync(target, incoming, etcHostsPath, ct).ConfigureAwait(false);
+        finding.EtcHostsAnalysis.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-hosts-mutation ---
 
     // --- htb-locale-lfi-probe --- (GAP-035 / CVE-2025-49132 shape)
     [Description("Generic locale-parameter LFI probe: discovers query parameters " +
@@ -643,6 +681,36 @@ public sealed class ReconToolbox
         return System.Text.Json.JsonSerializer.Serialize(r);
     }
     // --- end htb-locale-lfi-probe ---
+
+    // --- htb-content-discovery-crawl --- (GAP-022)
+    [Description("HTML + sitemap.xml + robots.txt content-discovery crawler. Fetches robots.txt " +
+                 "(Disallow/Allow/Sitemap rules), sitemap.xml (recursing up to 3 levels of " +
+                 "sitemap-index), and the base HTML body (anchors, form actions, iframes, " +
+                 "img/script/link src), then HEAD-probes each same-origin URL recording status, " +
+                 "content-type, and content-length up to a depth and URL cap. Same-origin only; " +
+                 "redirect Location headers are scope-revalidated. By default robots.txt " +
+                 "Disallow: paths are treated as HIGH-SIGNAL seeds (sites disclose secret paths " +
+                 "via robots.txt); pass --respect-robots to honour them as crawl boundaries. " +
+                 "Read-only HEAD; body content is never logged.")]
+    public async Task<string> HtmlSitemapCrawlAsync(
+        [Description("Absolute base URL, e.g. 'http://10.0.0.5/'. Host must be in scope.")] string baseUrl,
+        [Description("Max crawl depth (default 2).")] int crawlDepth = Drederick.Recon.Http.HtmlSitemapCrawler.DefaultDepth,
+        [Description("Max URLs to HEAD-probe (default 500).")] int crawlMaxUrls = Drederick.Recon.Http.HtmlSitemapCrawler.DefaultMaxUrls,
+        [Description("Requests per second (default 10).")] int crawlRps = Drederick.Recon.Http.HtmlSitemapCrawler.DefaultRatePerSecond,
+        [Description("Honour robots.txt Disallow as boundary (default false; Disallow paths are seeds by default).")] bool respectRobots = false,
+        CancellationToken ct = default)
+    {
+        var tool = _htmlSitemap ?? throw new InvalidOperationException("HtmlSitemapCrawler is not registered.");
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new ArgumentException("baseUrl must not be empty.", nameof(baseUrl));
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+            throw new ArgumentException($"baseUrl '{baseUrl}' must be absolute.", nameof(baseUrl));
+        Charge(baseUri.Host, "html-sitemap-crawler");
+        var r = await tool.CrawlAsync(baseUrl, crawlDepth, crawlMaxUrls, crawlRps, respectRobots, ct).ConfigureAwait(false);
+        GetOrCreate(baseUri.Host).HtmlSitemap.Add(r);
+        return System.Text.Json.JsonSerializer.Serialize(r);
+    }
+    // --- end htb-content-discovery-crawl ---
 
     // --- htb-cloud-storage-enum --- (GAP-018)
     [Description("Probe a target's S3-compatible endpoint for anonymous bucket listing. " +

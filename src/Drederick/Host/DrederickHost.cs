@@ -368,9 +368,15 @@ public sealed class DrederickHost
         // --- htb-ssl-cert-hosts ---
         var sslCertHosts = new SslCertHostsTool(scope, audit);
         // --- end htb-ssl-cert-hosts ---
+        // --- htb-hosts-mutation ---
+        var etcHostsManager = new EtcHostsManagerTool(scope, audit);
+        // --- end htb-hosts-mutation ---
         // --- htb-locale-lfi-probe --- (GAP-035)
         var localeLfi = new Drederick.Recon.Http.LocaleLfiProbe(scope, audit);
         // --- end htb-locale-lfi-probe ---
+        // --- htb-content-discovery-crawl --- (GAP-022)
+        var htmlSitemap = new Drederick.Recon.Http.HtmlSitemapCrawler(scope, audit);
+        // --- end htb-content-discovery-crawl ---
         // --- htb-cloud-storage-enum --- (GAP-018)
         // Loot artifacts land under <outputDir>/loot/<host>/cloud-bucket-<name>/.
         // The DrederickHost builder doesn't have direct access to the runtime
@@ -396,9 +402,15 @@ public sealed class DrederickHost
                 // --- htb-ssl-cert-hosts ---
                 sslCertHosts,
                 // --- end htb-ssl-cert-hosts ---
+                // --- htb-hosts-mutation ---
+                etcHostsManager,
+                // --- end htb-hosts-mutation ---
                 // --- htb-locale-lfi-probe ---
                 localeLfi,
                 // --- end htb-locale-lfi-probe ---
+                // --- htb-content-discovery-crawl --- (GAP-022)
+                htmlSitemap,
+                // --- end htb-content-discovery-crawl ---
                 // --- htb-cloud-storage-enum --- (GAP-018)
                 cloudStorage,
                 // --- end htb-cloud-storage-enum ---
