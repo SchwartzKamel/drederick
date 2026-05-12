@@ -273,6 +273,17 @@ public sealed class CommandLineOptions
     /// mutation, reboot, wipe). CLI: <c>--allow-destructive</c>.</summary>
     public bool AllowDestructive { get; set; }
 
+    // --- empire-autopilot-extend ---
+    /// <summary>Enable the Empire C2 post-exploitation phase inside
+    /// <see cref="Drederick.Autopilot.AutopilotRunner"/>. The phase runs
+    /// only when this flag is set AND <see cref="AllowPayloads"/> is set
+    /// AND there is at least one compromised host (active Empire agent or
+    /// successful exploitation in this run). Mimikatz-class modules
+    /// additionally require <see cref="AllowCredAttacks"/>. Default OFF —
+    /// Empire is opt-in even inside lab scope. CLI: <c>--empire-autopilot</c>.</summary>
+    public bool EmpireAutopilot { get; set; }
+    // --- end empire-autopilot-extend ---
+
     // --- htb-flag-submission ---
     /// <summary>Submit detected high-confidence flags to the platform
     /// grading API at end-of-run. Default OFF. CLI: <c>--submit-flag</c>.</summary>
@@ -1026,6 +1037,10 @@ public sealed class CommandLineOptions
                     o.AllowDestructive = true; break;
                 case "--allow-dos":
                     o.AllowDos = true; break;
+                // --- empire-autopilot-extend ---
+                case "--empire-autopilot":
+                    o.EmpireAutopilot = true; break;
+                // --- end empire-autopilot-extend ---
                 // --- htb-flag-submission ---
                 case "--submit-flag":
                     o.SubmitFlag = true; break;

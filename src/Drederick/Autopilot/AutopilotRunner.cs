@@ -46,6 +46,9 @@ public sealed class AutopilotRunner
     private readonly DelegationEnumTool? _delegationEnum;
     private readonly DcSyncDetectionTool? _dcSyncDetect;
     private readonly CertVulnerabilityEnumTool? _certVulnEnum;
+    // --- empire-autopilot-extend ---
+    private readonly EmpireAutopilotPhase? _empirePhase;
+    // --- end empire-autopilot-extend ---
 
     // GAP-033 — per-RunAsync map of CVE id → fetch outcome. Loop guard for
     // the cve-lead → on-demand-fetch → re-plan loop: one fetch attempt per
@@ -73,7 +76,8 @@ public sealed class AutopilotRunner
         Drederick.Exploit.KerberoastTool? kerberoast = null,
         DelegationEnumTool? delegationEnum = null,
         DcSyncDetectionTool? dcSyncDetect = null,
-        CertVulnerabilityEnumTool? certVulnEnum = null)
+        CertVulnerabilityEnumTool? certVulnEnum = null,
+        EmpireAutopilotPhase? empirePhase = null)
     {
         _scope = scope;
         _audit = audit;
@@ -95,6 +99,7 @@ public sealed class AutopilotRunner
         _delegationEnum = delegationEnum;
         _dcSyncDetect = dcSyncDetect;
         _certVulnEnum = certVulnEnum;
+        _empirePhase = empirePhase;
     }
 
     /// <summary>Run the autopilot loop. Returns an aggregate summary.</summary>
@@ -179,6 +184,29 @@ public sealed class AutopilotRunner
         }
         // --- end htb-pfx-cert-awareness ---
 
+        // --- empire-autopilot-extend ---
+        EmpireAutopilotReport? empireReport = null;
+        if (_empirePhase is not null)
+        {
+            try
+            {
+                empireReport = await _empirePhase.RunAsync(allResults, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                empireReport = EmpireAutopilotReport.Failed(ex.Message);
+                _audit.Record("autopilot.empire.phase.failed", new Dictionary<string, object?>
+                {
+                    ["error"] = ex.Message,
+                });
+            }
+        }
+        // --- end empire-autopilot-extend ---
+
         var flags = flagsSeen.Values.ToList();
         _audit.Record("autopilot.finish", new Dictionary<string, object?>
         {
@@ -193,7 +221,8 @@ public sealed class AutopilotRunner
             Iterations: iteration,
             Actions: allResults,
             Flags: flags,
-            KnownCredentials: _creds.List());
+            KnownCredentials: _creds.List(),
+            EmpireReport: empireReport);
     }
 
     private async Task<ExploitActionResult> ExecuteAsync(
@@ -662,4 +691,6 @@ public sealed record AutopilotReport(
     int Iterations,
     IReadOnlyList<ExploitActionResult> Actions,
     IReadOnlyList<FlagMatch> Flags,
-    IReadOnlyList<CredentialRef> KnownCredentials);
+    IReadOnlyList<CredentialRef> KnownCredentials,
+    // --- empire-autopilot-extend ---
+    EmpireAutopilotReport? EmpireReport = null);
